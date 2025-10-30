@@ -73,7 +73,7 @@ func fmtFile(opt format.Options, file string) error {
 			diffLines := diff.Diff("old", content, "new", []byte(formatted))
 			fmt.Print(string(diffLines))
 		} else {
-			fmt.Print(formatted)
+			fmt.Println(formatted)
 		}
 		return nil
 	}
