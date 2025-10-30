@@ -35,6 +35,8 @@ type Options struct {
 	// if choose disable, user input will be retained without modification
 	// Default is "disable" if not set
 	FieldLineComma string `yaml:"fieldLineComma"`
+
+	LogLevel int `yaml:"logLevel"` // 1: fatal, 2: error, 3: warn, 4: info, 5: debug, 6: trace
 }
 
 func (o *Options) SetFlags() {
