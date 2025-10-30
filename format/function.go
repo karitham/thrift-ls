@@ -116,7 +116,7 @@ func MustFormatThrows(throws *parser.Throws) string {
 
 	args := ""
 	if len(throws.Fields) > 0 {
-		args = MustFormatOneLineFields(throws.Fields)
+		args = "\n" + MustFormatFields(throws.Fields, Indent+Indent) + Indent
 	}
 
 	f := &ThrowFormatter{
