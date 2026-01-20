@@ -76,7 +76,7 @@ func (s *Server) Completion(ctx context.Context, params *protocol.CompletionPara
 }
 
 func (s *Server) CompletionResolve(ctx context.Context, params *protocol.CompletionItem) (result *protocol.CompletionItem, err error) {
-	return nil, nil
+	return params, nil
 }
 
 func (s *Server) Declaration(ctx context.Context, params *protocol.DeclarationParams) (result []protocol.Location, err error) {
