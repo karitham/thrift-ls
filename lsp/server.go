@@ -54,11 +54,11 @@ func (s *Server) SetTrace(ctx context.Context, params *protocol.SetTraceParams) 
 }
 
 func (s *Server) CodeAction(ctx context.Context, params *protocol.CodeActionParams) (result []protocol.CodeAction, err error) {
-	return nil, nil
+	return []protocol.CodeAction{}, nil
 }
 
 func (s *Server) CodeLens(ctx context.Context, params *protocol.CodeLensParams) (result []protocol.CodeLens, err error) {
-	return nil, nil
+	return []protocol.CodeLens{}, nil
 }
 
 func (s *Server) CodeLensResolve(ctx context.Context, params *protocol.CodeLens) (result *protocol.CodeLens, err error) {
@@ -66,7 +66,7 @@ func (s *Server) CodeLensResolve(ctx context.Context, params *protocol.CodeLens)
 }
 
 func (s *Server) ColorPresentation(ctx context.Context, params *protocol.ColorPresentationParams) (result []protocol.ColorPresentation, err error) {
-	return nil, nil
+	return []protocol.ColorPresentation{}, nil
 }
 
 func (s *Server) Completion(ctx context.Context, params *protocol.CompletionParams) (result *protocol.CompletionList, err error) {
@@ -76,11 +76,11 @@ func (s *Server) Completion(ctx context.Context, params *protocol.CompletionPara
 }
 
 func (s *Server) CompletionResolve(ctx context.Context, params *protocol.CompletionItem) (result *protocol.CompletionItem, err error) {
-	return nil, nil
+	return params, nil
 }
 
 func (s *Server) Declaration(ctx context.Context, params *protocol.DeclarationParams) (result []protocol.Location, err error) {
-	return nil, nil
+	return []protocol.Location{}, nil
 }
 
 func (s *Server) Definition(ctx context.Context, params *protocol.DefinitionParams) (result []protocol.Location, err error) {
@@ -122,15 +122,15 @@ func (s *Server) DidSave(ctx context.Context, params *protocol.DidSaveTextDocume
 }
 
 func (s *Server) DocumentColor(ctx context.Context, params *protocol.DocumentColorParams) (result []protocol.ColorInformation, err error) {
-	return nil, nil
+	return []protocol.ColorInformation{}, nil
 }
 
 func (s *Server) DocumentHighlight(ctx context.Context, params *protocol.DocumentHighlightParams) (result []protocol.DocumentHighlight, err error) {
-	return nil, nil
+	return []protocol.DocumentHighlight{}, nil
 }
 
 func (s *Server) DocumentLink(ctx context.Context, params *protocol.DocumentLinkParams) (result []protocol.DocumentLink, err error) {
-	return nil, nil
+	return []protocol.DocumentLink{}, nil
 }
 
 func (s *Server) DocumentLinkResolve(ctx context.Context, params *protocol.DocumentLink) (result *protocol.DocumentLink, err error) {
@@ -148,7 +148,7 @@ func (s *Server) ExecuteCommand(ctx context.Context, params *protocol.ExecuteCom
 }
 
 func (s *Server) FoldingRanges(ctx context.Context, params *protocol.FoldingRangeParams) (result []protocol.FoldingRange, err error) {
-	return nil, nil
+	return []protocol.FoldingRange{}, nil
 }
 
 func (s *Server) Formatting(ctx context.Context, params *protocol.DocumentFormattingParams) (result []protocol.TextEdit, err error) {
@@ -164,11 +164,11 @@ func (s *Server) Hover(ctx context.Context, params *protocol.HoverParams) (resul
 }
 
 func (s *Server) Implementation(ctx context.Context, params *protocol.ImplementationParams) (result []protocol.Location, err error) {
-	return nil, nil
+	return []protocol.Location{}, nil
 }
 
 func (s *Server) OnTypeFormatting(ctx context.Context, params *protocol.DocumentOnTypeFormattingParams) (result []protocol.TextEdit, err error) {
-	return nil, nil
+	return []protocol.TextEdit{}, nil
 }
 
 func (s *Server) PrepareRename(ctx context.Context, params *protocol.PrepareRenameParams) (result *protocol.Range, err error) {
@@ -178,7 +178,7 @@ func (s *Server) PrepareRename(ctx context.Context, params *protocol.PrepareRena
 }
 
 func (s *Server) RangeFormatting(ctx context.Context, params *protocol.DocumentRangeFormattingParams) (result []protocol.TextEdit, err error) {
-	return nil, nil
+	return []protocol.TextEdit{}, nil
 }
 
 func (s *Server) References(ctx context.Context, params *protocol.ReferenceParams) (result []protocol.Location, err error) {
@@ -198,7 +198,7 @@ func (s *Server) SignatureHelp(ctx context.Context, params *protocol.SignatureHe
 }
 
 func (s *Server) Symbols(ctx context.Context, params *protocol.WorkspaceSymbolParams) (result []protocol.SymbolInformation, err error) {
-	return nil, nil
+	return []protocol.SymbolInformation{}, nil
 }
 
 func (s *Server) TypeDefinition(ctx context.Context, params *protocol.TypeDefinitionParams) (result []protocol.Location, err error) {
@@ -212,7 +212,7 @@ func (s *Server) WillSave(ctx context.Context, params *protocol.WillSaveTextDocu
 }
 
 func (s *Server) WillSaveWaitUntil(ctx context.Context, params *protocol.WillSaveTextDocumentParams) (result []protocol.TextEdit, err error) {
-	return nil, nil
+	return []protocol.TextEdit{}, nil
 }
 
 func (s *Server) ShowDocument(ctx context.Context, params *protocol.ShowDocumentParams) (result *protocol.ShowDocumentResult, err error) {
@@ -248,15 +248,15 @@ func (s *Server) CodeLensRefresh(ctx context.Context) (err error) {
 }
 
 func (s *Server) PrepareCallHierarchy(ctx context.Context, params *protocol.CallHierarchyPrepareParams) (result []protocol.CallHierarchyItem, err error) {
-	return nil, nil
+	return []protocol.CallHierarchyItem{}, nil
 }
 
 func (s *Server) IncomingCalls(ctx context.Context, params *protocol.CallHierarchyIncomingCallsParams) (result []protocol.CallHierarchyIncomingCall, err error) {
-	return nil, nil
+	return []protocol.CallHierarchyIncomingCall{}, nil
 }
 
 func (s *Server) OutgoingCalls(ctx context.Context, params *protocol.CallHierarchyOutgoingCallsParams) (result []protocol.CallHierarchyOutgoingCall, err error) {
-	return nil, nil
+	return []protocol.CallHierarchyOutgoingCall{}, nil
 }
 
 func (s *Server) SemanticTokensFull(ctx context.Context, params *protocol.SemanticTokensParams) (result *protocol.SemanticTokens, err error) {
@@ -280,7 +280,7 @@ func (s *Server) LinkedEditingRange(ctx context.Context, params *protocol.Linked
 }
 
 func (s *Server) Moniker(ctx context.Context, params *protocol.MonikerParams) (result []protocol.Moniker, err error) {
-	return nil, nil
+	return []protocol.Moniker{}, nil
 }
 
 // Request handles all no standard request
