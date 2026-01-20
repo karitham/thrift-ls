@@ -88,7 +88,7 @@ func initializeResult() *protocol.InitializeResult {
 				},
 			},
 			CompletionProvider: &protocol.CompletionOptions{
-				ResolveProvider: true,
+				ResolveProvider: false,
 				/**
 				 * The additional characters, beyond the defaults provided by the client (typically
 				 * [a-zA-Z]), that should automatically trigger a completion request. For example
