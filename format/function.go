@@ -55,8 +55,11 @@ func MustFormatFunction(fn *parser.Function, opts Options, indent string) string
 		oneway = "oneway "
 	}
 	args := ""
-	if len(fn.Arguments) > 0 {
+	if len(fn.Arguments) == 1 {
 		args = MustFormatOneLineFields(fn.Arguments, opts)
+	} else if len(fn.Arguments) > 1 {
+		indent := opts.GetIndent()
+		args = "\n" + MustFormatFields(fn.Arguments, opts, indent+indent) + indent
 	}
 
 	ft := ""
@@ -115,7 +118,9 @@ func MustFormatThrows(throws *parser.Throws, opts Options) string {
 	}
 
 	args := ""
-	if len(throws.Fields) > 0 {
+	if len(throws.Fields) == 1 {
+		args = MustFormatOneLineFields(throws.Fields, opts)
+	} else if len(throws.Fields) > 1 {
 		indent := opts.GetIndent()
 		args = "\n" + MustFormatFields(throws.Fields, opts, indent+indent) + indent
 	}
