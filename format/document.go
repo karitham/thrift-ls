@@ -176,6 +176,10 @@ func FormatDocumentWithValidationFull(doc *parser.Document, selfValidation bool,
 		}
 	}
 
+	if TrailingNewline && !strings.HasSuffix(res, "\n") {
+		res += "\n"
+	}
+
 	return res, nil
 }
 

@@ -9,6 +9,7 @@ import (
 var Indent = "    "
 var Align = "field"
 var FieldLineComma = "disable"
+var TrailingNewline = false
 
 type Options struct {
 	// Do not print reformatted sources to standard output.
@@ -35,6 +36,10 @@ type Options struct {
 	// if choose disable, user input will be retained without modification
 	// Default is "disable" if not set
 	FieldLineComma string `yaml:"fieldLineComma"`
+
+	// TrailingNewline controls whether to add a trailing newline at end of file.
+	// Default is false (no trailing newline added)
+	TrailingNewline bool `yaml:"trailingNewline"`
 }
 
 func (o *Options) SetFlags() {
@@ -43,6 +48,7 @@ func (o *Options) SetFlags() {
 	flag.StringVar(&o.Indent, "indent", "4spaces", "Indent to use. Support: num*space, num*tab. example: 4spaces, 1tab, tab")
 	flag.StringVar(&o.Align, "align", "field", `Align enables align option for struct/enum/exception/union fields, Options: "field", "assign", "disable", Default is "field" if not set.`)
 	flag.StringVar(&o.FieldLineComma, "fieldLineComma", "disable", `FieldLineComma enables whether to add or remove comma at end of field line. Options: "add", "remove", "disable". If choose disable, user input will be retained without modification. Default is "disable" if not set`)
+	flag.BoolVar(&o.TrailingNewline, "trailingNewline", false, "Add trailing newline at end of file")
 }
 
 func (o *Options) InitDefault() {
@@ -62,6 +68,7 @@ func (o *Options) InitDefault() {
 	}
 
 	FieldLineComma = o.FieldLineComma
+	TrailingNewline = o.TrailingNewline
 }
 
 func (o *Options) GetIndent() string {

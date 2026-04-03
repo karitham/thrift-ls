@@ -23,8 +23,9 @@ import (
 )
 
 type Options struct {
-	LogLevel     int      `yaml:"logLevel"` // 1: fatal, 2: error, 3: warn, 4: info, 5: debug, 6: trace
-	IncludePaths []string `yaml:"include_paths"`
+	LogLevel     int            `yaml:"logLevel"` // 1: fatal, 2: error, 3: warn, 4: info, 5: debug, 6: trace
+	IncludePaths []string       `yaml:"include_paths"`
+	Format       format.Options `yaml:"format"`
 }
 
 func main_format(opt format.Options, file string, includePaths []string) error {
@@ -97,9 +98,9 @@ func main() {
 	formatOpts := format.Options{}
 	formatOpts.SetFlags()
 	flag.Parse()
-	formatOpts.InitDefault()
 
-	opts := configInit()
+	opts := configInit(&formatOpts)
+	formatOpts.InitDefault()
 	tlog.Init(opts.LogLevel)
 
 	if formatter {
@@ -152,7 +153,7 @@ func readConfig(path string) (*Options, error) {
 	return opts, nil
 }
 
-func configInit() *Options {
+func configInit(formatOpts *format.Options) *Options {
 	opts := &Options{}
 
 	logLevel := -1
@@ -169,6 +170,29 @@ func configInit() *Options {
 	}
 	if opts.LogLevel == 0 {
 		opts.LogLevel = 3
+	}
+
+	// Track which flags were explicitly set via CLI
+	cliFlags := make(map[string]bool)
+	flag.Visit(func(f *flag.Flag) {
+		cliFlags[f.Name] = true
+	})
+
+	// Merge format config values (CLI > config > defaults)
+	// Only use config value if CLI flag wasn't explicitly set
+	if !cliFlags["indent"] && opts.Format.Indent != "" {
+		formatOpts.Indent = opts.Format.Indent
+	}
+	if !cliFlags["align"] && opts.Format.Align != "" {
+		formatOpts.Align = opts.Format.Align
+	}
+	if !cliFlags["fieldLineComma"] && opts.Format.FieldLineComma != "" {
+		formatOpts.FieldLineComma = opts.Format.FieldLineComma
+	}
+	// TrailingNewline is a boolean, so we need to check if the CLI flag was set
+	// The default is false, so we only override if config is true and CLI wasn't set
+	if !cliFlags["trailingNewline"] && opts.Format.TrailingNewline {
+		formatOpts.TrailingNewline = opts.Format.TrailingNewline
 	}
 
 	return opts

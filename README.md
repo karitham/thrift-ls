@@ -49,12 +49,16 @@ Usage of ./bin/thriftls:
   -d	Do not print reformatted sources to standard output. If a file's formatting is different than gofmt's, print diffs to standard output.
   -f string
     	file path to format
+  -fieldLineComma string
+    	FieldLineComma enables whether to add or remove comma at end of field line. Options: "add", "remove", "disable". If choose disable, user input will be retained without modification. Default is "disable" if not set (default "disable")
   -format
     	use thrift-ls as a format tool
   -indent string
     	Indent to use. Support: num*space, num*tab. example: 4spaces, 1tab, tab (default "4spaces")
   -logLevel int
     	set log level (default -1)
+  -trailingNewline
+    	Add trailing newline at end of file
   -w	Do not print reformatted sources to standard output. If a file's formatting is different from thriftls's, overwrite it with thrfitls's version.
 ```
 
@@ -82,6 +86,10 @@ List of additional paths to search for included thrift files. When a thrift file
 
 This is similar to Apache Thrift's `-I` flag and is useful for monorepos with shared base definitions.
 
+### format
+
+Controls formatting behavior. All format options can be set in the config file and overridden via CLI flags.
+
 Example `~/.thriftls/config.yaml`:
 
 ```yaml
@@ -89,7 +97,49 @@ logLevel: 3
 include_paths:
   - /path/to/base
   - /path/to/shared-types
+format:
+  indent: "2spaces"
+  alignByAssign: "field"
+  fieldLineComma: "disable"
+  trailingNewline: false
 ```
+
+#### indent
+
+String specifying indentation style.
+
+Supported formats:
+- `<num>spaces`: e.g., `2spaces`, `4spaces`
+- `<num>tabs`: e.g., `1tab`, `2tabs`
+- `tab` (equivalent to `1tab`)
+
+Default: `4spaces`
+
+#### alignByAssign
+
+Controls alignment of struct/enum/exception/union fields.
+
+Options:
+- `field`: Align field IDs, types, and names (default)
+- `assign`: Align the `=`sign for default values
+- `disable`: No alignment
+
+#### fieldLineComma
+
+Controls trailing commas on field lines.
+
+Options:
+- `disable`: Preserve original (default)
+- `add`: Always add trailing commas
+- `remove`: Remove trailing commas
+
+#### trailingNewline
+
+Controls whether a trailing newline is added at end of file.
+
+Boolean: `true` or `false`
+
+Default: `false` (no trailing newline added)
 
 ### logLevel
 
