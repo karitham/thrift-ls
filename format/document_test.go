@@ -1,6 +1,7 @@
 package format
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/joyme123/thrift-ls/parser"
@@ -31,7 +32,7 @@ service A {
 	formated, err := FormatDocument(ast.(*parser.Document), opts)
 	assert.Equal(t, expectedDoc, formated)
 
-	_, err = FormatDocumentWithValidation(ast.(*parser.Document), opts, true)
+	_, err = FormatDocumentWithValidation(ast.(*parser.Document), opts)
 	assert.NoError(t, err)
 
 	// remove comma
@@ -49,7 +50,7 @@ service A {
 	formated, err = FormatDocument(ast.(*parser.Document), opts)
 	assert.Equal(t, expectedDoc, formated)
 
-	_, err = FormatDocumentWithValidation(ast.(*parser.Document), opts, true)
+	_, err = FormatDocumentWithValidation(ast.(*parser.Document), opts)
 	assert.NoError(t, err)
 
 	// disable
@@ -67,7 +68,7 @@ service A {
 	formated, err = FormatDocument(ast.(*parser.Document), opts)
 	assert.Equal(t, expectedDoc, formated)
 
-	_, err = FormatDocumentWithValidation(ast.(*parser.Document), opts, true)
+	_, err = FormatDocumentWithValidation(ast.(*parser.Document), opts)
 	assert.NoError(t, err)
 }
 
@@ -77,12 +78,29 @@ func Test_FormatDocument(t *testing.T) {
 	assert.NotNil(t, ast)
 
 	opts := Options{}
-	formated, err := FormatDocument(ast.(*parser.Document), opts)
+	formated, err := FormatDocumentWithValidation(ast.(*parser.Document), opts)
 	assert.Equal(t, expectedFormated, formated)
-
-	_, err = FormatDocumentWithValidation(ast.(*parser.Document), opts, true)
 	assert.NoError(t, err)
+}
 
+func TestFormatDocumentTrailingNewline(t *testing.T) {
+	doc := `struct Test {}`
+
+	ast, err := parser.Parse("test.thrift", []byte(doc))
+	assert.NoError(t, err)
+	assert.NotNil(t, ast)
+
+	// Test with TrailingNewline = true - output should end with "\n"
+	opts := Options{TrailingNewline: true}
+	formatted, err := FormatDocument(ast.(*parser.Document), opts)
+	assert.NoError(t, err)
+	assert.True(t, strings.HasSuffix(formatted, "\n"), "Expected formatted output to end with newline when TrailingNewline is true")
+
+	// Test with TrailingNewline = false - output should NOT end with "\n"
+	opts = Options{TrailingNewline: false}
+	formatted, err = FormatDocument(ast.(*parser.Document), opts)
+	assert.NoError(t, err)
+	assert.False(t, strings.HasSuffix(formatted, "\n"), "Expected formatted output to NOT end with newline when TrailingNewline is false")
 }
 
 var expectedFormated = `/*

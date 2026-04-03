@@ -54,7 +54,7 @@ func main_format(opt format.Options, file string, includePaths []string) error {
 		return err
 	}
 
-	formated, err := format.FormatDocumentWithValidationFull(ast.(*parser.Document), opt, true, includePaths, absFile)
+	formated, err := format.FormatDocumentWithValidationFull(ast.(*parser.Document), opt, includePaths, absFile)
 	if err != nil {
 		fmt.Println(err)
 		return err

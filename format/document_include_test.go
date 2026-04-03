@@ -46,7 +46,7 @@ struct Person {
 
 	// Format with empty include paths (backward compatibility)
 	opts := Options{}
-	formatted, err := FormatDocumentWithValidationFull(doc, opts, true, []string{}, mainFile)
+	formatted, err := FormatDocumentWithValidationFull(doc, opts, nil, mainFile)
 	if err != nil {
 		t.Fatalf("formatting failed: %v", err)
 	}
@@ -64,7 +64,8 @@ struct Person {
 	}
 
 	// Format with include paths (should work the same)
-	formatted2, err := FormatDocumentWithValidationFull(doc, opts, true, []string{tmpDir}, mainFile)
+	opts = Options{}
+	formatted2, err := FormatDocumentWithValidationFull(doc, opts, []string{tmpDir}, mainFile)
 	if err != nil {
 		t.Fatalf("formatting with include paths failed: %v", err)
 	}
@@ -120,7 +121,7 @@ struct Entity {
 
 	// Format with include path
 	opts := Options{}
-	formatted, err := FormatDocumentWithValidationFull(doc, opts, true, []string{includeDir}, mainFile)
+	formatted, err := FormatDocumentWithValidationFull(doc, opts, []string{includeDir}, mainFile)
 	if err != nil {
 		t.Fatalf("formatting failed: %v", err)
 	}
@@ -194,7 +195,7 @@ struct Container {
 
 	// Format with include path (nested includes should be resolved)
 	opts := Options{}
-	formatted, err := FormatDocumentWithValidationFull(doc, opts, true, []string{includeDir}, mainFile)
+	formatted, err := FormatDocumentWithValidationFull(doc, opts, []string{includeDir}, mainFile)
 	if err != nil {
 		t.Fatalf("formatting failed: %v", err)
 	}
@@ -230,7 +231,7 @@ struct Data {
 
 	// Format without include paths (backward compatibility, no self-val)
 	opts := Options{}
-	formatted, err := FormatDocumentWithValidationFull(doc, opts, false, []string{}, mainFile)
+	formatted, err := FormatDocument(doc, opts)
 	if err != nil {
 		t.Fatalf("formatting failed: %v", err)
 	}
@@ -271,7 +272,7 @@ struct Point {
 
 	// Format without self-validation and no include paths (backward compat path)
 	opts := Options{}
-	formatted, err := FormatDocumentWithValidationFull(doc, opts, false, []string{}, mainFile)
+	formatted, err := FormatDocument(doc, opts)
 	if err != nil {
 		t.Fatalf("formatting failed: %v", err)
 	}
@@ -282,7 +283,8 @@ struct Point {
 	}
 
 	// Test with self-validation using fallback Parse path
-	formatted2, err := FormatDocumentWithValidationFull(doc, opts, true, []string{}, "")
+	opts = Options{}
+	formatted2, err := FormatDocumentWithValidation(doc, opts)
 	if err != nil {
 		t.Fatalf("formatting with empty currentFile failed: %v", err)
 	}
@@ -350,7 +352,7 @@ struct Container {
 
 	// Format with both include paths
 	opts := Options{}
-	formatted, err := FormatDocumentWithValidationFull(doc, opts, true, []string{includeDir1, includeDir2}, mainFile)
+	formatted, err := FormatDocumentWithValidationFull(doc, opts, []string{includeDir1, includeDir2}, mainFile)
 	if err != nil {
 		t.Fatalf("formatting failed: %v", err)
 	}

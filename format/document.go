@@ -16,11 +16,39 @@ type fmtContext struct {
 	preNode parser.Node
 }
 
+// formatConfig holds internal behavioral options for document formatting.
+// These are not user-facing formatting preferences but control validation behavior.
+type formatConfig struct {
+	selfValidation bool
+	includePaths   []string
+	currentFile    string
+}
+
+// FormatDocument formats a Thrift document according to the provided options.
+// This is the basic formatting function without self-validation.
 func FormatDocument(doc *parser.Document, opts Options) (string, error) {
-	return FormatDocumentWithValidation(doc, opts, false)
+	return formatDocument(doc, opts, formatConfig{})
 }
 
-func FormatDocumentWithValidation(doc *parser.Document, opts Options, selfValidation bool) (string, error) {
+// FormatDocumentWithValidation formats a Thrift document with self-validation enabled.
+// The formatted output is parsed back to ensure it's valid.
+func FormatDocumentWithValidation(doc *parser.Document, opts Options) (string, error) {
+	return formatDocument(doc, opts, formatConfig{selfValidation: true})
+}
+
+// FormatDocumentWithValidationFull formats a Thrift document with full validation support.
+// It includes paths for resolving includes and a current file path for relative resolution.
+// This is useful when the document contains includes that need to be resolved during validation.
+func FormatDocumentWithValidationFull(doc *parser.Document, opts Options, includePaths []string, currentFile string) (string, error) {
+	return formatDocument(doc, opts, formatConfig{
+		selfValidation: true,
+		includePaths:   includePaths,
+		currentFile:    currentFile,
+	})
+}
+
+// formatDocument is the internal implementation that all public functions delegate to.
+func formatDocument(doc *parser.Document, opts Options, cfg formatConfig) (string, error) {
 	if doc.ChildrenBadNode() {
 		return "", BadNodeError
 	}
@@ -72,115 +100,51 @@ func FormatDocumentWithValidation(doc *parser.Document, opts Options, selfValida
 	if len(doc.Comments) > 0 {
 		buf.WriteString(MustFormatComments(opts, doc.Comments, "", ""))
 	}
+
 	res := buf.String()
-
 	res = strings.TrimSpace(res)
-
-	if selfValidation {
-		psr := parser.PEGParser{}
-		formattedAst, err := psr.Parse("formated.thrift", []byte(res))
-		if err != nil {
-			return "", fmt.Errorf("format error: format result failed to parse, error msg: %v. Please report bug to author at https://github.com/joyme123/thrift-ls/issues", err)
-		}
-
-		if !doc.Equals(formattedAst) {
-			return "", fmt.Errorf("format error: format result failed to pass self validation. Please report bug to author at https://github.com/joyme123/thrift-ls/issues")
-		}
-	}
-
-	return res, nil
-}
-
-// FormatDocumentWithValidationFull formats a document with self-validation using include resolution.
-// When includePaths is provided and non-empty, self-validation uses ParseRecursively to resolve includes.
-// When includePaths is empty, falls back to plain Parse for backward compatibility.
-func FormatDocumentWithValidationFull(doc *parser.Document, opts Options, selfValidation bool, includePaths []string, currentFile string) (string, error) {
-	if doc.ChildrenBadNode() {
-		return "", BadNodeError
-	}
-
-	buf := bytes.NewBuffer(nil)
-
-	fmtCtx := &fmtContext{}
-
-	writeBuf := func(node parser.Node, addtionalLine bool) {
-		if addtionalLine {
-			if len(buf.Bytes()) > 0 && buf.Bytes()[buf.Len()-1] != '\n' {
-				// if preNode doesn't have \n at end of line, set \n for it
-				buf.WriteString("\n")
-			}
-			buf.WriteString("\n")
-		}
-
-		switch node.Type() {
-		case "Include":
-			buf.WriteString(MustFormatInclude(node.(*parser.Include), opts))
-		case "CPPInclude":
-			buf.WriteString(MustFormatCPPInclude(node.(*parser.CPPInclude), opts))
-		case "Namespace":
-			buf.WriteString(MustFormatNamespace(node.(*parser.Namespace), opts))
-		case "Struct":
-			buf.WriteString(MustFormatStruct(node.(*parser.Struct), opts))
-		case "Union":
-			buf.WriteString(MustFormatUnion(node.(*parser.Union), opts))
-		case "Exception":
-			buf.WriteString(MustFormatException(node.(*parser.Exception), opts))
-		case "Service":
-			buf.WriteString(MustFormatService(node.(*parser.Service), opts))
-		case "Typedef":
-			buf.WriteString(MustFormatTypedef(node.(*parser.Typedef), opts))
-		case "Const":
-			buf.WriteString(MustFormatConst(node.(*parser.Const), opts))
-		case "Enum":
-			buf.WriteString(MustFormatEnum(node.(*parser.Enum), opts))
-		}
-
-	}
-
-	for _, node := range doc.Nodes {
-		addtionalLine := needAddtionalLineInDocument(fmtCtx.preNode, node)
-		writeBuf(node, addtionalLine)
-		fmtCtx.preNode = node
-	}
-
-	if len(doc.Comments) > 0 {
-		buf.WriteString(MustFormatComments(opts, doc.Comments, "", ""))
-	}
-	res := buf.String()
-
-	res = strings.TrimSpace(res)
-
-	if selfValidation {
-		psr := parser.PEGParser{}
-		var formattedAst *parser.Document
-
-		if len(includePaths) > 0 && currentFile != "" {
-			// Try with include resolution
-			results := psr.ParseRecursively("formatted.thrift", []byte(res), 0, createIncludeCall(includePaths, currentFile))
-			if len(results) > 0 && results[0].Doc != nil && len(results[0].Errors) == 0 {
-				formattedAst = results[0].Doc
-			}
-		}
-
-		// Fall back to plain parse if include resolution failed
-		if formattedAst == nil {
-			var errs []error
-			formattedAst, errs = psr.Parse("formatted.thrift", []byte(res))
-			if len(errs) > 0 {
-				return "", fmt.Errorf("format error: format result failed to parse: %v", errs)
-			}
-		}
-
-		if formattedAst != nil && !doc.Equals(formattedAst) {
-			return "", fmt.Errorf("format error: format result failed to pass self validation")
-		}
-	}
 
 	if opts.TrailingNewline && !strings.HasSuffix(res, "\n") {
 		res += "\n"
 	}
 
+	if cfg.selfValidation {
+		if err := validateFormattedDocument(doc, res, cfg); err != nil {
+			return "", err
+		}
+	}
+
 	return res, nil
+}
+
+// validateFormattedDocument parses the formatted result and validates it against the original.
+// It uses ParseRecursively when includePaths is non-empty and currentFile is set;
+// otherwise it falls back to plain Parse.
+func validateFormattedDocument(originalDoc *parser.Document, formatted string, cfg formatConfig) error {
+	psr := parser.PEGParser{}
+
+	var formattedAst *parser.Document
+
+	if len(cfg.includePaths) > 0 && cfg.currentFile != "" {
+		results := psr.ParseRecursively("formatted.thrift", []byte(formatted), 0, createIncludeCall(cfg.includePaths, cfg.currentFile))
+		if len(results) > 0 && results[0].Doc != nil && len(results[0].Errors) == 0 {
+			formattedAst = results[0].Doc
+		}
+	}
+
+	if formattedAst == nil {
+		var errs []error
+		formattedAst, errs = psr.Parse("formatted.thrift", []byte(formatted))
+		if len(errs) > 0 {
+			return fmt.Errorf("format error: format result failed to parse: %v", errs)
+		}
+	}
+
+	if formattedAst != nil && !originalDoc.Equals(formattedAst) {
+		return fmt.Errorf("format error: format result failed to pass self validation")
+	}
+
+	return nil
 }
 
 // createIncludeCall creates a parser.IncludeCall function that resolves includes
