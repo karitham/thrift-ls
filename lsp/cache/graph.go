@@ -54,7 +54,7 @@ func (g *IncludeGraph) Get(file uri.URI) *IncludeNode {
 	return g.mapper[file]
 }
 
-func (g *IncludeGraph) Set(file uri.URI, includes []*parser.Include) {
+func (g *IncludeGraph) Set(file uri.URI, includes []*parser.Include, includePaths []string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	includeURIs := make([]uri.URI, 0, len(includes))
@@ -63,7 +63,7 @@ func (g *IncludeGraph) Set(file uri.URI, includes []*parser.Include) {
 			continue
 		}
 
-		includeURI := lsputils.IncludeURI(file, inc.Path.Value.Text)
+		includeURI := lsputils.IncludeURIWithPaths(file, inc.Path.Value.Text, includePaths)
 		includeURIs = append(includeURIs, includeURI)
 	}
 	sort.SliceStable(includeURIs, func(i, j int) bool {

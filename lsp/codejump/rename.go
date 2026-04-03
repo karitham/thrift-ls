@@ -96,9 +96,10 @@ func Rename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.
 				svcName = fmt.Sprintf("%s.%s", lsputils.GetIncludeName(file), svcName)
 			} else {
 				include, _ := lsputils.ParseIdent(file, pf.AST().Includes, svcName)
-				path := lsputils.GetIncludePath(pf.AST(), include)
+				resolver := ss.Resolver()
+				path := resolver.GetIncludePath(pf.AST(), include)
 				if path != "" { // doesn't match any include path
-					file = lsputils.IncludeURI(file, path)
+					file = resolver.ResolveInclude(file, path)
 				}
 			}
 			locations, err := searchServiceReferences(ctx, ss, file, svcName)

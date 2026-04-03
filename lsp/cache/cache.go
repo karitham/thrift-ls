@@ -13,12 +13,14 @@ type Cache struct {
 
 	store *memoize.Store
 
+	IncludePaths []string
+
 	*memoizedFS
 }
 
 var cacheIndex int64
 
-func New(store *memoize.Store) *Cache {
+func New(store *memoize.Store, includePaths []string) *Cache {
 	index := atomic.AddInt64(&cacheIndex, 1)
 
 	if store == nil {
@@ -26,9 +28,10 @@ func New(store *memoize.Store) *Cache {
 	}
 
 	c := &Cache{
-		id:         strconv.FormatInt(index, 10),
-		store:      store,
-		memoizedFS: &memoizedFS{filesByID: map[FileID][]*DiskFile{}},
+		id:           strconv.FormatInt(index, 10),
+		store:        store,
+		IncludePaths: includePaths,
+		memoizedFS:   &memoizedFS{filesByID: map[FileID][]*DiskFile{}},
 	}
 	return c
 }

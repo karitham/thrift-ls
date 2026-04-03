@@ -23,12 +23,19 @@ import (
 )
 
 type Options struct {
-	LogLevel int `yaml:"logLevel"` // 1: fatal, 2: error, 3: warn, 4: info, 5: debug, 6: trace
+	LogLevel     int      `yaml:"logLevel"` // 1: fatal, 2: error, 3: warn, 4: info, 5: debug, 6: trace
+	IncludePaths []string `yaml:"include_paths"`
 }
 
-func main_format(opt format.Options, file string) error {
+func main_format(opt format.Options, file string, includePaths []string) error {
 	if file == "" {
 		err := errors.New("must specified a thrift file to format")
+		fmt.Println(err)
+		return err
+	}
+
+	absFile, err := filepath.Abs(file)
+	if err != nil {
 		fmt.Println(err)
 		return err
 	}
@@ -45,7 +52,7 @@ func main_format(opt format.Options, file string) error {
 		fmt.Println(err)
 		return err
 	}
-	formated, err := format.FormatDocumentWithValidation(ast.(*parser.Document), true)
+	formated, err := format.FormatDocumentWithValidationFull(ast.(*parser.Document), true, includePaths, absFile)
 	if err != nil {
 		fmt.Println(err)
 		return err
@@ -71,7 +78,7 @@ func main_format(opt format.Options, file string) error {
 			diffLines := diff.Diff("old", content, "new", []byte(formated))
 			fmt.Print(string(diffLines))
 		} else {
-			fmt.Print(formated)
+			fmt.Println(formated)
 		}
 		return err
 	}
@@ -96,7 +103,7 @@ func main() {
 	tlog.Init(opts.LogLevel)
 
 	if formatter {
-		main_format(formatOpts, formatFile)
+		main_format(formatOpts, formatFile, opts.IncludePaths)
 		return
 	}
 
@@ -109,7 +116,7 @@ func main() {
 	// 	panic(err)
 	// }
 
-	ss := lsp.NewStreamServer()
+	ss := lsp.NewStreamServer(&lsp.Options{IncludePaths: opts.IncludePaths})
 	stream := jsonrpc2.NewStream(fakenet.NewConn("stdio", os.Stdin, os.Stdout))
 	conn := jsonrpc2.NewConn(stream)
 	err := ss.ServeStream(ctx, conn)
@@ -119,6 +126,32 @@ func main() {
 	panic(err)
 }
 
+// defaultConfigPath returns the default config file path:
+// THRIFTLS_CONFIG env var if set, otherwise ~/.thriftls/config.yaml
+func defaultConfigPath() string {
+	if configFile := os.Getenv("THRIFTLS_CONFIG"); configFile != "" {
+		return configFile
+	}
+	dir, err := os.UserHomeDir()
+	if err != nil {
+		dir = os.TempDir()
+	}
+	return dir + "/.thriftls/config.yaml"
+}
+
+// readConfig reads and parses the config file at the given path.
+func readConfig(path string) (*Options, error) {
+	opts := &Options{}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := yaml.Unmarshal(data, opts); err != nil {
+		return nil, err
+	}
+	return opts, nil
+}
+
 func configInit() *Options {
 	opts := &Options{}
 
@@ -126,16 +159,9 @@ func configInit() *Options {
 	flag.IntVar(&logLevel, "logLevel", -1, "set log level")
 	flag.Parse()
 
-	dir, err := os.UserHomeDir()
-	if err != nil {
-		dir = os.TempDir()
-	}
-	dir = dir + "/.thriftls"
-	configFile := dir + "/config.yaml"
-
-	data, err := os.ReadFile(configFile)
-	if err == nil {
-		yaml.Unmarshal(data, opts)
+	configFile := defaultConfigPath()
+	if cfg, err := readConfig(configFile); err == nil {
+		opts = cfg
 	}
 
 	if logLevel >= 0 {

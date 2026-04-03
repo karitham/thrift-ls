@@ -1,6 +1,7 @@
 package lsputils
 
 import (
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -71,6 +72,32 @@ func IncludeURI(cur uri.URI, includePath string) uri.URI {
 	path := filepath.Join(basePath, includePath)
 
 	return uri.File(path)
+}
+
+// IncludeURIWithPaths resolves include path, first trying relative to current file,
+// then trying each include path
+func IncludeURIWithPaths(cur uri.URI, includePath string, includePaths []string) uri.URI {
+	filePath := cur.Filename()
+	items := strings.Split(filePath, string(filepath.Separator))
+	basePath := strings.TrimSuffix(filePath, items[len(items)-1])
+	path := filepath.Join(basePath, includePath)
+	f := uri.File(path)
+
+	// Check if file exists - if so, use it
+	if _, err := os.Stat(path); err == nil {
+		return f
+	}
+
+	// Try each include path
+	for _, ip := range includePaths {
+		ipath := filepath.Join(ip, includePath)
+		if _, err := os.Stat(ipath); err == nil {
+			return uri.File(ipath)
+		}
+	}
+
+	// Return the relative path as fallback
+	return f
 }
 
 // ParseIdent parse an identifier. identifier format:

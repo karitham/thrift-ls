@@ -398,7 +398,9 @@ service ThriftTest {
      * else if arg == "TException" throw TException
      * else do not throw anything
      */
-    void testException(1: string arg) throws (1: Xception err1),
+    void testException(1: string arg) throws (
+        1: Xception err1
+    ),
 
     /**
      * Print 'testMultiException(%s, %s)' with arg0 as '%s' and arg1 as '%s'
@@ -408,7 +410,10 @@ service ThriftTest {
      * else do not throw anything
      * @return Xtruct - an Xtruct with string_thing = arg1
      */
-    Xtruct testMultiException(1: string arg0, 2: string arg1) throws (1: Xception err1, 2: Xception2 err2)
+    Xtruct testMultiException(1: string arg0, 2: string arg1) throws (
+        1: Xception  err1,
+        2: Xception2 err2
+    )
 
     /**
      * Print 'testOneway(%d): Sleeping...' with secondsToSleep as '%d'

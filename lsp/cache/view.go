@@ -26,6 +26,8 @@ type View struct {
 	knownFilesMu sync.Mutex
 	knownFiles   map[uri.URI]bool
 
+	includePaths []string
+
 	// Track the latest snapshot via the snapshot field, guarded by snapshotMu.
 	//
 	// Invariant: whenever the snapshot field is overwritten, destroy(snapshot)
@@ -39,16 +41,17 @@ type View struct {
 	snapshotRelease func()
 }
 
-func NewView(name string, folder uri.URI, fs FileSource, store *memoize.Store) *View {
+func NewView(name string, folder uri.URI, fs FileSource, store *memoize.Store, includePaths []string) *View {
 	view := &View{
-		id:         rand.Int63(),
-		name:       name,
-		folder:     folder,
-		fs:         fs,
-		knownFiles: make(map[uri.URI]bool),
+		id:           rand.Int63(),
+		name:         name,
+		folder:       folder,
+		fs:           fs,
+		knownFiles:   make(map[uri.URI]bool),
+		includePaths: includePaths,
 	}
 
-	view.snapshot = NewSnapshot(view, store)
+	view.snapshot = NewSnapshot(view, store, includePaths)
 
 	view.snapshotRelease = view.snapshot.Acquire()
 

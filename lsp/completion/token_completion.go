@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/joyme123/protocol"
@@ -54,7 +55,7 @@ type Candidate struct {
 }
 
 func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cmp *CompletionRequest) ([]*CompletionItem, protocol.Range, error) {
-	tokens := ss.Tokens()
+	tokens := ss.TokensForFile(cmp.Fh.URI())
 
 	rng := protocol.Range{
 		Start: protocol.Position{
@@ -132,16 +133,29 @@ func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cm
 		}
 		for i := range keywords {
 			searchCandidate(i, keywords[i])
-			if len(candidates) >= 10 {
-				break
-			}
 		}
 		for i := range tokens {
 			searchCandidate(i, protocol.InsertTextFormatPlainText)
-			if len(candidates) >= 10 {
-				break
-			}
 		}
+
+		// Sort candidates: prefix matches first (by length, shorter first), then alphabetically
+		sort.Slice(candidates, func(i, j int) bool {
+			a, b := candidates[i].showText, candidates[j].showText
+			aStarts := strings.HasPrefix(a, string(prefix))
+			bStarts := strings.HasPrefix(b, string(prefix))
+			if aStarts != bStarts {
+				return aStarts
+			}
+			if len(a) != len(b) {
+				return len(a) < len(b)
+			}
+			return a < b
+		})
+
+		if len(candidates) > 10 {
+			candidates = candidates[:10]
+		}
+
 		log.Debugln("token prefix:", string(prefix), "candidates: ", candidates)
 	}
 

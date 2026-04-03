@@ -3,6 +3,8 @@ package format
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/joyme123/thrift-ls/parser"
@@ -87,6 +89,115 @@ func FormatDocumentWithValidation(doc *parser.Document, selfValidation bool) (st
 	}
 
 	return res, nil
+}
+
+// FormatDocumentWithValidationFull formats a document with self-validation using include resolution.
+// When includePaths is provided and non-empty, self-validation uses ParseRecursively to resolve includes.
+// When includePaths is empty, falls back to plain Parse for backward compatibility.
+func FormatDocumentWithValidationFull(doc *parser.Document, selfValidation bool, includePaths []string, currentFile string) (string, error) {
+	if doc.ChildrenBadNode() {
+		return "", BadNodeError
+	}
+
+	buf := bytes.NewBuffer(nil)
+
+	fmtCtx := &fmtContext{}
+
+	writeBuf := func(node parser.Node, addtionalLine bool) {
+		if addtionalLine {
+			if len(buf.Bytes()) > 0 && buf.Bytes()[buf.Len()-1] != '\n' {
+				// if preNode doesn't have \n at end of line, set \n for it
+				buf.WriteString("\n")
+			}
+			buf.WriteString("\n")
+		}
+
+		switch node.Type() {
+		case "Include":
+			buf.WriteString(MustFormatInclude(node.(*parser.Include)))
+		case "CPPInclude":
+			buf.WriteString(MustFormatCPPInclude(node.(*parser.CPPInclude)))
+		case "Namespace":
+			buf.WriteString(MustFormatNamespace(node.(*parser.Namespace)))
+		case "Struct":
+			buf.WriteString(MustFormatStruct(node.(*parser.Struct)))
+		case "Union":
+			buf.WriteString(MustFormatUnion(node.(*parser.Union)))
+		case "Exception":
+			buf.WriteString(MustFormatException(node.(*parser.Exception)))
+		case "Service":
+			buf.WriteString(MustFormatService(node.(*parser.Service)))
+		case "Typedef":
+			buf.WriteString(MustFormatTypedef(node.(*parser.Typedef)))
+		case "Const":
+			buf.WriteString(MustFormatConst(node.(*parser.Const)))
+		case "Enum":
+			buf.WriteString(MustFormatEnum(node.(*parser.Enum)))
+		}
+
+	}
+
+	for _, node := range doc.Nodes {
+		addtionalLine := needAddtionalLineInDocument(fmtCtx.preNode, node)
+		writeBuf(node, addtionalLine)
+		fmtCtx.preNode = node
+	}
+
+	if len(doc.Comments) > 0 {
+		buf.WriteString(MustFormatComments(doc.Comments, ""))
+	}
+	res := buf.String()
+
+	res = strings.TrimSpace(res)
+
+	if selfValidation {
+		psr := parser.PEGParser{}
+		var formattedAst *parser.Document
+
+		if len(includePaths) > 0 && currentFile != "" {
+			// Try with include resolution
+			results := psr.ParseRecursively("formatted.thrift", []byte(res), 0, createIncludeCall(includePaths, currentFile))
+			if len(results) > 0 && results[0].Doc != nil && len(results[0].Errors) == 0 {
+				formattedAst = results[0].Doc
+			}
+		}
+
+		// Fall back to plain parse if include resolution failed
+		if formattedAst == nil {
+			var errs []error
+			formattedAst, errs = psr.Parse("formatted.thrift", []byte(res))
+			if len(errs) > 0 {
+				return "", fmt.Errorf("format error: format result failed to parse: %v", errs)
+			}
+		}
+
+		if formattedAst != nil && !doc.Equals(formattedAst) {
+			return "", fmt.Errorf("format error: format result failed to pass self validation")
+		}
+	}
+
+	return res, nil
+}
+
+// createIncludeCall creates a parser.IncludeCall function that resolves includes
+// using the provided include paths and falls back to relative resolution.
+func createIncludeCall(includePaths []string, currentFile string) parser.IncludeCall {
+	return func(include string) (filename string, content []byte, err error) {
+		// Try include paths first
+		for _, ip := range includePaths {
+			candidatePath := filepath.Join(ip, include)
+			if _, statErr := os.Stat(candidatePath); statErr == nil {
+				content, err = os.ReadFile(candidatePath)
+				return candidatePath, content, err
+			}
+		}
+
+		// Fall back to relative resolution from current file
+		basePath := filepath.Dir(currentFile)
+		resolvedPath := filepath.Join(basePath, include)
+		content, err = os.ReadFile(resolvedPath)
+		return resolvedPath, content, err
+	}
 }
 
 var (

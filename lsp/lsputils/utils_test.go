@@ -1,6 +1,8 @@
 package lsputils
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/joyme123/thrift-ls/parser"
@@ -186,6 +188,82 @@ func TestIncludeNames(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.wantIncludeNames, IncludeNames(tt.args.cur, tt.args.includes))
+		})
+	}
+}
+
+func TestIncludeURIWithPaths(t *testing.T) {
+	// Create temp directory structure:
+	// /tmp/thrift-test/
+	//   base/
+	//     shared.thrift    (exists)
+	//   service/
+	//     order.thrift   (exists)
+
+	tmpDir, err := os.MkdirTemp("", "thrift-test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	baseDir := filepath.Join(tmpDir, "base")
+	serviceDir := filepath.Join(tmpDir, "service")
+	err = os.MkdirAll(baseDir, 0755)
+	assert.NoError(t, err)
+	err = os.MkdirAll(serviceDir, 0755)
+	assert.NoError(t, err)
+
+	// Create shared.thrift in base/
+	sharedThrift := filepath.Join(baseDir, "shared.thrift")
+	err = os.WriteFile(sharedThrift, []byte(""), 0644)
+	assert.NoError(t, err)
+
+	// Create order.thrift in service/
+	orderThrift := filepath.Join(serviceDir, "order.thrift")
+	err = os.WriteFile(orderThrift, []byte(""), 0644)
+	assert.NoError(t, err)
+
+	orderURI := uri.File(orderThrift)
+
+	tests := []struct {
+		name         string
+		cur          uri.URI
+		includePath  string
+		includePaths []string
+		expected     uri.URI
+	}{
+		{
+			name:         "found in includePaths",
+			cur:          orderURI,
+			includePath:  "shared.thrift",
+			includePaths: []string{baseDir},
+			expected:     uri.File(sharedThrift),
+		},
+		{
+			name:         "not in includePaths falls back to relative path",
+			cur:          orderURI,
+			includePath:  "shared.thrift",
+			includePaths: []string{},
+			expected:     uri.File(filepath.Join(serviceDir, "shared.thrift")),
+		},
+		{
+			name:         "relative path works without includePaths",
+			cur:          orderURI,
+			includePath:  "../base/shared.thrift",
+			includePaths: []string{},
+			expected:     uri.File(sharedThrift),
+		},
+		{
+			name:         "non-existent file falls back to relative path",
+			cur:          orderURI,
+			includePath:  "other.thrift",
+			includePaths: []string{baseDir},
+			expected:     uri.File(filepath.Join(serviceDir, "other.thrift")),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := IncludeURIWithPaths(tt.cur, tt.includePath, tt.includePaths)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }

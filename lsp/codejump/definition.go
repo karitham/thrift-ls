@@ -65,11 +65,12 @@ func ServiceDefinitionIdentifier(ctx context.Context, ss *cache.Snapshot, file u
 	if include == "" {
 		astFile = file
 	} else {
-		path := lsputils.GetIncludePath(ast, include)
+		resolver := ss.Resolver()
+		path := resolver.GetIncludePath(ast, include)
 		if path == "" { // doesn't match any include path
 			return "", nil, "", nil
 		}
-		astFile = lsputils.IncludeURI(file, path)
+		astFile = resolver.ResolveInclude(file, path)
 	}
 
 	// now we can find destinate definition in `dstAst` by `identifier`
@@ -115,11 +116,12 @@ func TypeNameDefinitionIdentifier(ctx context.Context, ss *cache.Snapshot, file 
 	if include == "" {
 		astFile = file
 	} else {
-		path := lsputils.GetIncludePath(ast, include)
+		resolver := ss.Resolver()
+		path := resolver.GetIncludePath(ast, include)
 		if path == "" { // doesn't match any include path
 			return "", nil, "", nil
 		}
-		astFile = lsputils.IncludeURI(file, path)
+		astFile = resolver.ResolveInclude(file, path)
 	}
 
 	// now we can find destinate definition in `dstAst` by `identifier`
@@ -183,13 +185,14 @@ func ConstValueTypeDefinitionIdentifier(ctx context.Context, ss *cache.Snapshot,
 	if include == "" {
 		astFile = file
 	} else {
-		path := lsputils.GetIncludePath(ast, include)
+		resolver := ss.Resolver()
+		path := resolver.GetIncludePath(ast, include)
 		if path == "" { // doesn't match any include path, maybe enum value
 			include = ""
 			identifier = constValue.Value.(string)
 			astFile = file
 		} else {
-			astFile = lsputils.IncludeURI(file, path)
+			astFile = resolver.ResolveInclude(file, path)
 		}
 	}
 

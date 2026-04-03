@@ -70,10 +70,37 @@ find ./tests/galaxy-thrift-api -name "*.thrift" | xargs -n 1 thriftls -format -w
 
 ## Configurations
 
-config file default location:
+config file location (in order of precedence):
 
-- windows: `C:\Users\${user}\.thriftls\config.yaml`
-- macos, linux: `~/.thriftls/config.yaml`
+1. `THRIFTLS_CONFIG` env var (if set)
+2. `~/.thriftls/config.yaml` on macos/linux
+3. `C:\Users\${user}\.thriftls\config.yaml` on Windows
+
+### include_paths
+
+List of additional paths to search for included thrift files. When a thrift file uses `include "foo.thrift"`, thriftls first tries to resolve it relative to the current file's directory. If not found, it searches each path in `include_paths` in order.
+
+This is similar to Apache Thrift's `-I` flag and is useful for monorepos with shared base definitions.
+
+Example `~/.thriftls/config.yaml`:
+
+```yaml
+logLevel: 3
+include_paths:
+  - /path/to/base
+  - /path/to/shared-types
+```
+
+### logLevel
+
+Controls logging verbosity:
+
+- 1: fatal
+- 2: error
+- 3: warn (default)
+- 4: info
+- 5: debug
+- 6: trace
 
 ## TODO
 

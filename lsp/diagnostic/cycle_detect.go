@@ -89,16 +89,17 @@ func getIncludes(ctx context.Context, ss *cache.Snapshot, file uri.URI, includes
 	}
 
 	includes := pf.AST().Includes
+	resolver := ss.Resolver()
 	for i := range includes {
 		if includes[i].Path == nil || includes[i].Path.BadNode {
 			continue
 		}
+		includeURI := resolver.ResolveIncludeWithText(file, includes[i].Path.Value.Text)
 		(*includesMap)[file] = append((*includesMap)[file], Include{
-			file:    lsputils.IncludeURI(file, includes[i].Path.Value.Text),
+			file:    includeURI,
 			include: includes[i],
 		})
 
-		includeURI := lsputils.IncludeURI(file, includes[i].Path.Value.Text)
 		if _, ok := (*includesMap)[includeURI]; ok {
 			continue
 		}

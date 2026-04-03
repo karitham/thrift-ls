@@ -17,13 +17,17 @@ type StreamServer struct {
 	cache *cache.Cache
 }
 
-func NewStreamServer() *StreamServer {
+type Options struct {
+	IncludePaths []string
+}
+
+func NewStreamServer(opts *Options) *StreamServer {
 	logger, _ := zap.NewProduction()
 
 	store := &memoize.Store{}
 
 	return &StreamServer{
-		cache:  cache.New(store),
+		cache:  cache.New(store, opts.IncludePaths),
 		logger: logger,
 	}
 }

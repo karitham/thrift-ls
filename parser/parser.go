@@ -61,8 +61,9 @@ func (p *PEGParser) parseRecursively(filename string, content []byte, curDepth i
 				continue
 			}
 			f, c, err := call(include.Path.Value.Text)
-			if err == nil {
-				errs = append(errs, err)
+			if err != nil {
+				// Include file could not be resolved, skip it
+				continue
 			}
 			if _, ok := p.parsed[f]; ok {
 				continue

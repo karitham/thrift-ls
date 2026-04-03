@@ -476,12 +476,12 @@ include "./test/address.thrift"`
 
 func buildSnapshotForTest(files []*cache.FileChange) *cache.Snapshot {
 	store := &memoize.Store{}
-	c := cache.New(store)
+	c := cache.New(store, nil)
 	fs := cache.NewOverlayFS(c)
 	fs.Update(context.TODO(), files)
 
-	view := cache.NewView("test", "file:///tmp", fs, store)
-	ss := cache.NewSnapshot(view, store)
+	view := cache.NewView("test", "file:///tmp", fs, store, nil)
+	ss := cache.NewSnapshot(view, store, nil)
 
 	return ss
 }
