@@ -122,7 +122,43 @@ func TestMustFormatConstValue(t *testing.T) {
 					},
 				},
 			},
-			want: `["value1", "value2"]`,
+			want: "[\n    \"value1\",\n    \"value2\",\n]",
+		},
+		{
+			name: "list single item",
+			args: args{
+				cv: &parser.ConstValue{
+					TypeName: "list",
+					LBrkKeyword: &parser.LBrkKeyword{
+						Keyword: parser.Keyword{
+							Literal: &parser.KeywordLiteral{
+								Text: "[",
+							},
+						},
+					},
+					RBrkKeyword: &parser.RBrkKeyword{
+						Keyword: parser.Keyword{
+							Literal: &parser.KeywordLiteral{
+								Text: "]",
+							},
+						},
+					},
+					Value: []*parser.ConstValue{
+						{
+							TypeName: "string",
+							Value:    "value1",
+							ListSeparatorKeyword: &parser.ListSeparatorKeyword{
+								Keyword: parser.Keyword{
+									Literal: &parser.KeywordLiteral{
+										Text: ",",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			want: `["value1"]`,
 		},
 		{
 			name: "i64",

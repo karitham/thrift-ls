@@ -124,7 +124,7 @@ func TestMustFormatFieldType(t *testing.T) {
 					},
 				},
 			},
-			want: "/* aaa */ map</* aaa */ string,/* aaa */ i32> /* aaa */ (/* aaa */ key1 /* aaa */ = /* aaa */ 'value1'/* aaa */ )",
+			want: "/* aaa */ map</* aaa */ string, /* aaa */ i32> /* aaa */ (/* aaa */ key1 /* aaa */ = /* aaa */ 'value1'/* aaa */ )",
 		},
 		{
 			name: "set type",
@@ -182,7 +182,7 @@ func TestMustFormatFieldType(t *testing.T) {
 					},
 				},
 			},
-			want: "list<map<string,string>>",
+			want: "list<map<string, string>>",
 		},
 	}
 	for _, tt := range tests {

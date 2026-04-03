@@ -28,12 +28,26 @@ func MustFormatConstValue(cv *parser.ConstValue, opts Options, indent string, ne
 		}
 
 		buf.WriteString(MustFormatKeyword(opts, cv.LBrkKeyword.Keyword))
-		for i := range values {
-			// TODO(jpf): 优化显示
-			newLine = false
-			buf.WriteString(MustFormatConstValue(values[i], opts, indent, newLine))
+
+		if len(values) == 1 {
+			// Single item: format on one line
+			item := *values[0]
+			item.ListSeparatorKeyword = nil
+			buf.WriteString(MustFormatConstValue(&item, opts, indent, false))
+			buf.WriteString(MustFormatKeyword(opts, cv.RBrkKeyword.Keyword))
+		} else {
+			// Multiple items: format on multiple lines
+			buf.WriteString("\n")
+			itemIndent := indent + opts.GetIndent()
+			for i := range values {
+				item := *values[i]
+				item.ListSeparatorKeyword = nil
+				buf.WriteString(MustFormatConstValue(&item, opts, itemIndent, true))
+				buf.WriteString(",\n")
+			}
+			buf.WriteString(indent)
+			buf.WriteString(MustFormatKeyword(opts, cv.RBrkKeyword.Keyword))
 		}
-		buf.WriteString(MustFormatKeyword(opts, cv.RBrkKeyword.Keyword))
 	case "map":
 		values := cv.Value.([]*parser.ConstValue)
 

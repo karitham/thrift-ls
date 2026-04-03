@@ -204,6 +204,22 @@ func isMultiLineDefinition(node parser.Node) bool {
 	return ok
 }
 
+// constHasMultiLineValue returns true if the const has a list with multiple
+// items or a map value, which should be treated as a multi-line definition
+func constHasMultiLineValue(cst *parser.Const) bool {
+	if cst.Value == nil {
+		return false
+	}
+	if cst.Value.TypeName == "map" {
+		return true
+	}
+	if cst.Value.TypeName == "list" {
+		values := cst.Value.Value.([]*parser.ConstValue)
+		return len(values) > 1
+	}
+	return false
+}
+
 func needAddtionalLineInDocument(preNode parser.Node, currentNode parser.Node) bool {
 	if preNode == nil {
 		return false
@@ -223,6 +239,10 @@ func needAddtionalLineInDocument(preNode parser.Node, currentNode parser.Node) b
 		// if preNode and currentNode has one or more empty lines between them, we should reserve
 		// one empty line
 		if lineDistance(preNode, currentNode) > 1 {
+			return true
+		}
+		// Consts with list/map values should be treated as multi-line
+		if preNode.Type() == "Const" && constHasMultiLineValue(preNode.(*parser.Const)) {
 			return true
 		}
 		return false

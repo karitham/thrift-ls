@@ -186,7 +186,7 @@ struct Bonk {
     2: i32    type
 }
 
-typedef map<string,Bonk> MapType
+typedef map<string, Bonk> MapType
 
 struct Bools {
     1: bool im_true,
@@ -216,25 +216,25 @@ struct Xtruct3 {
 }
 
 struct Insanity {
-    1: map<Numberz,UserId> userMap,
-    2: list<Xtruct>        xtructs
+    1: map<Numberz, UserId> userMap,
+    2: list<Xtruct>         xtructs
 } (python.immutable = "")
 
 struct CrazyNesting {
     1: string   string_field,
     2: optional set<Insanity> set_field,
     // Do not insert line break as test/go/Makefile.am is removing this line with pattern match
-    3: required list<map<set<i32> (python.immutable = ""),map<i32,set<list<map<Insanity,string> (python.immutable = "")> (python.immutable = "")>>>> list_field,
+    3: required list<map<set<i32> (python.immutable = ""), map<i32, set<list<map<Insanity, string> (python.immutable = "")> (python.immutable = "")>>>> list_field,
     4: binary   binary_field
     5: uuid     uuid_field
 }
 
 union SomeUnion {
-    1: map<Numberz,UserId> map_thing,
-    2: string              string_thing,
-    3: i32                 i32_thing,
-    4: Xtruct3             xtruct_thing,
-    5: Insanity            insanity_thing
+    1: map<Numberz, UserId> map_thing,
+    2: string               string_thing,
+    3: i32                  i32_thing,
+    4: Xtruct3              xtruct_thing,
+    5: Insanity             insanity_thing
 }
 
 exception Xception {
@@ -333,18 +333,18 @@ service ThriftTest {
     /**
      * Prints 'testMap("{%s")' where thing has been formatted into a string of 'key => value' pairs
      *  separated by commas and new lines
-     * @param map<i32,i32> thing - the map<i32,i32> to print
-     * @return map<i32,i32> - returns the map<i32,i32> 'thing'
+     * @param map<i32, i32> thing - the map<i32, i32> to print
+     * @return map<i32, i32> - returns the map<i32, i32> 'thing'
      */
-    map<i32,i32> testMap(1: map<i32,i32> thing),
+    map<i32, i32> testMap(1: map<i32, i32> thing),
 
     /**
      * Prints 'testStringMap("{%s}")' where thing has been formatted into a string of 'key => value' pairs
      *  separated by commas and new lines
-     * @param map<string,string> thing - the map<string,string> to print
-     * @return map<string,string> - returns the map<string,string> 'thing'
+     * @param map<string, string> thing - the map<string, string> to print
+     * @return map<string, string> - returns the map<string, string> 'thing'
      */
-    map<string,string> testStringMap(1: map<string,string> thing),
+    map<string, string> testStringMap(1: map<string, string> thing),
 
     /**
      * Prints 'testSet("{%s}")' where thing has been formatted into a string of values
@@ -379,10 +379,10 @@ service ThriftTest {
     /**
      * Prints 'testMapMap("%d")' with hello as '%d'
      * @param i32 hello - the i32 to print
-     * @return map<i32,map<i32,i32>> - returns a dictionary with these values:
+     * @return map<i32, map<i32, i32>> - returns a dictionary with these values:
      *   {-4 => {-4 => -4, -3 => -3, -2 => -2, -1 => -1, }, 4 => {1 => 1, 2 => 2, 3 => 3, 4 => 4, }, }
      */
-    map<i32,map<i32,i32>> testMapMap(1: i32 hello),
+    map<i32, map<i32, i32>> testMapMap(1: i32 hello),
 
     /**
      * So you think you've got this all worked out, eh?
@@ -393,9 +393,9 @@ service ThriftTest {
      *          },
      *     2 => { 6 => <empty Insanity struct>, },
      *   }
-     * @return map<UserId, map<Numberz,Insanity>> - a map with the above values
+     * @return map<UserId, map<Numberz, Insanity>> - a map with the above values
      */
-    map<UserId,map<Numberz,Insanity>> testInsanity(1: Insanity argument),
+    map<UserId, map<Numberz, Insanity>> testInsanity(1: Insanity argument),
 
     /**
      * Prints 'testMulti()'
@@ -408,7 +408,7 @@ service ThriftTest {
      * @return Xtruct - returns an Xtruct with string_thing = "Hello2, byte_thing = arg0, i32_thing = arg1
      *    and i64_thing = arg2
      */
-    Xtruct testMulti(1: i8 arg0, 2: i32 arg1, 3: i64 arg2, 4: map<i16,string> arg3, 5: Numberz arg4, 6: UserId arg5),
+    Xtruct testMulti(1: i8 arg0, 2: i32 arg1, 3: i64 arg2, 4: map<i16, string> arg3, 5: Numberz arg4, 6: UserId arg5),
 
     /**
      * Print 'testException(%s)' with arg as '%s'
@@ -462,17 +462,17 @@ struct VersioningTestV1 {
 struct VersioningTestV2 {
     1: i32 begin_in_both,
 
-    2:  i32          newint,
-    3:  i8           newbyte,
-    4:  i16          newshort,
-    5:  i64          newlong,
-    6:  double       newdouble
-    7:  Bonk         newstruct,
-    8:  list<i32>    newlist,
-    9:  set<i32>     newset,
-    10: map<i32,i32> newmap,
-    11: string       newstring,
-    12: i32          end_in_both
+    2:  i32           newint,
+    3:  i8            newbyte,
+    4:  i16           newshort,
+    5:  i64           newlong,
+    6:  double        newdouble
+    7:  Bonk          newstruct,
+    8:  list<i32>     newlist,
+    9:  set<i32>      newset,
+    10: map<i32, i32> newmap,
+    11: string        newstring,
+    12: i32           end_in_both
 }
 
 struct ListTypeVersioningV1 {
@@ -486,7 +486,7 @@ struct ListTypeVersioningV2 {
 }
 
 struct GuessProtocolStruct {
-    7: map<string,string> map_field,
+    7: map<string, string> map_field,
 }
 
 struct LargeDeltas {
@@ -511,9 +511,9 @@ struct NestedListsI32x3 {
 }
 
 struct NestedMixedx2 {
-    1: list<set<i32>>             int_set_list
-    2: map<i32,set<string>>       map_int_strset
-    3: list<map<i32,set<string>>> map_int_strset_list
+    1: list<set<i32>>              int_set_list
+    2: map<i32, set<string>>       map_int_strset
+    3: list<map<i32, set<string>>> map_int_strset_list
 }
 
 struct ListBonks {
@@ -543,28 +543,28 @@ struct OptionalSetDefaultTest {
 }
 
 struct OptionalBinary {
-    1: optional set<binary>     bin_set = {}
-    2: optional map<binary,i32> bin_map = {}
+    1: optional set<binary>      bin_set = {}
+    2: optional map<binary, i32> bin_map = {}
 }
 
 struct OptionalMap {
-    1: optional map<string,i32>    str_map  = {/* comment 1 */ "text": 1, "text2": 2}
-    2: optional map<string,string> str_map2 = {
+    1: optional map<string, i32>    str_map  = {/* comment 1 */ "text": 1, "text2": 2}
+    2: optional map<string, string> str_map2 = {
         // comments
         "text": "text",
         'text2': "text2", "text3": "text3"
     }
-    3: optional map<i32,i32> int_map = {
+    3: optional map<i32, i32> int_map = {
         // comments
         1: 1,
     }
-    4: optional map<i32,bool> int_bool_map = {
+    4: optional map<i32, bool> int_bool_map = {
         // comments
         1: true,
     }
 }
 
-const map<UserType,bool> SIGNATURE_SUPPORT = {
+const map<UserType, bool> SIGNATURE_SUPPORT = {
     UserType.DEV_XIAOMI_SSO: false,
     UserType.DEV_XIAOMI: true,
     UserType.APP_SECRET: true,
@@ -643,10 +643,11 @@ enum Numberz
   SIX,
   EIGHT = 8
 }
-
 const Numberz myNumberz = Numberz.ONE;
+
 // the following is expected to fail:
 // const Numberz urNumberz = ONE;
+
 
 
 
@@ -658,8 +659,10 @@ const Numberz myNumberz = Numberz.ONE;
 
 
 typedef i64 UserId
+
 // comment1
 const UserId default_user = 0
+
 // comment2
 const UserId admin_user = 1
 
@@ -669,7 +672,7 @@ struct Bonk
   2: i32 type
 }
 
-typedef map<string,Bonk> MapType
+typedef map<string, Bonk> MapType
 
 struct Bools {
   1: bool im_true,
@@ -822,18 +825,18 @@ service ThriftTest
   /**
    * Prints 'testMap("{%s")' where thing has been formatted into a string of 'key => value' pairs
    *  separated by commas and new lines
-   * @param map<i32,i32> thing - the map<i32,i32> to print
-   * @return map<i32,i32> - returns the map<i32,i32> 'thing'
+   * @param map<i32, i32> thing - the map<i32, i32> to print
+   * @return map<i32, i32> - returns the map<i32, i32> 'thing'
    */
-  map<i32,i32> testMap(1: map<i32,i32> thing),
+  map<i32, i32> testMap(1: map<i32, i32> thing),
 
   /**
    * Prints 'testStringMap("{%s}")' where thing has been formatted into a string of 'key => value' pairs
    *  separated by commas and new lines
-   * @param map<string,string> thing - the map<string,string> to print
-   * @return map<string,string> - returns the map<string,string> 'thing'
+   * @param map<string, string> thing - the map<string, string> to print
+   * @return map<string, string> - returns the map<string, string> 'thing'
    */
-  map<string,string> testStringMap(1: map<string,string> thing),
+  map<string, string> testStringMap(1: map<string, string> thing),
 
   /**
    * Prints 'testSet("{%s}")' where thing has been formatted into a string of values
@@ -868,10 +871,10 @@ service ThriftTest
   /**
    * Prints 'testMapMap("%d")' with hello as '%d'
    * @param i32 hello - the i32 to print
-   * @return map<i32,map<i32,i32>> - returns a dictionary with these values:
+   * @return map<i32, map<i32, i32>> - returns a dictionary with these values:
    *   {-4 => {-4 => -4, -3 => -3, -2 => -2, -1 => -1, }, 4 => {1 => 1, 2 => 2, 3 => 3, 4 => 4, }, }
    */
-  map<i32,map<i32,i32>> testMapMap(1: i32 hello),
+  map<i32, map<i32, i32>> testMapMap(1: i32 hello),
 
   /**
    * So you think you've got this all worked out, eh?
@@ -882,9 +885,9 @@ service ThriftTest
    *          },
    *     2 => { 6 => <empty Insanity struct>, },
    *   }
-   * @return map<UserId, map<Numberz,Insanity>> - a map with the above values
+   * @return map<UserId, map<Numberz, Insanity>> - a map with the above values
    */
-  map<UserId, map<Numberz,Insanity>> testInsanity(1: Insanity argument),
+  map<UserId, map<Numberz, Insanity>> testInsanity(1: Insanity argument),
 
   /**
    * Prints 'testMulti()'
@@ -971,7 +974,7 @@ struct ListTypeVersioningV2 {
 }
 
 struct GuessProtocolStruct {
-  7: map<string,string> map_field,
+  7: map<string, string> map_field,
 }
 
 struct LargeDeltas {
@@ -995,8 +998,8 @@ struct NestedListsI32x3 {
 }
 struct NestedMixedx2 {
   1: list<set<i32>> int_set_list
-  2: map<i32,set<string>> map_int_strset
-  3: list<map<i32,set<string>>> map_int_strset_list
+  2: map<i32, set<string>> map_int_strset
+  3: list<map<i32, set<string>>> map_int_strset_list
 }
 struct ListBonks {
   1: list<Bonk> bonk
@@ -1020,12 +1023,12 @@ struct StructB {
 }
 
 struct OptionalSetDefaultTest {
-  1: optional set<string> with_default = [ "test" ]
+  1: optional set<string> with_default = ["test"]
 }
 
 struct OptionalBinary {
   1: optional set<binary> bin_set = {}
-  2: optional map<binary,i32> bin_map = {}
+  2: optional map<binary, i32> bin_map = {}
 }
 
 struct OptionalMap {
@@ -1035,11 +1038,11 @@ struct OptionalMap {
     "text": "text",
     'text2': "text2", "text3": "text3"
   }
-      3: optional map<i32,i32>      int_map = {
+      3: optional map<i32, i32>      int_map = {
         // comments
 	1: 1,
     }
-    4: optional map<i32,bool>      int_bool_map = {
+    4: optional map<i32, bool>      int_bool_map = {
         // comments
 	1: true,
     }

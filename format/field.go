@@ -117,7 +117,7 @@ func MustFormatFieldType(ft *parser.FieldType, opts Options) string {
 
 	switch ft.TypeName.Name {
 	case "map":
-		return fmt.Sprintf("%s<%s,%s>%s", tn, MustFormatFieldType(ft.KeyType, opts), MustFormatFieldType(ft.ValueType, opts), annos)
+		return fmt.Sprintf("%s<%s, %s>%s", tn, MustFormatFieldType(ft.KeyType, opts), MustFormatFieldType(ft.ValueType, opts), annos)
 	case "set":
 		return fmt.Sprintf("%s<%s>%s", tn, MustFormatFieldType(ft.KeyType, opts), annos)
 	case "list":
