@@ -11,7 +11,7 @@ import (
 
 type fieldGroup []string
 
-func MustFormatFields(fields []*parser.Field, indent string) string {
+func MustFormatFields(fields []*parser.Field, opts Options, indent string) string {
 	buf := bytes.NewBuffer(nil)
 
 	fmtCtx := &fmtContext{}
@@ -24,10 +24,10 @@ func MustFormatFields(fields []*parser.Field, indent string) string {
 			fg = make(fieldGroup, 0)
 		}
 		space := " "
-		if Align == AlignTypeField {
+		if opts.getAlign() == AlignTypeField {
 			space = "\t"
 		}
-		fg = append(fg, MustFormatField(field, space, indent, false))
+		fg = append(fg, MustFormatField(field, opts, space, indent, false))
 		fmtCtx.preNode = field
 	}
 
@@ -51,10 +51,10 @@ func MustFormatFields(fields []*parser.Field, indent string) string {
 	return buf.String()
 }
 
-func MustFormatOneLineFields(fields []*parser.Field) string {
+func MustFormatOneLineFields(fields []*parser.Field, opts Options) string {
 	buf := bytes.NewBuffer(nil)
 	for i, field := range fields {
-		buf.WriteString(MustFormatField(field, " ", "", true))
+		buf.WriteString(MustFormatField(field, opts, " ", "", true))
 		if i < len(fields)-1 {
 			buf.WriteString(" ")
 		}
@@ -63,8 +63,8 @@ func MustFormatOneLineFields(fields []*parser.Field) string {
 	return buf.String()
 }
 
-func MustFormatField(field *parser.Field, space string, indent string, oneline bool) string {
-	comments, annos := formatCommentsAndAnnos(field.Comments, field.Annotations, indent)
+func MustFormatField(field *parser.Field, opts Options, space string, indent string, oneline bool) string {
+	comments, annos := formatCommentsAndAnnos(opts, field.Comments, field.Annotations, indent)
 	if len(field.Comments) > 0 && lineDistance(field.Comments[len(field.Comments)-1], field.Index) > 1 {
 		comments = comments + "\n"
 	}
@@ -72,63 +72,63 @@ func MustFormatField(field *parser.Field, space string, indent string, oneline b
 	buf := bytes.NewBuffer([]byte(comments))
 	required := ""
 	if field.RequiredKeyword != nil {
-		required = MustFormatKeyword(field.RequiredKeyword.Keyword) + space
+		required = MustFormatKeyword(opts, field.RequiredKeyword.Keyword) + space
 	}
 
 	value := ""
 	if field.ConstValue != nil {
 		equalSpace := space
-		if Align == AlignTypeAssign {
+		if opts.getAlign() == AlignTypeAssign {
 			equalSpace = "\t"
 		}
-		value = fmt.Sprintf("%s%s%s%s", equalSpace, MustFormatKeyword(field.EqualKeyword.Keyword), equalSpace, MustFormatConstValue(field.ConstValue, indent, false))
+		value = fmt.Sprintf("%s%s%s%s", equalSpace, MustFormatKeyword(opts, field.EqualKeyword.Keyword), equalSpace, MustFormatConstValue(field.ConstValue, opts, indent, false))
 	}
-	str := fmt.Sprintf("%s%d:%s%s%s%s%s%s", indent, field.Index.Value, space, required, MustFormatFieldType(field.FieldType), space, field.Identifier.Name.Text, value)
+	str := fmt.Sprintf("%s%d:%s%s%s%s%s%s", indent, field.Index.Value, space, required, MustFormatFieldType(field.FieldType, opts), space, field.Identifier.Name.Text, value)
 	buf.WriteString(str)
 	buf.WriteString(annos)
-	if FieldLineComma == FieldLineCommaAdd && !oneline {
+	if opts.getFieldLineComma() == FieldLineCommaAdd && !oneline {
 		buf.WriteString(",")
-	} else if FieldLineComma == FieldLineCommaDisable || oneline {
-		buf.WriteString(formatListSeparator(field.ListSeparatorKeyword))
+	} else if opts.getFieldLineComma() == FieldLineCommaDisable || oneline {
+		buf.WriteString(formatListSeparator(opts, field.ListSeparatorKeyword))
 	}
 
 	if len(field.EndLineComments) > 0 {
-		buf.WriteString(MustFormatEndLineComments(field.EndLineComments, ""))
+		buf.WriteString(MustFormatEndLineComments(opts, field.EndLineComments, "", ""))
 	}
 
 	// remove space at end of line
 	return strings.TrimRight(buf.String(), " ")
 }
 
-func MustFormatFieldType(ft *parser.FieldType) string {
+func MustFormatFieldType(ft *parser.FieldType, opts Options) string {
 	if ft == nil {
 		return ""
 	}
 
 	annos := ""
 	if ft.Annotations != nil {
-		annos = MustFormatAnnotations(ft.Annotations)
+		annos = MustFormatAnnotations(ft.Annotations, opts)
 		if len(ft.Annotations.Annotations) > 0 {
 			annos = " " + annos
 		}
 	}
 
-	tn := MustFormatTypeName(ft.TypeName)
+	tn := MustFormatTypeName(ft.TypeName, opts)
 
 	switch ft.TypeName.Name {
 	case "map":
-		return fmt.Sprintf("%s<%s,%s>%s", tn, MustFormatFieldType(ft.KeyType), MustFormatFieldType(ft.ValueType), annos)
+		return fmt.Sprintf("%s<%s,%s>%s", tn, MustFormatFieldType(ft.KeyType, opts), MustFormatFieldType(ft.ValueType, opts), annos)
 	case "set":
-		return fmt.Sprintf("%s<%s>%s", tn, MustFormatFieldType(ft.KeyType), annos)
+		return fmt.Sprintf("%s<%s>%s", tn, MustFormatFieldType(ft.KeyType, opts), annos)
 	case "list":
-		return fmt.Sprintf("%s<%s>%s", tn, MustFormatFieldType(ft.KeyType), annos)
+		return fmt.Sprintf("%s<%s>%s", tn, MustFormatFieldType(ft.KeyType, opts), annos)
 	default:
 		return tn + annos
 	}
 }
 
-func MustFormatTypeName(tn *parser.TypeName) string {
-	comments := MustFormatComments(tn.Comments, "")
+func MustFormatTypeName(tn *parser.TypeName, opts Options) string {
+	comments := MustFormatComments(opts, tn.Comments, "", "")
 	if len(tn.Comments) > 0 {
 		comments = comments + " "
 	}

@@ -19,27 +19,27 @@ type ConstFormatter struct {
 	EndLineComments string
 }
 
-func MustFormatConst(cst *parser.Const) string {
-	comments, annos := formatCommentsAndAnnos(cst.Comments, cst.Annotations, "")
+func MustFormatConst(cst *parser.Const, opts Options) string {
+	comments, annos := formatCommentsAndAnnos(opts, cst.Comments, cst.Annotations, "")
 	if len(cst.Comments) > 0 && lineDistance(cst.Comments[len(cst.Comments)-1], cst.ConstKeyword) > 1 {
 		comments = comments + "\n"
 	}
 
 	sep := ""
 	if cst.ListSeparatorKeyword != nil {
-		sep = MustFormatKeyword(cst.ListSeparatorKeyword.Keyword)
+		sep = MustFormatKeyword(opts, cst.ListSeparatorKeyword.Keyword)
 	}
 
 	f := &ConstFormatter{
 		Comments:        comments,
-		Const:           MustFormatKeyword(cst.ConstKeyword.Keyword),
-		Type:            MustFormatFieldType(cst.ConstType),
-		Name:            MustFormatIdentifier(cst.Name, ""),
+		Const:           MustFormatKeyword(opts, cst.ConstKeyword.Keyword),
+		Type:            MustFormatFieldType(cst.ConstType, opts),
+		Name:            MustFormatIdentifier(opts, cst.Name, ""),
 		Annotations:     annos,
-		Equal:           MustFormatKeyword(cst.EqualKeyword.Keyword),
-		Value:           MustFormatConstValue(cst.Value, "", false),
+		Equal:           MustFormatKeyword(opts, cst.EqualKeyword.Keyword),
+		Value:           MustFormatConstValue(cst.Value, opts, "", false),
 		ListSeparator:   sep,
-		EndLineComments: MustFormatEndLineComments(cst.EndLineComments, ""),
+		EndLineComments: MustFormatEndLineComments(opts, cst.EndLineComments, "", ""),
 	}
 
 	return MustFormat(constOneLineTpl, f)

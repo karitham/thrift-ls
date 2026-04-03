@@ -22,16 +22,16 @@ service A {
     bool func2(),
 }`
 
-	FieldLineComma = FieldLineCommaAdd
+	opts := Options{FieldLineComma: FieldLineCommaAdd}
 
 	ast, err := parser.Parse("test.thrift", []byte(doc))
 	assert.NoError(t, err)
 	assert.NotNil(t, ast)
 
-	formated, err := FormatDocument(ast.(*parser.Document))
+	formated, err := FormatDocument(ast.(*parser.Document), opts)
 	assert.Equal(t, expectedDoc, formated)
 
-	_, err = FormatDocumentWithValidation(ast.(*parser.Document), true)
+	_, err = FormatDocumentWithValidation(ast.(*parser.Document), opts, true)
 	assert.NoError(t, err)
 
 	// remove comma
@@ -40,16 +40,16 @@ service A {
 
     bool func2()
 }`
-	FieldLineComma = FieldLineCommaRemove
+	opts = Options{FieldLineComma: FieldLineCommaRemove}
 
 	ast, err = parser.Parse("test.thrift", []byte(doc))
 	assert.NoError(t, err)
 	assert.NotNil(t, ast)
 
-	formated, err = FormatDocument(ast.(*parser.Document))
+	formated, err = FormatDocument(ast.(*parser.Document), opts)
 	assert.Equal(t, expectedDoc, formated)
 
-	_, err = FormatDocumentWithValidation(ast.(*parser.Document), true)
+	_, err = FormatDocumentWithValidation(ast.(*parser.Document), opts, true)
 	assert.NoError(t, err)
 
 	// disable
@@ -58,16 +58,16 @@ service A {
 
     bool func2();
 }`
-	FieldLineComma = FieldLineCommaDisable
+	opts = Options{FieldLineComma: FieldLineCommaDisable}
 
 	ast, err = parser.Parse("test.thrift", []byte(doc))
 	assert.NoError(t, err)
 	assert.NotNil(t, ast)
 
-	formated, err = FormatDocument(ast.(*parser.Document))
+	formated, err = FormatDocument(ast.(*parser.Document), opts)
 	assert.Equal(t, expectedDoc, formated)
 
-	_, err = FormatDocumentWithValidation(ast.(*parser.Document), true)
+	_, err = FormatDocumentWithValidation(ast.(*parser.Document), opts, true)
 	assert.NoError(t, err)
 }
 
@@ -76,10 +76,11 @@ func Test_FormatDocument(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, ast)
 
-	formated, err := FormatDocument(ast.(*parser.Document))
+	opts := Options{}
+	formated, err := FormatDocument(ast.(*parser.Document), opts)
 	assert.Equal(t, expectedFormated, formated)
 
-	_, err = FormatDocumentWithValidation(ast.(*parser.Document), true)
+	_, err = FormatDocumentWithValidation(ast.(*parser.Document), opts, true)
 	assert.NoError(t, err)
 
 }

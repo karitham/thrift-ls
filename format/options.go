@@ -6,11 +6,6 @@ import (
 	"strings"
 )
 
-var Indent = "    "
-var Align = "field"
-var FieldLineComma = "disable"
-var TrailingNewline = false
-
 type Options struct {
 	// Do not print reformatted sources to standard output.
 	// If a file's formatting is different from thriftls's, overwrite it
@@ -51,14 +46,12 @@ func (o *Options) SetFlags() {
 	flag.BoolVar(&o.TrailingNewline, "trailingNewline", false, "Add trailing newline at end of file")
 }
 
-func (o *Options) InitDefault() {
-	Indent = o.GetIndent()
-
+// InitDefault validates and sets default values for Options fields.
+// It returns the Options with defaults applied for method chaining.
+func (o *Options) InitDefault() Options {
 	if o.Align == "" || (o.Align != AlignTypeField && o.Align != AlignTypeAssign && o.Align != AlignTypeDisable) {
 		o.Align = "field"
 	}
-
-	Align = o.Align
 
 	if o.FieldLineComma == "" ||
 		(o.FieldLineComma != FieldLineCommaAdd &&
@@ -67,8 +60,23 @@ func (o *Options) InitDefault() {
 		o.FieldLineComma = "disable"
 	}
 
-	FieldLineComma = o.FieldLineComma
-	TrailingNewline = o.TrailingNewline
+	return *o
+}
+
+// getAlign returns the align option, using default if empty.
+func (o Options) getAlign() string {
+	if o.Align == "" {
+		return AlignTypeField
+	}
+	return o.Align
+}
+
+// getFieldLineComma returns the field line comma option, using default if empty.
+func (o Options) getFieldLineComma() string {
+	if o.FieldLineComma == "" {
+		return FieldLineCommaDisable
+	}
+	return o.FieldLineComma
 }
 
 func (o *Options) GetIndent() string {

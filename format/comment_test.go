@@ -47,7 +47,7 @@ include "a.thrift" // aaaaa
 			name: "comments",
 			args: args{
 				comments: ast.(*parser.Document).Includes[0].Comments,
-				indent:   Indent,
+				indent:   "    ",
 			},
 			want: strings.TrimSpace(`
 /*
@@ -71,7 +71,8 @@ include "a.thrift" // aaaaa
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, MustFormatComments(tt.args.comments, ""))
+			// For comments test, pass empty indent to match expected output format
+			assert.Equal(t, tt.want, MustFormatComments(Options{}, tt.args.comments, "", ""))
 		})
 	}
 }

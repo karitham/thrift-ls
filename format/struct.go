@@ -23,8 +23,8 @@ type StructFormatter struct {
 	EndLineComments string
 }
 
-func MustFormatStruct(st *parser.Struct) string {
-	comments, annos := formatCommentsAndAnnos(st.Comments, st.Annotations, "")
+func MustFormatStruct(st *parser.Struct, opts Options) string {
+	comments, annos := formatCommentsAndAnnos(opts, st.Comments, st.Annotations, "")
 
 	if len(st.Comments) > 0 && lineDistance(st.Comments[len(st.Comments)-1], st.StructKeyword) > 1 {
 		comments = comments + "\n"
@@ -32,13 +32,13 @@ func MustFormatStruct(st *parser.Struct) string {
 
 	f := StructFormatter{
 		Comments:        comments,
-		Struct:          MustFormatKeyword(st.StructKeyword.Keyword),
-		Identifier:      MustFormatIdentifier(st.Identifier, ""),
-		LCUR:            MustFormatKeyword(st.LCurKeyword.Keyword),
-		Fields:          MustFormatFields(st.Fields, Indent),
-		RCUR:            MustFormatKeyword(st.RCurKeyword.Keyword),
+		Struct:          MustFormatKeyword(opts, st.StructKeyword.Keyword),
+		Identifier:      MustFormatIdentifier(opts, st.Identifier, ""),
+		LCUR:            MustFormatKeyword(opts, st.LCurKeyword.Keyword),
+		Fields:          MustFormatFields(st.Fields, opts, opts.GetIndent()),
+		RCUR:            MustFormatKeyword(opts, st.RCurKeyword.Keyword),
 		Annotations:     annos,
-		EndLineComments: MustFormatEndLineComments(st.EndLineComments, ""),
+		EndLineComments: MustFormatEndLineComments(opts, st.EndLineComments, "", ""),
 	}
 
 	if len(st.Fields) > 0 {

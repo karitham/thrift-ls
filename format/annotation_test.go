@@ -32,7 +32,8 @@ func TestMustFormatAnnotations(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, MustFormatAnnotations(tt.args.annotations))
+			opts := Options{}
+			assert.Equal(t, tt.want, MustFormatAnnotations(tt.args.annotations, opts))
 		})
 	}
 }
@@ -73,7 +74,8 @@ struct Foo {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, MustFormatAnnotations(tt.args.annotations))
+			opts := Options{}
+			assert.Equal(t, tt.want, MustFormatAnnotations(tt.args.annotations, opts))
 		})
 	}
 }

@@ -53,7 +53,8 @@ func main_format(opt format.Options, file string, includePaths []string) error {
 		fmt.Println(err)
 		return err
 	}
-	formated, err := format.FormatDocumentWithValidationFull(ast.(*parser.Document), true, includePaths, absFile)
+
+	formated, err := format.FormatDocumentWithValidationFull(ast.(*parser.Document), opt, true, includePaths, absFile)
 	if err != nil {
 		fmt.Println(err)
 		return err
@@ -100,7 +101,7 @@ func main() {
 	flag.Parse()
 
 	opts := configInit(&formatOpts)
-	formatOpts.InitDefault()
+	formatOpts = formatOpts.InitDefault()
 	tlog.Init(opts.LogLevel)
 
 	if formatter {
@@ -117,7 +118,10 @@ func main() {
 	// 	panic(err)
 	// }
 
-	ss := lsp.NewStreamServer(&lsp.Options{IncludePaths: opts.IncludePaths})
+	ss := lsp.NewStreamServer(&lsp.Options{
+		IncludePaths: opts.IncludePaths,
+		Format:       formatOpts,
+	})
 	stream := jsonrpc2.NewStream(fakenet.NewConn("stdio", os.Stdin, os.Stdout))
 	conn := jsonrpc2.NewConn(stream)
 	err := ss.ServeStream(ctx, conn)

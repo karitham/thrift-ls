@@ -7,14 +7,14 @@ import (
 	"github.com/joyme123/thrift-ls/parser"
 )
 
-func MustFormatConstValue(cv *parser.ConstValue, indent string, newLine bool) string {
+func MustFormatConstValue(cv *parser.ConstValue, opts Options, indent string, newLine bool) string {
 	buf := bytes.NewBuffer(nil)
 	if len(cv.Comments) > 0 {
-		buf.WriteString(MustFormatComments(cv.Comments, indent))
+		buf.WriteString(MustFormatComments(opts, cv.Comments, indent, ""))
 	}
 	sep := ""
 	if cv.ListSeparatorKeyword != nil {
-		sep = MustFormatKeyword(cv.ListSeparatorKeyword.Keyword) + " "
+		sep = MustFormatKeyword(opts, cv.ListSeparatorKeyword.Keyword) + " "
 	}
 
 	switch cv.TypeName {
@@ -27,13 +27,13 @@ func MustFormatConstValue(cv *parser.ConstValue, indent string, newLine bool) st
 			}
 		}
 
-		buf.WriteString(MustFormatKeyword(cv.LBrkKeyword.Keyword))
+		buf.WriteString(MustFormatKeyword(opts, cv.LBrkKeyword.Keyword))
 		for i := range values {
 			// TODO(jpf): 优化显示
 			newLine = false
-			buf.WriteString(MustFormatConstValue(values[i], indent, newLine))
+			buf.WriteString(MustFormatConstValue(values[i], opts, indent, newLine))
 		}
-		buf.WriteString(MustFormatKeyword(cv.RBrkKeyword.Keyword))
+		buf.WriteString(MustFormatKeyword(opts, cv.RBrkKeyword.Keyword))
 	case "map":
 		values := cv.Value.([]*parser.ConstValue)
 
@@ -44,7 +44,7 @@ func MustFormatConstValue(cv *parser.ConstValue, indent string, newLine bool) st
 		}
 
 		var preNode parser.Node
-		buf.WriteString(MustFormatKeyword(cv.LCurKeyword.Keyword))
+		buf.WriteString(MustFormatKeyword(opts, cv.LCurKeyword.Keyword))
 		preNode = cv.LCurKeyword
 		for i := range values {
 			distance := lineDistance(preNode, values[i])
@@ -57,14 +57,14 @@ func MustFormatConstValue(cv *parser.ConstValue, indent string, newLine bool) st
 				}
 				newLine = false
 			}
-			buf.WriteString(MustFormatConstValue(values[i], indent, newLine))
+			buf.WriteString(MustFormatConstValue(values[i], opts, indent, newLine))
 			preNode = values[i]
 		}
 		if lineDistance(preNode, cv.RCurKeyword) >= 1 {
 			buf.WriteString("\n")
 			buf.WriteString(indent)
 		}
-		buf.WriteString(MustFormatKeyword(cv.RCurKeyword.Keyword))
+		buf.WriteString(MustFormatKeyword(opts, cv.RCurKeyword.Keyword))
 	case "pair":
 		key := cv.Key.(*parser.ConstValue)
 		value := cv.Value.(*parser.ConstValue)
@@ -76,12 +76,12 @@ func MustFormatConstValue(cv *parser.ConstValue, indent string, newLine bool) st
 		}
 
 		if cv.ListSeparatorKeyword != nil {
-			sep = MustFormatKeyword(cv.ListSeparatorKeyword.Keyword)
+			sep = MustFormatKeyword(opts, cv.ListSeparatorKeyword.Keyword)
 		}
 		buf.WriteString(fmt.Sprintf("%s%s %s%s",
-			MustFormatConstValue(key, indent+Indent, newLine),
-			MustFormatKeyword(cv.ColonKeyword.Keyword),
-			MustFormatConstValue(value, indent, false),
+			MustFormatConstValue(key, opts, indent+opts.GetIndent(), newLine),
+			MustFormatKeyword(opts, cv.ColonKeyword.Keyword),
+			MustFormatConstValue(value, opts, indent, false),
 			sep))
 	case "identifier":
 		if len(cv.Comments) > 0 {
@@ -125,7 +125,7 @@ func MustFormatConstValue(cv *parser.ConstValue, indent string, newLine bool) st
 				indent = ""
 			}
 
-			val = MustFormatLiteral(literal, indent)
+			val = MustFormatLiteral(opts, literal, indent)
 			buf.WriteString(fmt.Sprintf("%s%s", val, sep))
 		}
 	case "i64":

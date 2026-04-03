@@ -16,7 +16,9 @@ func FieldSymbol(field *parser.Field) *protocol.DocumentSymbol {
 	if field.RequiredKeyword != nil {
 		detail = field.RequiredKeyword.Literal.Text + " "
 	}
-	detail += format.MustFormatFieldType(field.FieldType)
+	// Use default options for symbol display
+	opts := format.Options{}
+	detail += format.MustFormatFieldType(field.FieldType, opts)
 
 	res := &protocol.DocumentSymbol{
 		Name:           field.Identifier.Name.Text,

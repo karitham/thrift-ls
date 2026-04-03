@@ -7,10 +7,10 @@ import (
 	"github.com/joyme123/thrift-ls/parser"
 )
 
-func MustFormatAnnotations(annotations *parser.Annotations) string {
+func MustFormatAnnotations(annotations *parser.Annotations, opts Options) string {
 	buf := bytes.NewBuffer(nil)
 
-	buf.WriteString(MustFormatKeyword(annotations.LParKeyword.Keyword))
+	buf.WriteString(MustFormatKeyword(opts, annotations.LParKeyword.Keyword))
 
 	var preNode parser.Node
 	preNode = annotations.LParKeyword
@@ -22,9 +22,9 @@ func MustFormatAnnotations(annotations *parser.Annotations) string {
 		if lineDistance(preNode, annotations.Annotations[i]) >= 1 {
 			buf.WriteString("\n")
 			isNewLine = true
-			indent = Indent + Indent
+			indent = opts.GetIndent() + opts.GetIndent()
 		}
-		buf.WriteString(MustFormatAnnotation(anno, i == len(annotations.Annotations)-1, i == 0, indent, isNewLine))
+		buf.WriteString(MustFormatAnnotation(anno, opts, i == len(annotations.Annotations)-1, i == 0, indent, isNewLine))
 		preNode = annotations.Annotations[i]
 		isNewLine = false
 		indent = ""
@@ -32,17 +32,17 @@ func MustFormatAnnotations(annotations *parser.Annotations) string {
 
 	if lineDistance(preNode, annotations.RParKeyword) >= 1 {
 		buf.WriteString("\n")
-		buf.WriteString(Indent)
+		buf.WriteString(opts.GetIndent())
 	}
-	buf.WriteString(MustFormatKeyword(annotations.RParKeyword.Keyword))
+	buf.WriteString(MustFormatKeyword(opts, annotations.RParKeyword.Keyword))
 
 	return buf.String()
 }
 
-func MustFormatAnnotation(anno *parser.Annotation, isLast bool, isFirst bool, indent string, isNewLine bool) string {
+func MustFormatAnnotation(anno *parser.Annotation, opts Options, isLast bool, isFirst bool, indent string, isNewLine bool) string {
 	sep := ""
 	if (!isLast) && anno.ListSeparatorKeyword != nil {
-		sep = MustFormatKeyword(anno.ListSeparatorKeyword.Keyword)
+		sep = MustFormatKeyword(opts, anno.ListSeparatorKeyword.Keyword)
 	}
 
 	space := ""
@@ -51,5 +51,5 @@ func MustFormatAnnotation(anno *parser.Annotation, isLast bool, isFirst bool, in
 	}
 
 	// a = "xxxx",
-	return fmt.Sprintf("%s%s %s %s%s", space, MustFormatIdentifier(anno.Identifier, indent), MustFormatKeyword(anno.EqualKeyword.Keyword), MustFormatLiteral(anno.Value, ""), sep)
+	return fmt.Sprintf("%s%s %s %s%s", space, MustFormatIdentifier(opts, anno.Identifier, indent), MustFormatKeyword(opts, anno.EqualKeyword.Keyword), MustFormatLiteral(opts, anno.Value, ""), sep)
 }

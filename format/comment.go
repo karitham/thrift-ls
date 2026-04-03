@@ -10,7 +10,7 @@ import (
 // TODO(jpf): 多行注释，换行上还需要优化
 // MustFormatComments formats comments
 // return string doesn't include '\n' end of line
-func MustFormatComments(comments []*parser.Comment, indent string) string {
+func MustFormatComments(opts Options, comments []*parser.Comment, indent string, innerIndent string) string {
 	fmtCtx := &fmtContext{}
 	buf := bytes.NewBuffer(nil)
 	for _, c := range comments {
@@ -29,7 +29,7 @@ func MustFormatComments(comments []*parser.Comment, indent string) string {
 	return buf.String()
 }
 
-func MustFormatEndLineComments(comments []*parser.Comment, indent string) string {
+func MustFormatEndLineComments(opts Options, comments []*parser.Comment, indent string, innerIndent string) string {
 	if len(comments) == 0 {
 		return ""
 	}

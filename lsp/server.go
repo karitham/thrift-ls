@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/joyme123/protocol"
+	"github.com/joyme123/thrift-ls/format"
 	"github.com/joyme123/thrift-ls/lsp/cache"
 	log "github.com/sirupsen/logrus"
 )
@@ -12,14 +13,16 @@ type Server struct {
 	cache   *cache.Cache
 	session *cache.Session
 
-	client protocol.Client
+	client     protocol.Client
+	formatOpts format.Options
 }
 
-func NewServer(c *cache.Cache, client protocol.Client) *Server {
+func NewServer(c *cache.Cache, client protocol.Client, formatOpts format.Options) *Server {
 	return &Server{
-		cache:   c,
-		session: cache.NewSession(c),
-		client:  client,
+		cache:      c,
+		session:    cache.NewSession(c),
+		client:     client,
+		formatOpts: formatOpts,
 	}
 }
 

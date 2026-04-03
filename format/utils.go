@@ -36,25 +36,25 @@ func MustFormat(tplText string, formatter any) string {
 	return buf.String()
 }
 
-func formatCommentsAndAnnos(comments []*parser.Comment, annotations *parser.Annotations, indent string) (string, string) {
+func formatCommentsAndAnnos(opts Options, comments []*parser.Comment, annotations *parser.Annotations, indent string) (string, string) {
 	commentsStr := ""
 	if len(comments) > 0 {
-		commentsStr = MustFormatComments(comments, indent) + "\n"
+		commentsStr = MustFormatComments(opts, comments, indent, "") + "\n"
 	}
 	annos := ""
 	if annotations != nil && len(annotations.Annotations) > 0 {
-		annos = " " + MustFormatAnnotations(annotations)
+		annos = " " + MustFormatAnnotations(annotations, opts)
 	}
 
 	return commentsStr, annos
 }
 
-func formatListSeparator(sep *parser.ListSeparatorKeyword) string {
+func formatListSeparator(opts Options, sep *parser.ListSeparatorKeyword) string {
 	if sep == nil {
 		return ""
 	}
 
-	return MustFormatKeyword(sep.Keyword)
+	return MustFormatKeyword(opts, sep.Keyword)
 }
 
 func lineDistance(preNode parser.Node, currentNode parser.Node) int {

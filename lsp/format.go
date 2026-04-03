@@ -9,8 +9,7 @@ import (
 )
 
 func (s *Server) formatting(ctx context.Context, params *protocol.DocumentFormattingParams) (result []protocol.TextEdit, err error) {
-
-	// TODO: 支持 format options
+	opts := s.formatOpts
 
 	document := params.TextDocument
 	fileURI := document.URI
@@ -40,7 +39,7 @@ func (s *Server) formatting(ctx context.Context, params *protocol.DocumentFormat
 		return nil, pf.AggregatedError()
 	}
 
-	formatted, err := format.FormatDocument(pf.AST())
+	formatted, err := format.FormatDocument(pf.AST(), opts)
 	if err != nil {
 		return nil, err
 	}

@@ -13,33 +13,33 @@ type IncludeFormatter struct {
 	EndLineComments string
 }
 
-func MustFormatInclude(inc *parser.Include) string {
-	comments, _ := formatCommentsAndAnnos(inc.Comments, nil, "")
+func MustFormatInclude(inc *parser.Include, opts Options) string {
+	comments, _ := formatCommentsAndAnnos(opts, inc.Comments, nil, "")
 	if len(inc.Comments) > 0 && lineDistance(inc.Comments[len(inc.Comments)-1], inc.IncludeKeyword) > 1 {
 		comments = comments + "\n"
 	}
 
 	f := &IncludeFormatter{
 		Comments:        comments,
-		Include:         MustFormatKeyword(inc.IncludeKeyword.Keyword),
-		Path:            MustFormatLiteral(inc.Path, ""),
-		EndLineComments: MustFormatComments(inc.EndLineComments, ""),
+		Include:         MustFormatKeyword(opts, inc.IncludeKeyword.Keyword),
+		Path:            MustFormatLiteral(opts, inc.Path, ""),
+		EndLineComments: MustFormatComments(opts, inc.EndLineComments, "", ""),
 	}
 
 	return MustFormat(includeTpl, f)
 }
 
-func MustFormatCPPInclude(inc *parser.CPPInclude) string {
-	comments, _ := formatCommentsAndAnnos(inc.Comments, nil, "")
+func MustFormatCPPInclude(inc *parser.CPPInclude, opts Options) string {
+	comments, _ := formatCommentsAndAnnos(opts, inc.Comments, nil, "")
 	if len(inc.Comments) > 0 && lineDistance(inc.Comments[len(inc.Comments)-1], inc.CPPIncludeKeyword) > 1 {
 		comments = comments + "\n"
 	}
 
 	f := &IncludeFormatter{
 		Comments:        comments,
-		Include:         MustFormatKeyword(inc.CPPIncludeKeyword.Keyword),
-		Path:            MustFormatLiteral(inc.Path, ""),
-		EndLineComments: MustFormatComments(inc.EndLineComments, ""),
+		Include:         MustFormatKeyword(opts, inc.CPPIncludeKeyword.Keyword),
+		Path:            MustFormatLiteral(opts, inc.Path, ""),
+		EndLineComments: MustFormatComments(opts, inc.EndLineComments, "", ""),
 	}
 
 	return MustFormat(includeTpl, f)

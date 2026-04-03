@@ -6,14 +6,14 @@ import (
 	"github.com/joyme123/thrift-ls/parser"
 )
 
-func MustFormatFunctions(fns []*parser.Function, indent string) string {
+func MustFormatFunctions(fns []*parser.Function, opts Options, indent string) string {
 	buf := bytes.NewBuffer(nil)
 	fmtCtx := &fmtContext{}
 	for i := range fns {
 		if needAddtionalLineForFuncs(fmtCtx.preNode, fns[i]) {
 			buf.WriteString("\n")
 		}
-		buf.WriteString(MustFormatFunction(fns[i], indent))
+		buf.WriteString(MustFormatFunction(fns[i], opts, indent))
 		if i < len(fns)-1 {
 			buf.WriteString("\n")
 		}
@@ -38,8 +38,8 @@ type FunctionFormatter struct {
 	EndLineComments string
 }
 
-func MustFormatFunction(fn *parser.Function, indent string) string {
-	comments, annos := formatCommentsAndAnnos(fn.Comments, fn.Annotations, indent)
+func MustFormatFunction(fn *parser.Function, opts Options, indent string) string {
+	comments, annos := formatCommentsAndAnnos(opts, fn.Comments, fn.Annotations, indent)
 	var firstNode parser.Node
 	if fn.Void != nil {
 		firstNode = fn.Void
@@ -56,27 +56,27 @@ func MustFormatFunction(fn *parser.Function, indent string) string {
 	}
 	args := ""
 	if len(fn.Arguments) > 0 {
-		args = MustFormatOneLineFields(fn.Arguments)
+		args = MustFormatOneLineFields(fn.Arguments, opts)
 	}
 
 	ft := ""
 	if fn.Void != nil {
-		ft = MustFormatKeyword(fn.Void.Keyword)
+		ft = MustFormatKeyword(opts, fn.Void.Keyword)
 	} else {
-		ft = MustFormatFieldType(fn.FunctionType)
+		ft = MustFormatFieldType(fn.FunctionType, opts)
 	}
 
 	sep := ""
 
-	if FieldLineComma == FieldLineCommaAdd { // add comma always
+	if opts.getFieldLineComma() == FieldLineCommaAdd { // add comma always
 		sep = ","
-	} else if FieldLineComma == FieldLineCommaDisable { // add list separator
+	} else if opts.getFieldLineComma() == FieldLineCommaDisable { // add list separator
 		if fn.ListSeparatorKeyword != nil {
-			sep = MustFormatKeyword(fn.ListSeparatorKeyword.Keyword)
+			sep = MustFormatKeyword(opts, fn.ListSeparatorKeyword.Keyword)
 		}
 	} // otherwise, sep will be removed
 
-	throws := MustFormatThrows(fn.Throws)
+	throws := MustFormatThrows(fn.Throws, opts)
 	if fn.Throws != nil {
 		throws = " " + throws
 	}
@@ -84,14 +84,14 @@ func MustFormatFunction(fn *parser.Function, indent string) string {
 	f := &FunctionFormatter{
 		Oneway:          oneway,
 		FunctionType:    ft,
-		Identifier:      MustFormatIdentifier(fn.Name, ""),
-		LPAR:            MustFormatKeyword(fn.LParKeyword.Keyword),
+		Identifier:      MustFormatIdentifier(opts, fn.Name, ""),
+		LPAR:            MustFormatKeyword(opts, fn.LParKeyword.Keyword),
 		Args:            args,
-		RPAR:            MustFormatKeyword(fn.RParKeyword.Keyword),
+		RPAR:            MustFormatKeyword(opts, fn.RParKeyword.Keyword),
 		Throws:          throws,
 		Annotations:     annos,
 		ListSeparator:   sep,
-		EndLineComments: MustFormatEndLineComments(fn.EndLineComments, ""),
+		EndLineComments: MustFormatEndLineComments(opts, fn.EndLineComments, "", ""),
 	}
 
 	fnStr := MustFormat(functionTpl, f)
@@ -109,21 +109,22 @@ type ThrowFormatter struct {
 	RPAR   string
 }
 
-func MustFormatThrows(throws *parser.Throws) string {
+func MustFormatThrows(throws *parser.Throws, opts Options) string {
 	if throws == nil {
 		return ""
 	}
 
 	args := ""
 	if len(throws.Fields) > 0 {
-		args = "\n" + MustFormatFields(throws.Fields, Indent+Indent) + Indent
+		indent := opts.GetIndent()
+		args = "\n" + MustFormatFields(throws.Fields, opts, indent+indent) + indent
 	}
 
 	f := &ThrowFormatter{
-		Throw:  MustFormatKeyword(throws.ThrowsKeyword.Keyword),
-		LPAR:   MustFormatKeyword(throws.LParKeyword.Keyword),
+		Throw:  MustFormatKeyword(opts, throws.ThrowsKeyword.Keyword),
+		LPAR:   MustFormatKeyword(opts, throws.LParKeyword.Keyword),
 		Fields: args,
-		RPAR:   MustFormatKeyword(throws.RParKeyword.Keyword),
+		RPAR:   MustFormatKeyword(opts, throws.RParKeyword.Keyword),
 	}
 
 	return MustFormat(throwTpl, f)

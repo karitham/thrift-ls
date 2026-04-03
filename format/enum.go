@@ -23,21 +23,21 @@ type EnumFormatter struct {
 	EndLineComments string
 }
 
-func MustFormatEnum(enum *parser.Enum) string {
-	comments, annos := formatCommentsAndAnnos(enum.Comments, enum.Annotations, "")
+func MustFormatEnum(enum *parser.Enum, opts Options) string {
+	comments, annos := formatCommentsAndAnnos(opts, enum.Comments, enum.Annotations, "")
 	if len(enum.Comments) > 0 && lineDistance(enum.Comments[len(enum.Comments)-1], enum.EnumKeyword) > 1 {
 		comments = comments + "\n"
 	}
 
 	f := EnumFormatter{
 		Comments:        comments,
-		Enum:            MustFormatKeyword(enum.EnumKeyword.Keyword),
-		Identifier:      MustFormatIdentifier(enum.Name, ""),
-		LCUR:            MustFormatKeyword(enum.LCurKeyword.Keyword),
-		EnumValues:      MustFormatEnumValues(enum.Values, Indent),
-		RCUR:            MustFormatKeyword(enum.RCurKeyword.Keyword),
+		Enum:            MustFormatKeyword(opts, enum.EnumKeyword.Keyword),
+		Identifier:      MustFormatIdentifier(opts, enum.Name, ""),
+		LCUR:            MustFormatKeyword(opts, enum.LCurKeyword.Keyword),
+		EnumValues:      MustFormatEnumValues(enum.Values, opts, opts.GetIndent()),
+		RCUR:            MustFormatKeyword(opts, enum.RCurKeyword.Keyword),
 		Annotations:     annos,
-		EndLineComments: MustFormatEndLineComments(enum.EndLineComments, ""),
+		EndLineComments: MustFormatEndLineComments(opts, enum.EndLineComments, "", ""),
 	}
 
 	if len(enum.Values) > 0 {

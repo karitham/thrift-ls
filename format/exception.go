@@ -23,20 +23,20 @@ type ExceptionFormatter struct {
 	EndLineComments string
 }
 
-func MustFormatException(excep *parser.Exception) string {
-	comments, annos := formatCommentsAndAnnos(excep.Comments, excep.Annotations, "")
+func MustFormatException(excep *parser.Exception, opts Options) string {
+	comments, annos := formatCommentsAndAnnos(opts, excep.Comments, excep.Annotations, "")
 	if len(excep.Comments) > 0 && lineDistance(excep.Comments[len(excep.Comments)-1], excep.ExceptionKeyword) > 1 {
 		comments = comments + "\n"
 	}
 	f := ExceptionFormatter{
 		Comments:        comments,
-		Exception:       MustFormatKeyword(excep.ExceptionKeyword.Keyword),
-		Identifier:      MustFormatIdentifier(excep.Name, ""),
-		LCUR:            MustFormatKeyword(excep.LCurKeyword.Keyword),
-		Fields:          MustFormatFields(excep.Fields, Indent),
-		RCUR:            MustFormatKeyword(excep.RCurKeyword.Keyword),
+		Exception:       MustFormatKeyword(opts, excep.ExceptionKeyword.Keyword),
+		Identifier:      MustFormatIdentifier(opts, excep.Name, ""),
+		LCUR:            MustFormatKeyword(opts, excep.LCurKeyword.Keyword),
+		Fields:          MustFormatFields(excep.Fields, opts, opts.GetIndent()),
+		RCUR:            MustFormatKeyword(opts, excep.RCurKeyword.Keyword),
 		Annotations:     annos,
-		EndLineComments: MustFormatEndLineComments(excep.EndLineComments, ""),
+		EndLineComments: MustFormatEndLineComments(opts, excep.EndLineComments, "", ""),
 	}
 
 	if len(excep.Fields) > 0 {

@@ -15,19 +15,19 @@ type NamespaceFormatter struct {
 	EndLineComments string
 }
 
-func MustFormatNamespace(ns *parser.Namespace) string {
-	comments, annos := formatCommentsAndAnnos(ns.Comments, ns.Annotations, "")
+func MustFormatNamespace(ns *parser.Namespace, opts Options) string {
+	comments, annos := formatCommentsAndAnnos(opts, ns.Comments, ns.Annotations, "")
 	if len(ns.Comments) > 0 && lineDistance(ns.Comments[len(ns.Comments)-1], ns.NamespaceKeyword) > 1 {
 		comments = comments + "\n"
 	}
 
 	f := &NamespaceFormatter{
 		Comments:        comments,
-		Namespace:       MustFormatKeyword(ns.NamespaceKeyword.Keyword),
-		Language:        MustFormatIdentifier(&ns.Language.Identifier, ""),
-		Name:            MustFormatIdentifier(ns.Name, ""),
+		Namespace:       MustFormatKeyword(opts, ns.NamespaceKeyword.Keyword),
+		Language:        MustFormatIdentifier(opts, &ns.Language.Identifier, ""),
+		Name:            MustFormatIdentifier(opts, ns.Name, ""),
 		Annotations:     annos,
-		EndLineComments: MustFormatEndLineComments(ns.EndLineComments, ""),
+		EndLineComments: MustFormatEndLineComments(opts, ns.EndLineComments, "", ""),
 	}
 
 	return MustFormat(namespaceOneLineTpl, f)

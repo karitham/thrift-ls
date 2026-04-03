@@ -13,7 +13,8 @@ func TestEqualsAfterFormat(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, ast)
 
-	formated, err := FormatDocument(ast.(*parser.Document))
+	opts := Options{}
+	formated, err := FormatDocument(ast.(*parser.Document), opts)
 	assert.NoError(t, err)
 	type args struct {
 		doc1 string

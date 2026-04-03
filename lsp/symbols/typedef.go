@@ -8,9 +8,12 @@ import (
 )
 
 func TypedefSymbol(td *parser.Typedef) *protocol.DocumentSymbol {
+	// Use default options for symbol display
+	opts := format.Options{}
+
 	res := &protocol.DocumentSymbol{
 		Name:           td.Alias.Name.Text,
-		Detail:         format.MustFormatFieldType(td.T),
+		Detail:         format.MustFormatFieldType(td.T, opts),
 		Kind:           protocol.SymbolKindTypeParameter,
 		Range:          lsputils.ASTNodeToRange(td.Alias.Name),
 		SelectionRange: lsputils.ASTNodeToRange(td.Alias.Name),

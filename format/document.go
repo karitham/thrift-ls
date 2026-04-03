@@ -16,11 +16,11 @@ type fmtContext struct {
 	preNode parser.Node
 }
 
-func FormatDocument(doc *parser.Document) (string, error) {
-	return FormatDocumentWithValidation(doc, false)
+func FormatDocument(doc *parser.Document, opts Options) (string, error) {
+	return FormatDocumentWithValidation(doc, opts, false)
 }
 
-func FormatDocumentWithValidation(doc *parser.Document, selfValidation bool) (string, error) {
+func FormatDocumentWithValidation(doc *parser.Document, opts Options, selfValidation bool) (string, error) {
 	if doc.ChildrenBadNode() {
 		return "", BadNodeError
 	}
@@ -40,25 +40,25 @@ func FormatDocumentWithValidation(doc *parser.Document, selfValidation bool) (st
 
 		switch node.Type() {
 		case "Include":
-			buf.WriteString(MustFormatInclude(node.(*parser.Include)))
+			buf.WriteString(MustFormatInclude(node.(*parser.Include), opts))
 		case "CPPInclude":
-			buf.WriteString(MustFormatCPPInclude(node.(*parser.CPPInclude)))
+			buf.WriteString(MustFormatCPPInclude(node.(*parser.CPPInclude), opts))
 		case "Namespace":
-			buf.WriteString(MustFormatNamespace(node.(*parser.Namespace)))
+			buf.WriteString(MustFormatNamespace(node.(*parser.Namespace), opts))
 		case "Struct":
-			buf.WriteString(MustFormatStruct(node.(*parser.Struct)))
+			buf.WriteString(MustFormatStruct(node.(*parser.Struct), opts))
 		case "Union":
-			buf.WriteString(MustFormatUnion(node.(*parser.Union)))
+			buf.WriteString(MustFormatUnion(node.(*parser.Union), opts))
 		case "Exception":
-			buf.WriteString(MustFormatException(node.(*parser.Exception)))
+			buf.WriteString(MustFormatException(node.(*parser.Exception), opts))
 		case "Service":
-			buf.WriteString(MustFormatService(node.(*parser.Service)))
+			buf.WriteString(MustFormatService(node.(*parser.Service), opts))
 		case "Typedef":
-			buf.WriteString(MustFormatTypedef(node.(*parser.Typedef)))
+			buf.WriteString(MustFormatTypedef(node.(*parser.Typedef), opts))
 		case "Const":
-			buf.WriteString(MustFormatConst(node.(*parser.Const)))
+			buf.WriteString(MustFormatConst(node.(*parser.Const), opts))
 		case "Enum":
-			buf.WriteString(MustFormatEnum(node.(*parser.Enum)))
+			buf.WriteString(MustFormatEnum(node.(*parser.Enum), opts))
 		}
 
 	}
@@ -70,7 +70,7 @@ func FormatDocumentWithValidation(doc *parser.Document, selfValidation bool) (st
 	}
 
 	if len(doc.Comments) > 0 {
-		buf.WriteString(MustFormatComments(doc.Comments, ""))
+		buf.WriteString(MustFormatComments(opts, doc.Comments, "", ""))
 	}
 	res := buf.String()
 
@@ -94,7 +94,7 @@ func FormatDocumentWithValidation(doc *parser.Document, selfValidation bool) (st
 // FormatDocumentWithValidationFull formats a document with self-validation using include resolution.
 // When includePaths is provided and non-empty, self-validation uses ParseRecursively to resolve includes.
 // When includePaths is empty, falls back to plain Parse for backward compatibility.
-func FormatDocumentWithValidationFull(doc *parser.Document, selfValidation bool, includePaths []string, currentFile string) (string, error) {
+func FormatDocumentWithValidationFull(doc *parser.Document, opts Options, selfValidation bool, includePaths []string, currentFile string) (string, error) {
 	if doc.ChildrenBadNode() {
 		return "", BadNodeError
 	}
@@ -114,25 +114,25 @@ func FormatDocumentWithValidationFull(doc *parser.Document, selfValidation bool,
 
 		switch node.Type() {
 		case "Include":
-			buf.WriteString(MustFormatInclude(node.(*parser.Include)))
+			buf.WriteString(MustFormatInclude(node.(*parser.Include), opts))
 		case "CPPInclude":
-			buf.WriteString(MustFormatCPPInclude(node.(*parser.CPPInclude)))
+			buf.WriteString(MustFormatCPPInclude(node.(*parser.CPPInclude), opts))
 		case "Namespace":
-			buf.WriteString(MustFormatNamespace(node.(*parser.Namespace)))
+			buf.WriteString(MustFormatNamespace(node.(*parser.Namespace), opts))
 		case "Struct":
-			buf.WriteString(MustFormatStruct(node.(*parser.Struct)))
+			buf.WriteString(MustFormatStruct(node.(*parser.Struct), opts))
 		case "Union":
-			buf.WriteString(MustFormatUnion(node.(*parser.Union)))
+			buf.WriteString(MustFormatUnion(node.(*parser.Union), opts))
 		case "Exception":
-			buf.WriteString(MustFormatException(node.(*parser.Exception)))
+			buf.WriteString(MustFormatException(node.(*parser.Exception), opts))
 		case "Service":
-			buf.WriteString(MustFormatService(node.(*parser.Service)))
+			buf.WriteString(MustFormatService(node.(*parser.Service), opts))
 		case "Typedef":
-			buf.WriteString(MustFormatTypedef(node.(*parser.Typedef)))
+			buf.WriteString(MustFormatTypedef(node.(*parser.Typedef), opts))
 		case "Const":
-			buf.WriteString(MustFormatConst(node.(*parser.Const)))
+			buf.WriteString(MustFormatConst(node.(*parser.Const), opts))
 		case "Enum":
-			buf.WriteString(MustFormatEnum(node.(*parser.Enum)))
+			buf.WriteString(MustFormatEnum(node.(*parser.Enum), opts))
 		}
 
 	}
@@ -144,7 +144,7 @@ func FormatDocumentWithValidationFull(doc *parser.Document, selfValidation bool,
 	}
 
 	if len(doc.Comments) > 0 {
-		buf.WriteString(MustFormatComments(doc.Comments, ""))
+		buf.WriteString(MustFormatComments(opts, doc.Comments, "", ""))
 	}
 	res := buf.String()
 
@@ -176,7 +176,7 @@ func FormatDocumentWithValidationFull(doc *parser.Document, selfValidation bool,
 		}
 	}
 
-	if TrailingNewline && !strings.HasSuffix(res, "\n") {
+	if opts.TrailingNewline && !strings.HasSuffix(res, "\n") {
 		res += "\n"
 	}
 

@@ -74,7 +74,9 @@ func hoverService(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *pa
 
 	dstService := GetServiceNode(dstAst.AST(), identifier)
 	if dstService != nil {
-		return format.MustFormatService(dstService), nil
+		// Use default options for hover display
+		opts := format.Options{}
+		return format.MustFormatService(dstService, opts), nil
 	}
 
 	return "", nil
@@ -110,26 +112,29 @@ func hoverDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast 
 		log.Errorf("parse error: %v", dstAst.Errors())
 	}
 
+	// Use default options for hover display
+	opts := format.Options{}
+
 	// struct, exception, enum or union
 	dstException := GetExceptionNode(dstAst.AST(), identifier)
 	if dstException != nil {
-		return format.MustFormatException(dstException), nil
+		return format.MustFormatException(dstException, opts), nil
 	}
 	dstStruct := GetStructNode(dstAst.AST(), identifier)
 	if dstStruct != nil {
-		return format.MustFormatStruct(dstStruct), nil
+		return format.MustFormatStruct(dstStruct, opts), nil
 	}
 	dstEnum := GetEnumNode(dstAst.AST(), identifier)
 	if dstEnum != nil {
-		return format.MustFormatEnum(dstEnum), nil
+		return format.MustFormatEnum(dstEnum, opts), nil
 	}
 	dstUnion := GetUnionNode(dstAst.AST(), identifier)
 	if dstUnion != nil {
-		return format.MustFormatUnion(dstUnion), nil
+		return format.MustFormatUnion(dstUnion, opts), nil
 	}
 	dstTypedef := GetTypedefNode(dstAst.AST(), identifier)
 	if dstTypedef != nil {
-		return format.MustFormatTypedef(dstTypedef), nil
+		return format.MustFormatTypedef(dstTypedef, opts), nil
 	}
 
 	return "", nil
@@ -163,14 +168,17 @@ func hoverConstValue(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast 
 		return "", err
 	}
 
+	// Use default options for hover display
+	opts := format.Options{}
+
 	dstEnum := GetEnumNodeByEnumValue(dstAst.AST(), identifier)
 	if dstEnum != nil {
-		return format.MustFormatEnum(dstEnum), nil
+		return format.MustFormatEnum(dstEnum, opts), nil
 	}
 
 	dstConst := GetConstNode(dstAst.AST(), identifier)
 	if dstConst != nil {
-		return format.MustFormatConst(dstConst), nil
+		return format.MustFormatConst(dstConst, opts), nil
 	}
 
 	return "", nil

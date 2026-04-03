@@ -211,7 +211,8 @@ struct Foo {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, MustFormatStruct(tt.args.st))
+			opts := Options{}
+			assert.Equal(t, tt.want, MustFormatStruct(tt.args.st, opts))
 		})
 	}
 }

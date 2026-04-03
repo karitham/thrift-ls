@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/joyme123/protocol"
+	"github.com/joyme123/thrift-ls/format"
 	"github.com/joyme123/thrift-ls/lsp/cache"
 	"github.com/joyme123/thrift-ls/lsp/memoize"
 	"go.lsp.dev/jsonrpc2"
@@ -14,11 +15,13 @@ import (
 type StreamServer struct {
 	logger *zap.Logger
 
-	cache *cache.Cache
+	cache      *cache.Cache
+	formatOpts format.Options
 }
 
 type Options struct {
 	IncludePaths []string
+	Format       format.Options
 }
 
 func NewStreamServer(opts *Options) *StreamServer {
@@ -27,15 +30,16 @@ func NewStreamServer(opts *Options) *StreamServer {
 	store := &memoize.Store{}
 
 	return &StreamServer{
-		cache:  cache.New(store, opts.IncludePaths),
-		logger: logger,
+		cache:      cache.New(store, opts.IncludePaths),
+		logger:     logger,
+		formatOpts: opts.Format,
 	}
 }
 
 func (s *StreamServer) ServeStream(ctx context.Context, conn jsonrpc2.Conn) error {
 	client := protocol.ClientDispatcher(conn, s.logger)
 
-	server := NewServer(s.cache, client)
+	server := NewServer(s.cache, client, s.formatOpts)
 	// Clients may or may not send a shutdown message. Make sure the server is
 	// shut down.
 	// TODO(rFindley): this shutdown should perhaps be on a disconnected context.

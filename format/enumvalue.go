@@ -10,7 +10,7 @@ import (
 
 type enumValueGroup []string
 
-func MustFormatEnumValues(values []*parser.EnumValue, indent string) string {
+func MustFormatEnumValues(values []*parser.EnumValue, opts Options, indent string) string {
 	buf := bytes.NewBuffer(nil)
 
 	fmtCtx := &fmtContext{}
@@ -24,10 +24,10 @@ func MustFormatEnumValues(values []*parser.EnumValue, indent string) string {
 			eg = make(enumValueGroup, 0)
 		}
 		space := " "
-		if Align == AlignTypeField {
+		if opts.getAlign() == AlignTypeField {
 			space = "\t"
 		}
-		eg = append(eg, MustFormatEnumValue(v, space, indent))
+		eg = append(eg, MustFormatEnumValue(v, opts, space, indent))
 		fmtCtx.preNode = values[i]
 	}
 
@@ -51,34 +51,34 @@ func MustFormatEnumValues(values []*parser.EnumValue, indent string) string {
 	return buf.String()
 }
 
-func MustFormatEnumValue(enumValue *parser.EnumValue, space, indent string) string {
-	comments, annos := formatCommentsAndAnnos(enumValue.Comments, enumValue.Annotations, indent)
+func MustFormatEnumValue(enumValue *parser.EnumValue, opts Options, space, indent string) string {
+	comments, annos := formatCommentsAndAnnos(opts, enumValue.Comments, enumValue.Annotations, indent)
 
 	if len(comments) > 0 && lineDistance(enumValue.Comments[len(enumValue.Comments)-1], enumValue.Name) > 1 {
 		comments = comments + "\n"
 	}
 
 	buf := bytes.NewBufferString(comments)
-	buf.WriteString(indent + MustFormatIdentifier(enumValue.Name, ""))
+	buf.WriteString(indent + MustFormatIdentifier(opts, enumValue.Name, ""))
 	if enumValue.ValueNode != nil {
 		equalSpace := space
-		if Align == AlignTypeAssign {
+		if opts.getAlign() == AlignTypeAssign {
 			equalSpace = "\t"
 		}
-		buf.WriteString(fmt.Sprintf("%s%s%s%s", equalSpace, MustFormatKeyword(enumValue.EqualKeyword.Keyword), equalSpace, MustFormatConstValue(enumValue.ValueNode, indent, false)))
+		buf.WriteString(fmt.Sprintf("%s%s%s%s", equalSpace, MustFormatKeyword(opts, enumValue.EqualKeyword.Keyword), equalSpace, MustFormatConstValue(enumValue.ValueNode, opts, indent, false)))
 	}
 
 	buf.WriteString(annos)
 
-	if FieldLineComma == FieldLineCommaAdd {
+	if opts.getFieldLineComma() == FieldLineCommaAdd {
 		buf.WriteString(",")
-	} else if FieldLineComma == FieldLineCommaDisable {
+	} else if opts.getFieldLineComma() == FieldLineCommaDisable {
 		if enumValue.ListSeparatorKeyword != nil {
-			buf.WriteString(MustFormatKeyword(enumValue.ListSeparatorKeyword.Keyword))
+			buf.WriteString(MustFormatKeyword(opts, enumValue.ListSeparatorKeyword.Keyword))
 		}
 	}
 
-	buf.WriteString(MustFormatEndLineComments(enumValue.EndLineComments, ""))
+	buf.WriteString(MustFormatEndLineComments(opts, enumValue.EndLineComments, "", ""))
 
 	return buf.String()
 }

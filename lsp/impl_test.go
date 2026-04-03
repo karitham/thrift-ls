@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/joyme123/protocol"
+	"github.com/joyme123/thrift-ls/format"
 	"github.com/joyme123/thrift-ls/lsp/cache"
 	"github.com/joyme123/thrift-ls/lsp/memoize"
 	"github.com/stretchr/testify/assert"
@@ -33,7 +34,7 @@ struct Test {
 
 	store := &memoize.Store{}
 	cache := cache.New(store, nil)
-	srv := NewServer(cache, nil)
+	srv := NewServer(cache, nil, format.Options{})
 	err = srv.DidOpen(ctx, params)
 	assert.NoError(t, err)
 
@@ -91,7 +92,7 @@ struct Test {
 
 	store := &memoize.Store{}
 	cache := cache.New(store, nil)
-	srv := NewServer(cache, nil)
+	srv := NewServer(cache, nil, format.Options{})
 
 	err = srv.DidOpen(ctx, openParams)
 	assert.NoError(t, err)
@@ -131,7 +132,7 @@ struct Test {
         3: required string N
 }`,
 			line:           5,
-			character:     28,
+			character:      28,
 			wantLabel:      "Name",
 			wantPreselect:  true,
 			wantNewText:    "Name",
@@ -154,7 +155,7 @@ struct Test {
 
 			store := &memoize.Store{}
 			cache := cache.New(store, nil)
-			srv := NewServer(cache, nil)
+			srv := NewServer(cache, nil, format.Options{})
 			err = srv.DidOpen(ctx, openParams)
 			assert.NoError(t, err)
 
@@ -209,7 +210,7 @@ func Test_CompletionIncludeScope(t *testing.T) {
 		includeSearch []string
 	}{
 		{
-			name: "completion includes enum from included file",
+			name:        "completion includes enum from included file",
 			baseContent: `enum Name { ONE, TWO }`,
 			testContent: `include "base.thrift"
 
@@ -249,7 +250,7 @@ struct Test {
 
 			store := &memoize.Store{}
 			cache := cache.New(store, []string{"/tmp"})
-			srv := NewServer(cache, nil)
+			srv := NewServer(cache, nil, format.Options{})
 
 			err = srv.DidOpen(ctx, baseParams)
 			assert.NoError(t, err)
@@ -296,13 +297,13 @@ func Test_CompletionNoGlobalPollution(t *testing.T) {
 	ctx := context.TODO()
 
 	for _, tt := range []struct {
-		name           string
-		file1Content   string
-		file2Content   string
-		file1URI       string
-		file2URI       string
-		completionURI  string
-		notWantLabels  []string
+		name          string
+		file1Content  string
+		file2Content  string
+		file1URI      string
+		file2URI      string
+		completionURI string
+		notWantLabels []string
 	}{
 		{
 			name: "completions in file1 should not include items from file2",
@@ -353,7 +354,7 @@ struct Other {
 
 			store := &memoize.Store{}
 			cache := cache.New(store, nil)
-			srv := NewServer(cache, nil)
+			srv := NewServer(cache, nil, format.Options{})
 
 			err = srv.DidOpen(ctx, file1Params)
 			assert.NoError(t, err)
