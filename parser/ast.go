@@ -3756,9 +3756,47 @@ func (c *ConstValue) SetComments(comments []*Comment) {
 	c.Comments = comments
 }
 
-// TODO(jpf): nodes of key, value
+// Children returns child nodes for list and map const values.
+// This enables AST traversal to descend into list/map items.
 func (c *ConstValue) Children() []Node {
-	return nil
+	if c == nil {
+		return nil
+	}
+
+	switch c.TypeName {
+	case "list":
+		if c.Value == nil {
+			return nil
+		}
+		items := c.Value.([]*ConstValue)
+		nodes := make([]Node, len(items))
+		for i, item := range items {
+			nodes[i] = item
+		}
+		return nodes
+	case "map":
+		if c.Value == nil {
+			return nil
+		}
+		items := c.Value.([]*ConstValue)
+		nodes := make([]Node, len(items))
+		for i, item := range items {
+			nodes[i] = item
+		}
+		return nodes
+	case "pair":
+		// Map entries have Key and Value
+		var nodes []Node
+		if c.Key != nil {
+			nodes = append(nodes, c.Key.(*ConstValue))
+		}
+		if c.Value != nil {
+			nodes = append(nodes, c.Value.(*ConstValue))
+		}
+		return nodes
+	default:
+		return nil
+	}
 }
 
 func (c *ConstValue) Type() string {

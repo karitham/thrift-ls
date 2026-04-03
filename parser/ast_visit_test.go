@@ -70,7 +70,7 @@ enum Test {
 					Col:  44,
 				},
 			},
-			want: []string{"Document", "Struct", "Field", "ConstValue"},
+			want: []string{"Document", "Struct", "Field", "ConstValue", "ConstValue"},
 		},
 		{
 			name: "function type",
