@@ -12,7 +12,7 @@ do
 		indent=${options[0]}
 		align=${options[1]}
 		echo "indent: ${indent}, align: ${align}"
-		got=$(./bin/thriftls format -indent "${indent}" -align "${align}" tests/e2e/fields/fields.thrift)
+		got=$("$THRIFTLS_BIN" format -indent "${indent}" -align "${align}" tests/e2e/fields/fields.thrift)
 		expected=$(cat "$f")
 		if [ "$got" ==  "$expected" ];then
 			echo "pass"

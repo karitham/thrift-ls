@@ -67,6 +67,45 @@ func runCase(t *testing.T, src string, opts Options, want string) {
 	}
 }
 
+func TestFormatAnnotations(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "annotation before a service is preserved",
+			src:  "@naming.PreviouslyKnownAs{'namespace_': 'x'}\nservice Foo {\n  void bar()\n}\n",
+			want: "@naming.PreviouslyKnownAs{'namespace_': 'x'}\nservice Foo {\n  void bar()\n}\n",
+		},
+		{
+			name: "empty annotation before an enum",
+			src:  "@deprecation.Deprecated{}\nenum Status {\n  A\n  B\n}\n",
+			want: "@deprecation.Deprecated{}\nenum Status { A, B }\n",
+		},
+		{
+			name: "multiple annotations keep order",
+			src:  "@a.B{}\n@c.D{'k': 'v'}\nservice Foo {\n\n}\n",
+			want: "@a.B{}\n@c.D{'k': 'v'}\nservice Foo {\n\n}\n",
+		},
+		{
+			name: "comment and annotation before a declaration",
+			src:  "// keep me\n@naming.X{'a': 'b'}\nstruct S {}\n",
+			want: "// keep me\n@naming.X{'a': 'b'}\nstruct S {}\n",
+		},
+		{
+			name: "annotation after a blank line keeps the blank line",
+			src:  "struct A {}\n\n@naming.X{}\nservice B {\n\n}\n",
+			want: "struct A {}\n\n@naming.X{}\nservice B {\n\n}\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCase(t, tt.src, testOpts(80), tt.want)
+		})
+	}
+}
+
 func TestFormatHeaders(t *testing.T) {
 	tests := []struct {
 		name string

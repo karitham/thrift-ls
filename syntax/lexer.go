@@ -158,6 +158,7 @@ const (
 	TriviaLineComment  TriviaKind = iota // // or #
 	TriviaBlockComment                   // /* */
 	TriviaDocComment                     // /** */
+	TriviaAnnotation                     // @name{...} to end of line
 )
 
 func (k TriviaKind) String() string {
@@ -168,6 +169,8 @@ func (k TriviaKind) String() string {
 		return "block comment"
 	case TriviaDocComment:
 		return "doc comment"
+	case TriviaAnnotation:
+		return "annotation"
 	}
 	return fmt.Sprintf("TriviaKind(%d)", uint8(k))
 }
@@ -285,6 +288,11 @@ func (l *lexer) scanTrivia(prevLine int) (leading, trailing []Trivia, blankLines
 			leading, trailing = l.appendComment(leading, trailing, prevLine, l.scanBlockComment())
 		case c == '#':
 			leading, trailing = l.appendComment(leading, trailing, prevLine, l.scanLineComment())
+		case c == '@':
+			// Java-style annotations (@name{...}) are preserved as trivia,
+			// like comments, so they round-trip without being part of the
+			// grammar.
+			leading, trailing = l.appendComment(leading, trailing, prevLine, l.scanLineAnnotation())
 		default:
 			return leading, trailing, blankLines
 		}
@@ -335,6 +343,17 @@ func (l *lexer) scanLineComment() Trivia {
 		l.advanceRune()
 	}
 	return l.finishTrivia(TriviaLineComment, start)
+}
+
+// scanLineAnnotation scans an @annotation line: from '@' to the end of the
+// line, verbatim. Like line comments, the newline itself is left for the
+// whitespace scanner.
+func (l *lexer) scanLineAnnotation() Trivia {
+	start := l.pos()
+	for l.off < len(l.src) && l.src[l.off] != '\n' && l.src[l.off] != '\r' {
+		l.advanceRune()
+	}
+	return l.finishTrivia(TriviaAnnotation, start)
 }
 
 // scanBlockComment scans a /* */ or /** */ comment. /** ... */ yields a doc

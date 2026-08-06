@@ -295,6 +295,20 @@ func TestLexTrivia(t *testing.T) {
 			},
 		},
 		{
+			"annotation is leading trivia of the next declaration",
+			"@naming.PreviouslyKnownAs{'namespace_': 'x'}\nservice Foo {}",
+			[]triviaCheck{
+				{idx: 0, leading: []string{"@naming.PreviouslyKnownAs{'namespace_': 'x'}"}},
+			},
+		},
+		{
+			"annotation inside a struct body attaches to the closing brace",
+			"struct S {\n  1: string x\n  @weird\n}",
+			[]triviaCheck{
+				{idx: 7, leading: []string{"@weird"}},
+			},
+		},
+		{
 			"doc comment kind",
 			"/** doc */\nstruct S {}",
 			[]triviaCheck{
@@ -404,6 +418,8 @@ func TestLexTriviaKinds(t *testing.T) {
 		{"line", "// a\n# b\n", []TriviaKind{TriviaLineComment, TriviaLineComment}},
 		{"block and doc", "/** d */\n/* b */\n", []TriviaKind{TriviaDocComment, TriviaBlockComment}},
 		{"silly comment is doc", "/***/\n", []TriviaKind{TriviaDocComment}},
+		{"annotation", "@naming.PreviouslyKnownAs{'x': 'y'}\n", []TriviaKind{TriviaAnnotation}},
+		{"annotation with comment", "@deprecation.Deprecated{}\n// note\n", []TriviaKind{TriviaAnnotation, TriviaLineComment}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -483,7 +499,7 @@ func TestLexErrors(t *testing.T) {
 		},
 		{
 			name:      "unexpected character with recovery",
-			src:       "foo @ bar",
+			src:       "foo $ bar",
 			wantErrs:  []string{"unexpected character"},
 			wantKinds: []TokenKind{TokenIdentifier, TokenIdentifier, TokenEOF},
 		},
