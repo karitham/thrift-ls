@@ -46,10 +46,10 @@ func testOpts(width int) Options {
 	return o
 }
 
-// commaOpts returns testOpts at width with the given FieldLineComma.
-func commaOpts(width int, mode CommaMode) Options {
+// commaOpts returns testOpts at width with the given FieldSeparator.
+func commaOpts(width int, mode SeparatorMode) Options {
 	o := testOpts(width)
-	o.FieldLineComma = mode
+	o.FieldSeparator = mode
 	return o
 }
 
@@ -509,13 +509,13 @@ func TestFormatOptions(t *testing.T) {
 	}{
 		{
 			name: "comma add",
-			opts: commaOpts(30, CommaAdd),
+			opts: commaOpts(30, SeparatorComma),
 			src:  "struct S {\n  1: i32 a\n  2: string b\n}",
 			want: "struct S {\n  1: i32    a,\n  2: string b,\n}\n",
 		},
 		{
 			name: "comma remove",
-			opts: commaOpts(30, CommaRemove),
+			opts: commaOpts(30, SeparatorNone),
 			src:  "struct S {\n  1: i32 a,\n  2: string b,\n}",
 			want: "struct S {\n  1: i32    a\n  2: string b\n}\n",
 		},
@@ -646,8 +646,8 @@ func TestFormatSeparators(t *testing.T) {
 			name: "fields semicolon, functions comma",
 			opts: func() Options {
 				o := testOpts(30)
-				o.FieldLineComma = CommaSemicolon
-				o.FunctionLineComma = CommaAdd
+				o.FieldSeparator = SeparatorSemicolon
+				o.FunctionSeparator = SeparatorComma
 				return o
 			}(),
 			src:  "struct S {\n  1: i32 a\n  2: string b\n}\n\nservice F {\n  void go(1: i32 x) throws (\n    1: E err\n  )\n}",
@@ -655,7 +655,7 @@ func TestFormatSeparators(t *testing.T) {
 		},
 		{
 			name: "semicolon mode flat",
-			opts: commaOpts(80, CommaSemicolon),
+			opts: commaOpts(80, SeparatorSemicolon),
 			src:  "struct S {\n  1: i32 a\n  2: string b\n}",
 			want: "struct S { 1: i32 a; 2: string b }\n",
 		},
@@ -675,7 +675,7 @@ func TestFormatSeparators(t *testing.T) {
 			name: "function comma add forces commas on throws",
 			opts: func() Options {
 				o := testOpts(30)
-				o.FunctionLineComma = CommaAdd
+				o.FunctionSeparator = SeparatorComma
 				return o
 			}(),
 			src:  "service F {\n  void go(1: i32 x) throws (\n    1: E err\n    2: F fail\n  )\n}",
@@ -685,11 +685,66 @@ func TestFormatSeparators(t *testing.T) {
 			name: "function comma remove drops argument separators",
 			opts: func() Options {
 				o := testOpts(30)
-				o.FunctionLineComma = CommaRemove
+				o.FunctionSeparator = SeparatorNone
 				return o
 			}(),
 			src:  "service F {\n  void go(1: i32 x, 2: string y)\n}",
 			want: "service F {\n  void go(\n    1: i32    x\n    2: string y\n  )\n}\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCase(t, tt.src, tt.opts, tt.want)
+		})
+	}
+}
+
+func TestFormatAlwaysBreak(t *testing.T) {
+	tests := []struct {
+		name string
+		opts Options
+		src  string
+		want string
+	}{
+		{
+			name: "break structs forces multiline",
+			opts: func() Options {
+				o := testOpts(80)
+				o.BreakStructs = true
+				return o
+			}(),
+			src:  "struct S {\n  1: i32 a\n}",
+			want: "struct S {\n  1: i32 a\n}\n",
+		},
+		{
+			name: "break enums forces multiline",
+			opts: func() Options {
+				o := testOpts(80)
+				o.BreakEnums = true
+				return o
+			}(),
+			src:  "enum E {\n  A,\n  B\n}",
+			want: "enum E {\n  A,\n  B\n}\n",
+		},
+		{
+			name: "break structs keeps empty bodies flat",
+			opts: func() Options {
+				o := testOpts(80)
+				o.BreakStructs = true
+				return o
+			}(),
+			src:  "struct S {}",
+			want: "struct S {}\n",
+		},
+		{
+			name: "break structs does not affect enums",
+			opts: func() Options {
+				o := testOpts(80)
+				o.BreakStructs = true
+				return o
+			}(),
+			src:  "struct S {\n  1: i32 a\n}\nenum E {\n  A,\n  B\n}",
+			want: "struct S {\n  1: i32 a\n}\nenum E { A, B }\n",
 		},
 	}
 	for _, tt := range tests {

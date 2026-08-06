@@ -10,14 +10,14 @@ import (
 // fieldList formats struct-like body fields. Fields are joined with their
 // separator when the body stays on one line and with newlines otherwise; in
 // break mode each field's own trailing separator is emitted, driven by the
-// FieldLineComma option. Blank lines between fields are preserved and force
+// FieldSeparator option. Blank lines between fields are preserved and force
 // the body to break. Column alignment applies per blank-line group,
 // matching the previous formatter.
 func (f *formatter) fieldList(fields []*syntax.Field, bodyID int) doc.Doc {
 	var parts []doc.Doc
 	for i, field := range fields {
 		if i > 0 {
-			parts = append(parts, fieldSep(fields[i-1].Sep, f.opts.FieldLineComma))
+			parts = append(parts, fieldSep(fields[i-1].Sep, f.opts.FieldSeparator))
 			if f.blankBefore(field) >= 1 {
 				parts = append(parts, doc.HardLine)
 			}
@@ -31,20 +31,20 @@ func (f *formatter) fieldList(fields []*syntax.Field, bodyID int) doc.Doc {
 // enclosing group breaks, otherwise the separator text — per-field when
 // preserving (each item keeps its own trailing separator), or a single
 // forced separator per the comma mode.
-func fieldSep(prevSep syntax.TokenKind, mode CommaMode) doc.Doc {
+func fieldSep(prevSep syntax.TokenKind, mode SeparatorMode) doc.Doc {
 	return doc.IfBreak(doc.Line, doc.Concat{doc.Text(sepText(prevSep, mode)), doc.Line})
 }
 
 // sepText is the separator text between two flat list items: each item's
 // own trailing separator when preserving, or a forced separator per the
 // comma mode.
-func sepText(prevSep syntax.TokenKind, mode CommaMode) string {
+func sepText(prevSep syntax.TokenKind, mode SeparatorMode) string {
 	switch mode {
-	case CommaAdd:
+	case SeparatorComma:
 		return ","
-	case CommaSemicolon:
+	case SeparatorSemicolon:
 		return ";"
-	case CommaRemove:
+	case SeparatorNone:
 		return ""
 	}
 	switch prevSep {
@@ -61,7 +61,7 @@ func (f *formatter) enumValueList(values []*syntax.EnumValue, bodyID int) doc.Do
 	var parts []doc.Doc
 	for i, value := range values {
 		if i > 0 {
-			parts = append(parts, fieldSep(values[i-1].Sep, f.opts.FieldLineComma))
+			parts = append(parts, fieldSep(values[i-1].Sep, f.opts.FieldSeparator))
 			if f.blankBefore(value) >= 1 {
 				parts = append(parts, doc.HardLine)
 			}
@@ -158,7 +158,7 @@ func (f *formatter) field(v *syntax.Field, align *columnAlign, bodyID int) doc.D
 	content := f.fieldContent(v, align, false)
 	if bodyID != 0 {
 		content = doc.IfBreakFor(
-			doc.Concat{f.fieldContent(v, align, true), trailingSep(v.Sep, f.opts.FieldLineComma)},
+			doc.Concat{f.fieldContent(v, align, true), trailingSep(v.Sep, f.opts.FieldSeparator)},
 			content,
 			bodyID,
 		)
@@ -227,7 +227,7 @@ func (f *formatter) enumValue(v *syntax.EnumValue, align *columnAlign, bodyID in
 	content := f.enumValueContent(v, align, false)
 	if bodyID != 0 {
 		content = doc.IfBreakFor(
-			doc.Concat{f.enumValueContent(v, align, true), trailingSep(v.Sep, f.opts.FieldLineComma)},
+			doc.Concat{f.enumValueContent(v, align, true), trailingSep(v.Sep, f.opts.FieldSeparator)},
 			content,
 			bodyID,
 		)
@@ -257,13 +257,13 @@ func (f *formatter) enumValueContent(v *syntax.EnumValue, align *columnAlign, pa
 // trailingSep returns the trailing separator for the given original
 // separator, per the comma mode: always a comma or semicolon when forcing,
 // nothing when removing, the original separator when preserving.
-func trailingSep(sep syntax.TokenKind, mode CommaMode) doc.Doc {
+func trailingSep(sep syntax.TokenKind, mode SeparatorMode) doc.Doc {
 	switch mode {
-	case CommaAdd:
+	case SeparatorComma:
 		return doc.Text(",")
-	case CommaSemicolon:
+	case SeparatorSemicolon:
 		return doc.Text(";")
-	case CommaRemove:
+	case SeparatorNone:
 		return doc.Concat{}
 	default:
 		switch sep {

@@ -94,12 +94,20 @@ func formatFlags() []cli.Flag {
 			Usage: `align fields: "field", "assign", or "disable"`,
 		},
 		&cli.StringFlag{
-			Name:  "fieldLineComma",
-			Usage: `struct/union/exception field separators: "add", "remove", "semicolon", or "disable" to keep as written`,
+			Name:  "field-separator",
+			Usage: `struct/enum field separators: "add", "remove", "semicolon", or "disable" to keep as written`,
 		},
 		&cli.StringFlag{
-			Name:  "functionLineComma",
+			Name:  "function-separator",
 			Usage: `service argument and throws separators: "add", "remove", "semicolon", or "disable" to keep as written`,
+		},
+		&cli.BoolFlag{
+			Name:  "break-structs",
+			Usage: "always break struct, union, and exception bodies onto multiple lines",
+		},
+		&cli.BoolFlag{
+			Name:  "break-enums",
+			Usage: "always break enum bodies onto multiple lines",
 		},
 		&cli.StringFlag{
 			Name:  "config",
@@ -189,13 +197,27 @@ func formatPatch(cmd *cli.Command) (options.Patch, error) {
 		v := cmd.String("align")
 		p.Align = &v
 	}
-	if cmd.IsSet("fieldLineComma") {
-		v := cmd.String("fieldLineComma")
-		p.FieldLineComma = &v
+	if cmd.IsSet("field-separator") {
+		v := cmd.String("field-separator")
+		p.Separators = &options.Separators{Fields: &v}
 	}
-	if cmd.IsSet("functionLineComma") {
-		v := cmd.String("functionLineComma")
-		p.FunctionLineComma = &v
+	if cmd.IsSet("function-separator") {
+		v := cmd.String("function-separator")
+		if p.Separators == nil {
+			p.Separators = &options.Separators{}
+		}
+		p.Separators.Functions = &v
+	}
+	if cmd.IsSet("break-structs") {
+		v := cmd.Bool("break-structs")
+		p.Break = &options.Break{Structs: &v}
+	}
+	if cmd.IsSet("break-enums") {
+		v := cmd.Bool("break-enums")
+		if p.Break == nil {
+			p.Break = &options.Break{}
+		}
+		p.Break.Enums = &v
 	}
 	if paths := cmd.StringSlice("I"); len(paths) > 0 {
 		p.IncludePaths = &paths

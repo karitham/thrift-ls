@@ -36,12 +36,17 @@ func (f *formatter) bracedBody(fields []*syntax.Field) doc.Doc {
 		return doc.Text(" {}")
 	}
 	bodyID := f.id()
-	return doc.GroupID(bodyID, doc.Concat{
+	content := doc.Concat{
 		doc.Text(" {"),
 		doc.Indent(doc.Concat{doc.Line, f.fieldList(fields, bodyID)}),
 		doc.IfBreak(doc.SoftLine, doc.Text(" ")),
 		doc.Text("}"),
-	})
+	}
+	if f.opts.BreakStructs {
+		// BreakParent inside the group forces it to the broken layout.
+		content = doc.Concat{doc.BreakParent, content}
+	}
+	return doc.GroupID(bodyID, content)
 }
 
 // bracedEnumBody is bracedBody for enum values.
@@ -50,12 +55,16 @@ func (f *formatter) bracedEnumBody(values []*syntax.EnumValue) doc.Doc {
 		return doc.Text(" {}")
 	}
 	bodyID := f.id()
-	return doc.GroupID(bodyID, doc.Concat{
+	content := doc.Concat{
 		doc.Text(" {"),
 		doc.Indent(doc.Concat{doc.Line, f.enumValueList(values, bodyID)}),
 		doc.IfBreak(doc.SoftLine, doc.Text(" ")),
 		doc.Text("}"),
-	})
+	}
+	if f.opts.BreakEnums {
+		content = doc.Concat{doc.BreakParent, content}
+	}
+	return doc.GroupID(bodyID, content)
 }
 
 // service formats a service declaration. The body is always multiline:
@@ -167,13 +176,13 @@ func (f *formatter) functionFlat(v *syntax.Function, throwsBroken bool) doc.Doc 
 
 // flatFieldsJoin joins fields with their separators on one line: each
 // field's own separator when preserving, or a single forced separator per
-// the FunctionLineComma mode.
+// the FunctionSeparator mode.
 func (f *formatter) flatFieldsJoin(fields []*syntax.Field) doc.Doc {
 	parts := make([]doc.Doc, 0, len(fields))
 	for i, field := range fields {
 		if i > 0 {
 			parts = append(parts, doc.Concat{
-				doc.Text(sepText(fields[i-1].Sep, f.opts.FunctionLineComma)),
+				doc.Text(sepText(fields[i-1].Sep, f.opts.FunctionSeparator)),
 				doc.Line,
 			})
 		}
@@ -197,7 +206,7 @@ func (f *formatter) functionBrokenArgs(v *syntax.Function) doc.Doc {
 }
 
 // brokenFields renders fields one per line, each with its trailing
-// separator per the FieldLineComma option. Comments and blank lines inside
+// separator per the FieldSeparator option. Comments and blank lines inside
 // the list are preserved.
 func (f *formatter) brokenFields(fields []*syntax.Field) doc.Doc {
 	var parts []doc.Doc
@@ -210,7 +219,7 @@ func (f *formatter) brokenFields(fields []*syntax.Field) doc.Doc {
 		}
 		content := doc.Concat{
 			f.fieldContent(field, f.alignmentFor(fields, i), true),
-			trailingSep(field.Sep, f.opts.FunctionLineComma),
+			trailingSep(field.Sep, f.opts.FunctionSeparator),
 		}
 		fieldDoc := append(f.leadingComments(field), content)
 		fieldDoc = append(fieldDoc, f.trailingComments(field)...)

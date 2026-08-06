@@ -77,8 +77,10 @@ Formatting flags:
 | `--printWidth`        | Target line width (default 80)                                                                     |
 | `--indent`            | Indentation: a literal like `"  "` or `"\t"`, a number like `8`, or a legacy spec like `"2spaces"` |
 | `--align`             | `field`, `assign`, or `disable`                                                                    |
-| `--fieldLineComma`    | Struct/enum field separators: `add`, `remove`, `semicolon`, or `disable` (keep as written)         |
-| `--functionLineComma` | Service arg/throws separators: `add`, `remove`, `semicolon`, or `disable` (keep as written)        |
+| `--field-separator`   | Struct/enum field separators: `add`, `remove`, `semicolon`, or `disable` (keep as written)         |
+| `--function-separator`| Service arg/throws separators: `add`, `remove`, `semicolon`, or `disable` (keep as written)        |
+| `--break-structs`     | Always break struct/union/exception bodies onto multiple lines                                      |
+| `--break-enums`       | Always break enum bodies onto multiple lines                                                        |
 | `--config`            | Path to a `thriftls.json` config file                                                              |
 | `-I`                  | Additional include path, like the thrift compiler's `-I` (repeatable)                              |
 
@@ -96,7 +98,14 @@ the file being formatted or the workspace root (like Biome). Set the
   "indent": "  ",
   "tabWidth": 4,
   "align": "field",
-  "fieldLineComma": "disable",
+  "separators": {
+    "fields": "semicolon",
+    "functions": "add"
+  },
+  "break": {
+    "structs": true,
+    "enums": true
+  },
   "includePaths": ["/path/to/base"],
   "logLevel": 3
 }
@@ -131,19 +140,19 @@ Controls column alignment of struct/union/exception fields and enum values.
 - `assign`: Align the `=` sign for default values
 - `disable`: No alignment
 
-### fieldLineComma
+### separators
 
-Controls trailing separators on struct/union/exception fields and enum values.
+Controls trailing separators for the two field contexts independently.
+
+`separators.fields` — struct/union/exception fields and enum values:
 
 - `disable`: Keep as written (default)
 - `add`: Always add trailing commas
 - `semicolon`: Always add trailing semicolons
 - `remove`: Remove trailing separators
 
-### functionLineComma
-
-Controls trailing separators on service arguments and throws entries,
-independently of `fieldLineComma`.
+`separators.functions` — service arguments and throws entries, with the
+same values:
 
 - `disable`: Keep as written (default)
 - `add`: Always add trailing commas
@@ -152,6 +161,16 @@ independently of `fieldLineComma`.
 
 Broken (multiline) argument and throws blocks are column-aligned like
 struct fields, controlled by `align`.
+
+### break
+
+Forces layouts that would otherwise collapse to one line to stay
+multiline.
+
+- `break.structs`: Always break struct, union, and exception bodies
+- `break.enums`: Always break enum bodies
+
+Both default to `false`.
 
 ### includePaths
 

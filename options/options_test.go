@@ -105,8 +105,8 @@ func TestPatchValidate(t *testing.T) {
 		{"bad printWidth", Patch{PrintWidth: intPtr(0)}, true},
 		{"bad tabWidth", Patch{TabWidth: intPtr(-1)}, true},
 		{"bad align", Patch{Align: strPtr("sideways")}, true},
-		{"bad comma", Patch{FieldLineComma: strPtr("maybe")}, true},
-		{"preserve alias", Patch{FieldLineComma: strPtr("preserve")}, false},
+		{"bad comma", Patch{Separators: &Separators{Fields: strPtr("maybe")}}, true},
+		{"preserve alias", Patch{Separators: &Separators{Fields: strPtr("preserve")}}, false},
 		{"bad indent value", Patch{Indent: &Indent{Value: "x", Width: 1}}, true},
 	}
 	for _, tt := range tests {
@@ -132,18 +132,18 @@ func TestPatchFormatter(t *testing.T) {
 	if o.PrintWidth != 100 || o.Indent != "  " || o.TabWidth != 2 {
 		t.Errorf("got %+v", o)
 	}
-	if o.Align != formatter.AlignField || o.FieldLineComma != formatter.CommaPreserve {
+	if o.Align != formatter.AlignField || o.FieldSeparator != formatter.SeparatorPreserve {
 		t.Errorf("defaults wrong: %+v", o)
 	}
 
 	comma := "add"
 	align := "assign"
-	p = Patch{FieldLineComma: &comma, Align: &align}
+	p = Patch{Separators: &Separators{Fields: &comma}, Align: &align}
 	o, err = p.Formatter()
 	if err != nil {
 		t.Fatalf("Formatter: %v", err)
 	}
-	if o.FieldLineComma != formatter.CommaAdd || o.Align != formatter.AlignAssign {
+	if o.FieldSeparator != formatter.SeparatorComma || o.Align != formatter.AlignAssign {
 		t.Errorf("got %+v", o)
 	}
 }
@@ -210,8 +210,8 @@ func TestLoadAndEffective(t *testing.T) {
 		t.Errorf("effective printWidth = %v, want 100", p.PrintWidth)
 	}
 	// Unset config fields keep their defaults.
-	if p.FieldLineComma == nil || *p.FieldLineComma != "disable" {
-		t.Errorf("comma = %v, want default disable", p.FieldLineComma)
+	if p.Separators == nil || p.Separators.Fields == nil || *p.Separators.Fields != "disable" {
+		t.Errorf("comma = %v, want default disable", p.Separators)
 	}
 	if p.Indent == nil || p.Indent.Value != "  " {
 		t.Errorf("indent = %+v, want two spaces", p.Indent)
@@ -246,40 +246,63 @@ func TestLoadRejectsUnknownOverrideKeys(t *testing.T) {
 	}
 }
 
-// TestPatchCommaModes maps every config value to the formatter modes.
-func TestPatchCommaModes(t *testing.T) {
+// TestPatchSeparatorModes maps every config value to the formatter modes.
+func TestPatchSeparatorModes(t *testing.T) {
 	tests := []struct {
 		value    string
-		field    formatter.CommaMode
-		function formatter.CommaMode
+		field    formatter.SeparatorMode
+		function formatter.SeparatorMode
 	}{
-		{"add", formatter.CommaAdd, formatter.CommaAdd},
-		{"remove", formatter.CommaRemove, formatter.CommaRemove},
-		{"semicolon", formatter.CommaSemicolon, formatter.CommaSemicolon},
-		{"disable", formatter.CommaPreserve, formatter.CommaPreserve},
-		{"preserve", formatter.CommaPreserve, formatter.CommaPreserve},
+		{"add", formatter.SeparatorComma, formatter.SeparatorComma},
+		{"remove", formatter.SeparatorNone, formatter.SeparatorNone},
+		{"semicolon", formatter.SeparatorSemicolon, formatter.SeparatorSemicolon},
+		{"disable", formatter.SeparatorPreserve, formatter.SeparatorPreserve},
+		{"preserve", formatter.SeparatorPreserve, formatter.SeparatorPreserve},
 	}
 	for _, tt := range tests {
 		t.Run(tt.value, func(t *testing.T) {
-			p := Patch{FieldLineComma: &tt.value, FunctionLineComma: &tt.value}
+			p := Patch{Separators: &Separators{Fields: &tt.value, Functions: &tt.value}}
 			o, err := p.Formatter()
 			if err != nil {
 				t.Fatalf("Formatter: %v", err)
 			}
-			if o.FieldLineComma != tt.field || o.FunctionLineComma != tt.function {
-				t.Errorf("value %q: field=%v function=%v", tt.value, o.FieldLineComma, o.FunctionLineComma)
+			if o.FieldSeparator != tt.field || o.FunctionSeparator != tt.function {
+				t.Errorf("value %q: field=%v function=%v", tt.value, o.FieldSeparator, o.FunctionSeparator)
 			}
 		})
 	}
 
 	// The two options map independently.
 	semicolon, add := "semicolon", "add"
-	p := Patch{FieldLineComma: &semicolon, FunctionLineComma: &add}
+	p := Patch{Separators: &Separators{Fields: &semicolon, Functions: &add}}
 	o, err := p.Formatter()
 	if err != nil {
 		t.Fatalf("Formatter: %v", err)
 	}
-	if o.FieldLineComma != formatter.CommaSemicolon || o.FunctionLineComma != formatter.CommaAdd {
+	if o.FieldSeparator != formatter.SeparatorSemicolon || o.FunctionSeparator != formatter.SeparatorComma {
 		t.Errorf("independent mapping failed: %+v", o)
+	}
+}
+
+// TestPatchBreak maps the break group to the formatter options.
+func TestPatchBreak(t *testing.T) {
+	trueVal, falseVal := true, false
+
+	p := Patch{Break: &Break{Structs: &trueVal, Enums: &falseVal}}
+	o, err := p.Formatter()
+	if err != nil {
+		t.Fatalf("Formatter: %v", err)
+	}
+	if !o.BreakStructs || o.BreakEnums {
+		t.Errorf("break mapping wrong: %+v", o)
+	}
+
+	// Zero patch keeps the defaults (no forced breaks).
+	o, err = (Patch{}).Formatter()
+	if err != nil {
+		t.Fatalf("Formatter: %v", err)
+	}
+	if o.BreakStructs || o.BreakEnums {
+		t.Errorf("breaks should default to false: %+v", o)
 	}
 }

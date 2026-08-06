@@ -11,7 +11,7 @@ do
 		read -ra options <<<"$substr"
 		field_line_comma=${options[0]}
 		echo "fieldLineComma: ${field_line_comma}"
-		got=$("$THRIFTLS_BIN" format -fieldLineComma "${field_line_comma}" tests/e2e/field_line_comma/fields.thrift)
+		got=$("$THRIFTLS_BIN" format -field-separator "${field_line_comma}" tests/e2e/field_line_comma/fields.thrift)
 		expected=$(cat "$f")
 		if [ "$got" ==  "$expected" ];then
 			echo "pass"

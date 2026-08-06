@@ -13,7 +13,7 @@ do
 		align=${options[1]}
 		field_line_comma=${options[2]}
 		echo "indent: ${indent}, align: ${align}, field_line_comma: ${field_line_comma}"
-		got=$("$THRIFTLS_BIN" format -indent "${indent}" -align "${align}" -fieldLineComma "${field_line_comma}" tests/e2e/enums/enums.thrift)
+		got=$("$THRIFTLS_BIN" format -indent "${indent}" -align "${align}" -field-separator "${field_line_comma}" tests/e2e/enums/enums.thrift)
 		expected=$(cat "$f")
 		if [ "$got" ==  "$expected" ];then
 			echo "pass"

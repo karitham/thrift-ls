@@ -25,16 +25,34 @@ import (
 // ConfigFileName is the JSON config file name.
 const ConfigFileName = "thriftls.json"
 
+// Separators configures trailing separators for the two field contexts.
+type Separators struct {
+	// Fields controls separators after struct/union/exception fields and
+	// enum values.
+	Fields *string `json:"fields"`
+	// Functions controls separators after service arguments and throws
+	// entries.
+	Functions *string `json:"functions"`
+}
+
+// Break configures layouts that are forced multiline.
+type Break struct {
+	// Structs forces struct, union, and exception bodies multiline.
+	Structs *bool `json:"structs"`
+	// Enums forces enum bodies multiline.
+	Enums *bool `json:"enums"`
+}
+
 // Patch is a partial set of options; nil fields are unset.
 type Patch struct {
-	PrintWidth        *int      `json:"printWidth"`
-	Indent            *Indent   `json:"indent"`
-	TabWidth          *int      `json:"tabWidth"`
-	Align             *string   `json:"align"`
-	FieldLineComma    *string   `json:"fieldLineComma"`
-	FunctionLineComma *string   `json:"functionLineComma"`
-	IncludePaths      *[]string `json:"includePaths"`
-	LogLevel          *int      `json:"logLevel"`
+	PrintWidth   *int        `json:"printWidth"`
+	Indent       *Indent     `json:"indent"`
+	TabWidth     *int        `json:"tabWidth"`
+	Align        *string     `json:"align"`
+	Separators   *Separators `json:"separators"`
+	Break        *Break      `json:"break"`
+	IncludePaths *[]string   `json:"includePaths"`
+	LogLevel     *int        `json:"logLevel"`
 }
 
 // Apply overlays p onto base: every set field of p replaces the
@@ -53,11 +71,27 @@ func (p Patch) Apply(base Patch) Patch {
 	if p.Align != nil {
 		out.Align = p.Align
 	}
-	if p.FieldLineComma != nil {
-		out.FieldLineComma = p.FieldLineComma
+	if p.Separators != nil {
+		if out.Separators == nil {
+			out.Separators = &Separators{}
+		}
+		if p.Separators.Fields != nil {
+			out.Separators.Fields = p.Separators.Fields
+		}
+		if p.Separators.Functions != nil {
+			out.Separators.Functions = p.Separators.Functions
+		}
 	}
-	if p.FunctionLineComma != nil {
-		out.FunctionLineComma = p.FunctionLineComma
+	if p.Break != nil {
+		if out.Break == nil {
+			out.Break = &Break{}
+		}
+		if p.Break.Structs != nil {
+			out.Break.Structs = p.Break.Structs
+		}
+		if p.Break.Enums != nil {
+			out.Break.Enums = p.Break.Enums
+		}
 	}
 	if p.IncludePaths != nil {
 		out.IncludePaths = p.IncludePaths
@@ -74,13 +108,13 @@ func Default() Patch {
 	indent := Indent{Value: "    ", Width: 4}
 	tabWidth := 4
 	align := "field"
-	comma := "disable"
+	separators := Separators{Fields: new("disable"), Functions: new("disable")}
 	return Patch{
-		PrintWidth:     &printWidth,
-		Indent:         &indent,
-		TabWidth:       &tabWidth,
-		Align:          &align,
-		FieldLineComma: &comma,
+		PrintWidth: &printWidth,
+		Indent:     &indent,
+		TabWidth:   &tabWidth,
+		Align:      &align,
+		Separators: &separators,
 	}
 }
 
@@ -95,11 +129,18 @@ func (p Patch) Validate() error {
 	if p.Align != nil && !oneOf(*p.Align, "field", "assign", "disable") {
 		return fmt.Errorf("align must be one of \"field\", \"assign\", \"disable\", got %q", *p.Align)
 	}
-	if p.FieldLineComma != nil && !oneOf(*p.FieldLineComma, "add", "remove", "semicolon", "disable", "preserve") {
-		return fmt.Errorf("fieldLineComma must be one of \"add\", \"remove\", \"semicolon\", \"disable\" (keep as written), got %q", *p.FieldLineComma)
-	}
-	if p.FunctionLineComma != nil && !oneOf(*p.FunctionLineComma, "add", "remove", "semicolon", "disable", "preserve") {
-		return fmt.Errorf("functionLineComma must be one of \"add\", \"remove\", \"semicolon\", \"disable\" (keep as written), got %q", *p.FunctionLineComma)
+	if p.Separators != nil {
+		for _, v := range []struct {
+			name  string
+			value *string
+		}{
+			{"separators.fields", p.Separators.Fields},
+			{"separators.functions", p.Separators.Functions},
+		} {
+			if v.value != nil && !oneOf(*v.value, "add", "remove", "semicolon", "disable", "preserve") {
+				return fmt.Errorf("%s must be one of \"add\", \"remove\", \"semicolon\", \"disable\" (keep as written), got %q", v.name, *v.value)
+			}
+		}
 	}
 	if p.Indent != nil {
 		if p.Indent.Width <= 0 || !isWhitespaceOnly(p.Indent.Value) {
@@ -139,27 +180,37 @@ func (p Patch) Formatter() (formatter.Options, error) {
 			o.Align = formatter.AlignDisable
 		}
 	}
-	if p.FieldLineComma != nil {
-		o.FieldLineComma = commaMode(*p.FieldLineComma)
+	if p.Separators != nil {
+		if p.Separators.Fields != nil {
+			o.FieldSeparator = separatorMode(*p.Separators.Fields)
+		}
+		if p.Separators.Functions != nil {
+			o.FunctionSeparator = separatorMode(*p.Separators.Functions)
+		}
 	}
-	if p.FunctionLineComma != nil {
-		o.FunctionLineComma = commaMode(*p.FunctionLineComma)
+	if p.Break != nil {
+		if p.Break.Structs != nil {
+			o.BreakStructs = *p.Break.Structs
+		}
+		if p.Break.Enums != nil {
+			o.BreakEnums = *p.Break.Enums
+		}
 	}
 	return o, nil
 }
 
-// commaMode maps a config value to a formatter comma mode. The value is
-// validated before this is called.
-func commaMode(s string) formatter.CommaMode {
+// separatorMode maps a config value to a formatter separator mode. The
+// value is validated before this is called.
+func separatorMode(s string) formatter.SeparatorMode {
 	switch s {
 	case "add":
-		return formatter.CommaAdd
+		return formatter.SeparatorComma
 	case "remove":
-		return formatter.CommaRemove
+		return formatter.SeparatorNone
 	case "semicolon":
-		return formatter.CommaSemicolon
+		return formatter.SeparatorSemicolon
 	default: // "disable", "preserve"
-		return formatter.CommaPreserve
+		return formatter.SeparatorPreserve
 	}
 }
 

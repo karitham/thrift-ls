@@ -29,20 +29,20 @@ const (
 	AlignDisable
 )
 
-// CommaMode controls trailing separators after fields, enum values, and
+// SeparatorMode controls trailing separators after fields, enum values, and
 // function signatures.
-type CommaMode uint8
+type SeparatorMode uint8
 
 const (
-	// CommaPreserve keeps the original separators as written (',', ';',
+	// SeparatorPreserve keeps the original separators as written (',', ';',
 	// or none).
-	CommaPreserve CommaMode = iota
-	// CommaAdd adds a trailing comma everywhere.
-	CommaAdd
-	// CommaSemicolon adds a trailing semicolon everywhere.
-	CommaSemicolon
-	// CommaRemove removes all trailing separators.
-	CommaRemove
+	SeparatorPreserve SeparatorMode = iota
+	// SeparatorComma adds a trailing comma everywhere.
+	SeparatorComma
+	// SeparatorSemicolon adds a trailing semicolon everywhere.
+	SeparatorSemicolon
+	// SeparatorNone removes all trailing separators.
+	SeparatorNone
 )
 
 // Options controls formatting behavior. Zero values mean defaults.
@@ -56,13 +56,19 @@ type Options struct {
 	TabWidth int
 	// Align controls column alignment (default AlignField).
 	Align AlignMode
-	// FieldLineComma controls trailing separators after
+	// FieldSeparator controls trailing separators after
 	// struct/union/exception fields and enum values (default
-	// CommaPreserve).
-	FieldLineComma CommaMode
-	// FunctionLineComma controls trailing separators after service
-	// arguments and throws entries (default CommaPreserve).
-	FunctionLineComma CommaMode
+	// SeparatorPreserve).
+	FieldSeparator SeparatorMode
+	// FunctionSeparator controls trailing separators after service
+	// arguments and throws entries (default SeparatorPreserve).
+	FunctionSeparator SeparatorMode
+	// BreakStructs forces struct, union, and exception bodies to the
+	// multiline layout, even when they fit on one line.
+	BreakStructs bool
+	// BreakEnums forces enum bodies to the multiline layout, even when
+	// they fit on one line.
+	BreakEnums bool
 	// NoTrailingNewline suppresses the final newline that is otherwise
 	// appended to the formatted output.
 	NoTrailingNewline bool
@@ -75,7 +81,7 @@ func DefaultOptions() Options {
 		Indent:         "    ",
 		TabWidth:       4,
 		Align:          AlignField,
-		FieldLineComma: CommaPreserve,
+		FieldSeparator: SeparatorPreserve,
 	}
 }
 
