@@ -3,8 +3,9 @@ package completion
 import (
 	"context"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
+	"go.lsp.dev/protocol"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
 )
 
 type Interface interface {
@@ -13,8 +14,7 @@ type Interface interface {
 
 // SemanticBasedCompletion generates completion list based on semantic. It is more precisely than token based completion
 // TODO(jpf)
-type SemanticBasedCompletion struct {
-}
+type SemanticBasedCompletion struct{}
 
 func BuildCompletionItem(candidate Candidate) *CompletionItem {
 	return &CompletionItem{

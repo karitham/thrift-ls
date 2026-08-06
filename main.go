@@ -3,201 +3,300 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
-	"math/rand"
 	"os"
 	"path/filepath"
-	"time"
+	"strings"
 
-	"github.com/joyme123/thrift-ls/format"
-	tlog "github.com/joyme123/thrift-ls/log"
-	"github.com/joyme123/thrift-ls/lsp"
-	"github.com/joyme123/thrift-ls/parser"
-	"github.com/joyme123/thrift-ls/utils/diff"
+	"github.com/urfave/cli/v3"
+
+	"github.com/karitham/thrift-ls/formatter"
+	tlog "github.com/karitham/thrift-ls/log"
+	"github.com/karitham/thrift-ls/lsp"
+	"github.com/karitham/thrift-ls/options"
+	"github.com/karitham/thrift-ls/syntax"
 
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/pkg/fakenet"
-	"gopkg.in/yaml.v2"
 )
 
-type Options struct {
-	LogLevel     int            `yaml:"logLevel"` // 1: fatal, 2: error, 3: warn, 4: info, 5: debug, 6: trace
-	IncludePaths []string       `yaml:"include_paths"`
-	Format       format.Options `yaml:"format"`
-}
-
-func main_format(opt format.Options, file string, includePaths []string) error {
-	if file == "" {
-		err := errors.New("must specified a thrift file to format")
-		fmt.Println(err)
-		return err
-	}
-
-	absFile, err := filepath.Abs(file)
-	if err != nil {
-		fmt.Println(err)
-		return err
-	}
-
-	content, err := os.ReadFile(file)
-	if err != nil {
-		fmt.Println(err)
-		return err
-	}
-
-	thrift_file := filepath.Base(file)
-	ast, err := parser.Parse(thrift_file, content)
-	if err != nil {
-		fmt.Println(err)
-		return err
-	}
-
-	formated, err := format.FormatDocumentWithValidationFull(ast.(*parser.Document), opt, includePaths, absFile)
-	if err != nil {
-		fmt.Println(err)
-		return err
-	}
-
-	if opt.Write {
-		var perms os.FileMode
-		fileInfo, err := os.Stat(file)
-		if err != nil {
-			fmt.Println(err)
-			return err
-		}
-		perms = fileInfo.Mode() // 使用原文件的权限
-
-		// overwrite
-		err = os.WriteFile(file, []byte(formated), perms)
-		if err != nil {
-			fmt.Println(err)
-			return err
-		}
-	} else {
-		if opt.Diff {
-			diffLines := diff.Diff("old", content, "new", []byte(formated))
-			fmt.Print(string(diffLines))
-		} else {
-			fmt.Println(formated)
-		}
-		return err
-	}
-
-	return nil
-
-}
-
 func main() {
-	rand.Seed(time.Now().UnixMilli())
-
-	formatter := false
-	formatFile := ""
-	flag.BoolVar(&formatter, "format", false, "use thrift-ls as a format tool")
-	flag.StringVar(&formatFile, "f", "", "file path to format")
-	formatOpts := format.Options{}
-	formatOpts.SetFlags()
-	flag.Parse()
-
-	opts := configInit(&formatOpts)
-	formatOpts = formatOpts.InitDefault()
-	tlog.Init(opts.LogLevel)
-
-	if formatter {
-		main_format(formatOpts, formatFile, opts.IncludePaths)
-		return
+	cmd := &cli.Command{
+		Name:    "thriftls",
+		Usage:   "Thrift language server and formatter",
+		Version: lsp.ServerVersion,
+		Flags:   lspFlags(),
+		// No subcommand: run the language server.
+		Action: lspAction,
+		Commands: []*cli.Command{
+			{
+				Name:   "lsp",
+				Usage:  "run the language server on stdio",
+				Flags:  lspFlags(),
+				Action: lspAction,
+			},
+			{
+				Name:      "format",
+				Usage:     "format a thrift file",
+				ArgsUsage: "<file>",
+				Flags:     formatFlags(),
+				Action:    formatAction,
+			},
+		},
 	}
 
-	ctx := context.Background()
-	// server := &lsp.Server{}
-	// handler := protocol.ServerHandler(server, nil)
-	//
-	// streamServer := jsonrpc2.HandlerServer(handler)
-	// if err := jsonrpc2.ListenAndServe(ctx, "tcp", "127.0.0.1:8000", streamServer, 60*time.Second); err != nil {
-	// 	panic(err)
-	// }
+	if err := cmd.Run(context.Background(), os.Args); err != nil {
+		fmt.Fprintln(os.Stderr, "thriftls:", err)
+		os.Exit(1)
+	}
+}
 
-	ss := lsp.NewStreamServer(&lsp.Options{
-		IncludePaths: opts.IncludePaths,
-		Format:       formatOpts,
-	})
+// lspFlags are the flags shared by the default and lsp subcommands.
+func lspFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.IntFlag{
+			Name:  "logLevel",
+			Usage: "set log level (1 fatal .. 6 trace)",
+		},
+		&cli.StringFlag{
+			Name:  "config",
+			Usage: "path to a thriftls.json config file",
+		},
+		&cli.StringSliceFlag{
+			Name:  "I",
+			Usage: "additional include path, like the thrift compiler (repeatable)",
+		},
+	}
+}
+
+// formatFlags are the flags of the format subcommand.
+func formatFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.BoolFlag{
+			Name:  "w",
+			Usage: "overwrite the file with the formatted result",
+		},
+		&cli.BoolFlag{
+			Name:  "d",
+			Usage: "print a diff instead of the formatted result",
+		},
+		&cli.IntFlag{
+			Name:  "printWidth",
+			Usage: "target line width (default 80)",
+		},
+		&cli.StringFlag{
+			Name:  "indent",
+			Usage: `indentation: a literal like "  " or "\t", a number like 8, or a legacy spec like "2spaces"`,
+		},
+		&cli.StringFlag{
+			Name:  "align",
+			Usage: `align fields: "field", "assign", or "disable"`,
+		},
+		&cli.StringFlag{
+			Name:  "fieldLineComma",
+			Usage: `trailing commas: "add", "remove", or "disable" to keep as written`,
+		},
+		&cli.StringFlag{
+			Name:  "config",
+			Usage: "path to a thriftls.json config file",
+		},
+		&cli.StringSliceFlag{
+			Name:  "I",
+			Usage: "additional include path, like the thrift compiler (repeatable)",
+		},
+	}
+}
+
+// lspAction serves the language server on stdio.
+func lspAction(ctx context.Context, cmd *cli.Command) error {
+	cfg := loadConfig(cmd.String("config"), ".")
+	patch := options.Effective(cfg)
+	cli, err := lspPatch(cmd)
+	if err != nil {
+		return err
+	}
+	patch = cli.Apply(patch)
+
+	logLevelValue := 3
+	if patch.LogLevel != nil {
+		logLevelValue = *patch.LogLevel
+	}
+	tlog.Init(logLevelValue)
+
+	fopts, err := patch.Formatter()
+	if err != nil {
+		return err
+	}
+
+	lspOpts := &lsp.Options{
+		IncludePaths: derefStrings(patch.IncludePaths),
+		Format:       fopts,
+	}
+
+	ss := lsp.NewStreamServer(lspOpts)
 	stream := jsonrpc2.NewStream(fakenet.NewConn("stdio", os.Stdin, os.Stdout))
 	conn := jsonrpc2.NewConn(stream)
-	err := ss.ServeStream(ctx, conn)
+	err = ss.ServeStream(ctx, conn)
 	if errors.Is(err, io.EOF) {
-		return
+		return nil
 	}
-	panic(err)
+	return err
 }
 
-// defaultConfigPath returns the default config file path:
-// THRIFTLS_CONFIG env var if set, otherwise ~/.thriftls/config.yaml
-func defaultConfigPath() string {
-	if configFile := os.Getenv("THRIFTLS_CONFIG"); configFile != "" {
-		return configFile
-	}
-	dir, err := os.UserHomeDir()
+// formatAction formats a single thrift file.
+func formatAction(ctx context.Context, cmd *cli.Command) error {
+	file := cmd.Args().First()
+	cli, err := formatPatch(cmd)
 	if err != nil {
-		dir = os.TempDir()
+		return err
 	}
-	return dir + "/.thriftls/config.yaml"
+	return formatFile(file, cmd.Bool("w"), cmd.Bool("d"), cmd.String("config"), cli)
 }
 
-// readConfig reads and parses the config file at the given path.
-func readConfig(path string) (*Options, error) {
-	opts := &Options{}
-	data, err := os.ReadFile(path)
+// lspPatch builds an options patch from the explicitly set lsp flags.
+func lspPatch(cmd *cli.Command) (options.Patch, error) {
+	p := options.Patch{}
+	if cmd.IsSet("logLevel") {
+		v := cmd.Int("logLevel")
+		p.LogLevel = &v
+	}
+	if paths := cmd.StringSlice("I"); len(paths) > 0 {
+		p.IncludePaths = &paths
+	}
+	return p, nil
+}
+
+// formatPatch builds an options patch from the explicitly set format flags.
+func formatPatch(cmd *cli.Command) (options.Patch, error) {
+	p := options.Patch{}
+	if cmd.IsSet("printWidth") {
+		v := cmd.Int("printWidth")
+		p.PrintWidth = &v
+	}
+	if cmd.IsSet("indent") {
+		ind, err := options.ParseIndentValue(cmd.String("indent"))
+		if err != nil {
+			return options.Patch{}, err
+		}
+		p.Indent = &ind
+	}
+	if cmd.IsSet("align") {
+		v := cmd.String("align")
+		p.Align = &v
+	}
+	if cmd.IsSet("fieldLineComma") {
+		v := cmd.String("fieldLineComma")
+		p.FieldLineComma = &v
+	}
+	if paths := cmd.StringSlice("I"); len(paths) > 0 {
+		p.IncludePaths = &paths
+	}
+	return p, nil
+}
+
+// loadConfig loads the explicit config path, or finds one walking up from
+// dir. A missing config is not an error.
+func loadConfig(path, dir string) *options.Patch {
+	if path == "" {
+		var err error
+		path, err = options.FindConfig(dir)
+		if err != nil {
+			fatal(err)
+		}
+	}
+	if path == "" {
+		return nil
+	}
+	cfg, err := options.Load(path)
 	if err != nil {
-		return nil, err
+		fatal(err)
 	}
-	if err := yaml.Unmarshal(data, opts); err != nil {
-		return nil, err
-	}
-	return opts, nil
+	return cfg
 }
 
-func configInit(formatOpts *format.Options) *Options {
-	opts := &Options{}
+func fatal(err error) {
+	fmt.Fprintln(os.Stderr, "thriftls:", err)
+	os.Exit(1)
+}
 
-	logLevel := -1
-	flag.IntVar(&logLevel, "logLevel", -1, "set log level")
-	flag.Parse()
-
-	configFile := defaultConfigPath()
-	if cfg, err := readConfig(configFile); err == nil {
-		opts = cfg
-	}
-
-	if logLevel >= 0 {
-		opts.LogLevel = logLevel // flag can override config file
-	}
-	if opts.LogLevel == 0 {
-		opts.LogLevel = 3
+// formatFile formats a single file: read, parse, resolve options, format,
+// self-validate, and write, diff, or print.
+func formatFile(file string, write, diffOut bool, configPath string, cli options.Patch) error {
+	if file == "" {
+		return errors.New("must specify a thrift file to format, e.g. thriftls format file.thrift")
 	}
 
-	// Track which flags were explicitly set via CLI
-	cliFlags := make(map[string]bool)
-	flag.Visit(func(f *flag.Flag) {
-		cliFlags[f.Name] = true
-	})
-
-	// Merge format config values (CLI > config > defaults)
-	// Only use config value if CLI flag wasn't explicitly set
-	if !cliFlags["indent"] && opts.Format.Indent != "" {
-		formatOpts.Indent = opts.Format.Indent
+	src, err := os.ReadFile(file)
+	if err != nil {
+		return err
 	}
-	if !cliFlags["align"] && opts.Format.Align != "" {
-		formatOpts.Align = opts.Format.Align
-	}
-	if !cliFlags["fieldLineComma"] && opts.Format.FieldLineComma != "" {
-		formatOpts.FieldLineComma = opts.Format.FieldLineComma
-	}
-	// TrailingNewline is a boolean, so we need to check if the CLI flag was set
-	// The default is false, so we only override if config is true and CLI wasn't set
-	if !cliFlags["trailingNewline"] && opts.Format.TrailingNewline {
-		formatOpts.TrailingNewline = opts.Format.TrailingNewline
+	absFile, err := filepath.Abs(file)
+	if err != nil {
+		return err
 	}
 
-	return opts
+	cfg := loadConfig(configPath, filepath.Dir(absFile))
+	patch := options.Effective(cfg)
+	patch = cli.Apply(patch)
+	fopts, err := patch.Formatter()
+	if err != nil {
+		return err
+	}
+
+	doc, errs := syntax.Parse(src)
+	if parseErrors(errs) {
+		return fmt.Errorf("%s: file does not parse:\n%s", file, formatErrors(errs))
+	}
+
+	out, err := formatter.Format(doc, fopts)
+	if err != nil {
+		return fmt.Errorf("%s: %w", file, err)
+	}
+
+	// Self-validation: the formatted output must parse cleanly.
+	if _, errs := syntax.Parse([]byte(out)); parseErrors(errs) {
+		return fmt.Errorf("%s: formatting produced invalid output", file)
+	}
+
+	switch {
+	case write:
+		perms := os.FileMode(0o644)
+		if info, err := os.Stat(file); err == nil {
+			perms = info.Mode()
+		}
+		return os.WriteFile(file, []byte(out), perms)
+	case diffOut:
+		fmt.Print(string(Diff("old", src, "new", []byte(out))))
+		return nil
+	default:
+		fmt.Print(out)
+		return nil
+	}
+}
+
+func parseErrors(errs []syntax.Error) bool {
+	for _, e := range errs {
+		if e.Severity == syntax.SeverityError {
+			return true
+		}
+	}
+	return false
+}
+
+func formatErrors(errs []syntax.Error) string {
+	var b strings.Builder
+	for _, e := range errs {
+		if e.Severity == syntax.SeverityError {
+			fmt.Fprintf(&b, "  %s\n", e)
+		}
+	}
+	return b.String()
+}
+
+func derefStrings(p *[]string) []string {
+	if p == nil {
+		return nil
+	}
+	return *p
 }

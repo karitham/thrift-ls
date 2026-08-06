@@ -2,184 +2,100 @@ package codejump
 
 import (
 	"context"
-	"errors"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/format"
-	"github.com/joyme123/thrift-ls/lsp/cache"
-	"github.com/joyme123/thrift-ls/lsp/lsputils"
-	"github.com/joyme123/thrift-ls/lsp/types"
-	"github.com/joyme123/thrift-ls/parser"
-	log "github.com/sirupsen/logrus"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/formatter"
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
+// Hover returns the formatted definition under the cursor: a type
+// reference, a constant value identifier, or a service reference.
 func Hover(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) (res string, err error) {
-	pf, err := ss.Parse(ctx, file)
+	pf, target, err := resolveTarget(ctx, ss, file, pos)
 	if err != nil {
-		return
+		return res, err
 	}
 
-	if pf.AST() == nil {
-		err = errors.New("parse ast failed")
-		return
+	switch target.kind {
+	case TargetTypeName:
+		return hoverDefinition(ctx, ss, file, pf, target)
+	case TargetConstValue:
+		return hoverConstValue(ctx, ss, file, pf, target)
+	case TargetService:
+		return hoverService(ctx, ss, file, pf, target)
 	}
-
-	astPos, err := pf.Mapper().LSPPosToParserPosition(types.Position{Line: pos.Line, Character: pos.Character})
-	if err != nil {
-		return
-	}
-	nodePath := parser.SearchNodePathByPosition(pf.AST(), astPos)
-	targetNode := nodePath[len(nodePath)-1]
-
-	log.Info("node type:", targetNode.Type())
-
-	switch targetNode.Type() {
-	case "TypeName":
-		return hoverDefinition(ctx, ss, file, pf.AST(), targetNode)
-	case "ConstValue":
-		return hoverConstValue(ctx, ss, file, pf.AST(), targetNode)
-	case "IdentifierName": // service extends
-		return hoverService(ctx, ss, file, pf.AST(), targetNode)
-	}
-
-	return
+	return res, err
 }
 
-func hoverService(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *parser.Document, targetNode parser.Node) (string, error) {
-	identifierName := targetNode.(*parser.IdentifierName)
-	name := identifierName.Text
-	include, identifier := lsputils.ParseIdent(file, ast.Includes, name)
-	var astFile uri.URI
-	if include == "" {
-		astFile = file
-	} else {
-		resolver := ss.Resolver()
-		path := resolver.GetIncludePath(ast, include)
-		if path == "" { // doesn't match any include path
-			return "", nil
-		}
-		astFile = resolver.ResolveInclude(file, path)
-	}
+// formatNode renders a definition node as hover text with default options.
+func formatNode(doc *syntax.Document, node syntax.Node) (string, error) {
+	return formatter.FormatNode(doc, node, formatter.DefaultOptions())
+}
 
-	// now we can find destinate definition in `dstAst` by `identifier`
-	dstAst, err := ss.Parse(ctx, astFile)
+func hoverService(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) (string, error) {
+	astFile, id, err := FindServiceDefinition(ctx, ss, file, pf.AST(), target.identifier())
+	if err != nil || id == nil {
+		return "", err
+	}
+	dstAst, err := parseDefinitionFile(ctx, ss, astFile)
 	if err != nil {
 		return "", err
 	}
-
-	if len(dstAst.Errors()) > 0 {
-		log.Errorf("parse error: %v", dstAst.Errors())
-	}
-
-	dstService := GetServiceNode(dstAst.AST(), identifier)
-	if dstService != nil {
-		// Use default options for hover display
-		opts := format.Options{}
-		return format.MustFormatService(dstService, opts), nil
-	}
-
-	return "", nil
-}
-
-func hoverDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *parser.Document, targetNode parser.Node) (string, error) {
-	typeName := targetNode.(*parser.TypeName)
-	typeV := typeName.Name
-	if IsBasicType(typeV) {
+	svc := GetServiceNode(dstAst, id.Text)
+	if svc == nil {
 		return "", nil
 	}
-
-	include, identifier := lsputils.ParseIdent(file, ast.Includes, typeV)
-	var astFile uri.URI
-	if include == "" {
-		astFile = file
-	} else {
-		resolver := ss.Resolver()
-		path := resolver.GetIncludePath(ast, include)
-		if path == "" { // doesn't match any include path
-			return "", nil
-		}
-		astFile = resolver.ResolveInclude(file, path)
-	}
-
-	// now we can find destinate definition in `dstAst` by `identifier`
-	dstAst, err := ss.Parse(ctx, astFile)
-	if err != nil {
-		return "", err
-	}
-
-	if len(dstAst.Errors()) > 0 {
-		log.Errorf("parse error: %v", dstAst.Errors())
-	}
-
-	// Use default options for hover display
-	opts := format.Options{}
-
-	// struct, exception, enum or union
-	dstException := GetExceptionNode(dstAst.AST(), identifier)
-	if dstException != nil {
-		return format.MustFormatException(dstException, opts), nil
-	}
-	dstStruct := GetStructNode(dstAst.AST(), identifier)
-	if dstStruct != nil {
-		return format.MustFormatStruct(dstStruct, opts), nil
-	}
-	dstEnum := GetEnumNode(dstAst.AST(), identifier)
-	if dstEnum != nil {
-		return format.MustFormatEnum(dstEnum, opts), nil
-	}
-	dstUnion := GetUnionNode(dstAst.AST(), identifier)
-	if dstUnion != nil {
-		return format.MustFormatUnion(dstUnion, opts), nil
-	}
-	dstTypedef := GetTypedefNode(dstAst.AST(), identifier)
-	if dstTypedef != nil {
-		return format.MustFormatTypedef(dstTypedef, opts), nil
-	}
-
-	return "", nil
+	return formatNode(dstAst, svc)
 }
 
-func hoverConstValue(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *parser.Document, targetNode parser.Node) (string, error) {
-	constValue := targetNode.(*parser.ConstValue)
-	if constValue.TypeName != "identifier" {
-		return "", nil
+func hoverDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) (string, error) {
+	ft := target.parent.(*syntax.FieldType)
+	astFile, id, kind, err := FindTypeDefinition(ctx, ss, file, pf.AST(), ft)
+	if err != nil || id == nil {
+		return "", err
 	}
-
-	include, identifier := lsputils.ParseIdent(file, ast.Includes, constValue.Value.(string))
-	var astFile uri.URI
-	if include == "" {
-		astFile = file
-	} else {
-		resolver := ss.Resolver()
-		path := resolver.GetIncludePath(ast, include)
-		if path == "" { // doesn't match any include path, maybe enum value
-			include = ""
-			identifier = constValue.Value.(string)
-			astFile = file
-		} else {
-			astFile = resolver.ResolveInclude(file, path)
-		}
-	}
-
-	// now we can find destinate definition in `dstAst` by `identifier`
-	dstAst, err := ss.Parse(ctx, astFile)
+	dstAst, err := parseDefinitionFile(ctx, ss, astFile)
 	if err != nil {
 		return "", err
 	}
 
-	// Use default options for hover display
-	opts := format.Options{}
+	var node syntax.Node
+	switch kind {
+	case DefinitionException:
+		node = GetExceptionNode(dstAst, id.Text)
+	case DefinitionStruct:
+		node = GetStructNode(dstAst, id.Text)
+	case DefinitionEnum:
+		node = GetEnumNode(dstAst, id.Text)
+	case DefinitionUnion:
+		node = GetUnionNode(dstAst, id.Text)
+	case DefinitionTypedef:
+		node = GetTypedefNode(dstAst, id.Text)
+	}
+	if node == nil {
+		return "", nil
+	}
+	return formatNode(dstAst, node)
+}
 
-	dstEnum := GetEnumNodeByEnumValue(dstAst.AST(), identifier)
-	if dstEnum != nil {
-		return format.MustFormatEnum(dstEnum, opts), nil
+func hoverConstValue(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) (string, error) {
+	astFile, id, err := FindConstValueDefinition(ctx, ss, file, pf.AST(), target.node.(*syntax.ConstValue))
+	if err != nil || id == nil {
+		return "", err
+	}
+	dstAst, err := parseDefinitionFile(ctx, ss, astFile)
+	if err != nil {
+		return "", err
 	}
 
-	dstConst := GetConstNode(dstAst.AST(), identifier)
-	if dstConst != nil {
-		return format.MustFormatConst(dstConst, opts), nil
+	if dstEnum := GetEnumNodeByEnumValue(dstAst, id.Text); dstEnum != nil {
+		return formatNode(dstAst, dstEnum)
 	}
-
+	if dstConst := GetConstNode(dstAst, id.Text); dstConst != nil {
+		return formatNode(dstAst, dstConst)
+	}
 	return "", nil
 }

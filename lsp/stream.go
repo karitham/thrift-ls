@@ -3,56 +3,50 @@ package lsp
 import (
 	"context"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/format"
-	"github.com/joyme123/thrift-ls/lsp/cache"
-	"github.com/joyme123/thrift-ls/lsp/memoize"
 	"go.lsp.dev/jsonrpc2"
-	"go.lsp.dev/pkg/event"
-	"go.uber.org/zap"
+	"go.lsp.dev/protocol"
+
+	"github.com/karitham/thrift-ls/formatter"
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/lsp/memoize"
 )
 
 type StreamServer struct {
-	logger *zap.Logger
-
 	cache      *cache.Cache
-	formatOpts format.Options
+	formatOpts formatter.Options
 }
 
 type Options struct {
 	IncludePaths []string
-	Format       format.Options
+	Format       formatter.Options
 }
 
 func NewStreamServer(opts *Options) *StreamServer {
-	logger, _ := zap.NewProduction()
-
 	store := &memoize.Store{}
 
 	return &StreamServer{
 		cache:      cache.New(store, opts.IncludePaths),
-		logger:     logger,
 		formatOpts: opts.Format,
 	}
 }
 
 func (s *StreamServer) ServeStream(ctx context.Context, conn jsonrpc2.Conn) error {
-	client := protocol.ClientDispatcher(conn, s.logger)
+	client := protocol.ClientDispatcher(conn)
 
 	server := NewServer(s.cache, client, s.formatOpts)
 	// Clients may or may not send a shutdown message. Make sure the server is
 	// shut down.
-	// TODO(rFindley): this shutdown should perhaps be on a disconnected context.
 	defer func() {
-		if err := server.Shutdown(ctx); err != nil {
-			event.Error(ctx, "error shutting down", err)
-		}
+		_ = server.Shutdown(ctx)
 	}()
+
 	ctx = protocol.WithClient(ctx, client)
 	conn.Go(ctx,
 		DebugHandler(
 			protocol.Handlers(
-				protocol.ServerHandler(server, jsonrpc2.MethodNotFoundHandler))))
+				protocol.ServerHandler(server, jsonrpc2.MethodNotFoundHandler),
+			),
+		))
 	<-conn.Done()
 	return conn.Err()
 }

@@ -3,31 +3,42 @@ package lsp
 import (
 	"context"
 	"io/fs"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
-	log "github.com/sirupsen/logrus"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
 )
 
 func (s *Server) initialize(ctx context.Context, params *protocol.InitializeParams) (result *protocol.InitializeResult, err error) {
-	rootURI := params.RootURI
-	if rootURI == "" {
-		rootURI = uri.URI(params.RootPath)
+	// Prefer WorkspaceFolders; fall back to the deprecated RootURI/RootPath
+	// fields for older clients.
+	folders := make([]uri.URI, 0, 1)
+	if wsf, ok := params.WorkspaceFolders.Get(); ok {
+		folders = make([]uri.URI, 0, len(wsf))
+		for _, ws := range wsf {
+			folders = append(folders, ws.URI)
+		}
+	}
+	if len(folders) == 0 {
+		//nolint:staticcheck // intentional handling of legacy client params
+		rootURI := params.RootURI
+		if rootURI == nil {
+			//nolint:staticcheck // intentional handling of legacy client params
+			if rootPath, ok := params.RootPath.Get(); ok {
+				r := uri.URI(rootPath)
+				rootURI = &r
+			}
+		}
+		if rootURI != nil {
+			folders = append(folders, *rootURI)
+		}
 	}
 
-	folders := make([]uri.URI, 0)
-	if rootURI != "" {
-		folders = append(folders, rootURI)
-	}
-
-	for _, ws := range params.WorkspaceFolders {
-		folders = append(folders, uri.URI(ws.URI))
-	}
-
-	log.Debugln("initialized folders: ", folders)
+	slog.Debug("initialized folders", "folders", folders)
 	if len(folders) > 0 {
 		s.session.Initialize(func() {
 			for i := range folders {
@@ -40,10 +51,10 @@ func (s *Server) initialize(ctx context.Context, params *protocol.InitializePara
 }
 
 func (s *Server) walkFoldersThriftFile(folder uri.URI) {
-	log.Debugln("walk dir 2: ", folder.Filename())
+	slog.Debug("walk dir", "folder", folder.Path())
 	// WalkDir walk files with lexical order
-	filepath.WalkDir(folder.Filename(), func(path string, d fs.DirEntry, err error) error {
-		log.Debugln("walk:", path)
+	_ = filepath.WalkDir(folder.Path(), func(path string, d fs.DirEntry, err error) error {
+		slog.Debug("walking", "path", path)
 		if err != nil {
 			return nil
 		}
@@ -57,16 +68,14 @@ func (s *Server) walkFoldersThriftFile(folder uri.URI) {
 		}
 
 		fileURI := uri.File(path)
-		log.Debugln("file path:", fileURI)
-		err = s.openFile(context.TODO(), &cache.FileChange{
+		slog.Debug("file path", "uri", fileURI)
+		if err := s.openFile(context.TODO(), &cache.FileChange{
 			URI:     fileURI,
 			Version: 0,
 			Content: []byte{},
 			From:    cache.FileChangeTypeInitialize,
-		})
-		if err != nil {
-			log.Error("openFile err:", err)
-			err = nil
+		}); err != nil {
+			slog.Error("openFile failed", "err", err)
 		}
 
 		// always return nil to continue parse
@@ -75,20 +84,23 @@ func (s *Server) walkFoldersThriftFile(folder uri.URI) {
 }
 
 func initializeResult() *protocol.InitializeResult {
+	thriftSelector := &protocol.DocumentSelector{
+		&protocol.TextDocumentFilterLanguage{Language: "thrift"},
+	}
 	res := &protocol.InitializeResult{
 		Capabilities: protocol.ServerCapabilities{
 			TextDocumentSync: &protocol.TextDocumentSyncOptions{
-				OpenClose: true,
+				OpenClose: new(true),
 				// full is easy to implement. consider to use incremental for performance
-				Change:            protocol.TextDocumentSyncKindFull,
-				WillSave:          true,
-				WillSaveWaitUntil: true,
+				Change:            new(protocol.TextDocumentSyncKindFull),
+				WillSave:          new(true),
+				WillSaveWaitUntil: new(true),
 				Save: &protocol.SaveOptions{
-					IncludeText: true,
+					IncludeText: new(true),
 				},
 			},
 			CompletionProvider: &protocol.CompletionOptions{
-				ResolveProvider: false,
+				ResolveProvider: new(false),
 				/**
 				 * The additional characters, beyond the defaults provided by the client (typically
 				 * [a-zA-Z]), that should automatically trigger a completion request. For example
@@ -106,7 +118,7 @@ func initializeResult() *protocol.InitializeResult {
 			},
 			HoverProvider: &protocol.HoverOptions{
 				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-					WorkDoneProgress: true,
+					WorkDoneProgress: new(true),
 				},
 			},
 			SignatureHelpProvider: &protocol.SignatureHelpOptions{
@@ -116,136 +128,124 @@ func initializeResult() *protocol.InitializeResult {
 			DeclarationProvider: &protocol.DeclarationRegistrationOptions{
 				DeclarationOptions: protocol.DeclarationOptions{
 					WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-						WorkDoneProgress: true,
+						WorkDoneProgress: new(true),
 					},
 				},
 				TextDocumentRegistrationOptions: protocol.TextDocumentRegistrationOptions{
-					DocumentSelector: []*protocol.DocumentFilter{
-						{
-							Language: "thrift",
-						},
-					},
+					DocumentSelector: thriftSelector,
 				},
 				StaticRegistrationOptions: protocol.StaticRegistrationOptions{
-					ID: "thriftls",
+					ID: new("thriftls"),
 				},
 			},
 			DefinitionProvider: &protocol.DefinitionOptions{
 				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-					WorkDoneProgress: true,
+					WorkDoneProgress: new(true),
 				},
 			},
 			TypeDefinitionProvider: &protocol.TypeDefinitionRegistrationOptions{
 				TextDocumentRegistrationOptions: protocol.TextDocumentRegistrationOptions{
-					DocumentSelector: []*protocol.DocumentFilter{
-						{
-							Language: "thrift",
-						},
-					},
+					DocumentSelector: thriftSelector,
 				},
 				TypeDefinitionOptions: protocol.TypeDefinitionOptions{
 					WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-						WorkDoneProgress: true,
+						WorkDoneProgress: new(true),
 					},
 				},
 				StaticRegistrationOptions: protocol.StaticRegistrationOptions{
-					ID: "thriftls",
+					ID: new("thriftls"),
 				},
 			},
 			ReferencesProvider: &protocol.ReferenceOptions{
 				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-					WorkDoneProgress: true,
+					WorkDoneProgress: new(true),
 				},
 			},
-			DocumentHighlightProvider: false,
+			DocumentHighlightProvider: protocol.Boolean(false),
 			DocumentSymbolProvider: &protocol.DocumentSymbolOptions{
 				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-					WorkDoneProgress: true,
+					WorkDoneProgress: new(true),
 				},
-				Label: "thriftls",
+				Label: new("thriftls"),
 			},
 			CodeActionProvider: &protocol.CodeActionOptions{
 				// TODO(jpf): should support code actions
 				CodeActionKinds: []protocol.CodeActionKind{},
-				ResolveProvider: false,
+				ResolveProvider: new(false),
 			},
 			CodeLensProvider: &protocol.CodeLensOptions{
-				ResolveProvider: false,
+				ResolveProvider: new(false),
 			},
 			DocumentLinkProvider: &protocol.DocumentLinkOptions{
-				ResolveProvider: false,
+				ResolveProvider: new(false),
 			},
-			ColorProvider: false,
+			ColorProvider: protocol.Boolean(false),
 			WorkspaceSymbolProvider: &protocol.WorkspaceSymbolOptions{
 				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-					WorkDoneProgress: true,
+					WorkDoneProgress: new(true),
 				},
 			},
 			DocumentFormattingProvider: &protocol.DocumentFormattingOptions{
 				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-					WorkDoneProgress: true,
+					WorkDoneProgress: new(true),
 				},
 			},
 			DocumentRangeFormattingProvider: &protocol.DocumentRangeFormattingOptions{
 				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-					WorkDoneProgress: true,
+					WorkDoneProgress: new(true),
 				},
 			},
-			DocumentOnTypeFormattingProvider: &protocol.DocumentOnTypeFormattingOptions{
+			DocumentOnTypeFormattingProvider: protocol.DocumentOnTypeFormattingOptions{
 				FirstTriggerCharacter: "}",
 				MoreTriggerCharacter:  []string{},
 			},
 			RenameProvider: &protocol.RenameOptions{
-				PrepareProvider: false,
+				PrepareProvider: new(false),
 			},
-			ExecuteCommandProvider: &protocol.ExecuteCommandOptions{
+			ExecuteCommandProvider: protocol.ExecuteCommandOptions{
 				Commands: []string{},
 			},
-			CallHierarchyProvider:      false,
-			LinkedEditingRangeProvider: false,
+			CallHierarchyProvider:      protocol.Boolean(false),
+			LinkedEditingRangeProvider: protocol.Boolean(false),
 			SemanticTokensProvider: &protocol.SemanticTokensRegistrationOptions{
 				TextDocumentRegistrationOptions: protocol.TextDocumentRegistrationOptions{
-					DocumentSelector: []*protocol.DocumentFilter{
-						{
-							Language: "thrift",
-						},
-					},
+					DocumentSelector: thriftSelector,
 				},
 				SemanticTokensOptions: protocol.SemanticTokensOptions{
 					WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-						WorkDoneProgress: true,
+						WorkDoneProgress: new(true),
 					},
 					Legend: protocol.SemanticTokensLegend{
-						TokenTypes:     []protocol.SemanticTokenTypes{},
-						TokenModifiers: []protocol.SemanticTokenModifiers{},
+						TokenTypes:     []string{},
+						TokenModifiers: []string{},
 					},
 				},
 				StaticRegistrationOptions: protocol.StaticRegistrationOptions{
-					ID: "thriftls",
+					ID: new("thriftls"),
 				},
 			},
-			Workspace: &protocol.ServerCapabilitiesWorkspace{
-				WorkspaceFolders: &protocol.ServerCapabilitiesWorkspaceFolders{
-					Supported:           true,
-					ChangeNotifications: true,
+			Workspace: &protocol.WorkspaceOptions{
+				WorkspaceFolders: &protocol.WorkspaceFoldersServerCapabilities{
+					Supported:           new(true),
+					ChangeNotifications: protocol.Boolean(true),
 				},
-				FileOperations: &protocol.ServerCapabilitiesWorkspaceFileOperations{
-					DidCreate: &protocol.FileOperationRegistrationOptions{
+				FileOperations: &protocol.FileOperationOptions{
+					DidCreate: protocol.FileOperationRegistrationOptions{
 						Filters: []protocol.FileOperationFilter{},
 					},
-					WillCreate: &protocol.FileOperationRegistrationOptions{
+					WillCreate: protocol.FileOperationRegistrationOptions{
 						Filters: []protocol.FileOperationFilter{},
 					},
-					DidRename: &protocol.FileOperationRegistrationOptions{
+					DidRename: protocol.FileOperationRegistrationOptions{
 						Filters: []protocol.FileOperationFilter{},
 					},
-					WillRename: &protocol.FileOperationRegistrationOptions{
+					WillRename: protocol.FileOperationRegistrationOptions{
 						Filters: []protocol.FileOperationFilter{},
 					},
-					DidDelete: &protocol.FileOperationRegistrationOptions{
+					DidDelete: protocol.FileOperationRegistrationOptions{
 						Filters: []protocol.FileOperationFilter{},
 					},
-					WillDelete: &protocol.FileOperationRegistrationOptions{
+					WillDelete: protocol.FileOperationRegistrationOptions{
 						Filters: []protocol.FileOperationFilter{},
 					},
 				},
@@ -253,9 +253,9 @@ func initializeResult() *protocol.InitializeResult {
 			MonikerProvider: nil,
 			Experimental:    nil,
 		},
-		ServerInfo: &protocol.ServerInfo{
+		ServerInfo: protocol.ServerInfo{
 			Name:    ServerName,
-			Version: ServerVersion,
+			Version: protocol.NewOptional(ServerVersion),
 		},
 	}
 

@@ -1,13 +1,14 @@
 package cache
 
 import (
+	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 
-	"github.com/joyme123/thrift-ls/lsp/lsputils"
-	"github.com/joyme123/thrift-ls/parser"
-	log "github.com/sirupsen/logrus"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/syntax"
 )
 
 type IncludeNode struct {
@@ -54,16 +55,18 @@ func (g *IncludeGraph) Get(file uri.URI) *IncludeNode {
 	return g.mapper[file]
 }
 
-func (g *IncludeGraph) Set(file uri.URI, includes []*parser.Include, includePaths []string) {
+// Set records the include edges of file. resolve maps an include path text
+// to the URI of the included file (e.g. the snapshot's include resolver).
+func (g *IncludeGraph) Set(file uri.URI, includes []*syntax.Include, resolve func(cur uri.URI, includePath string) uri.URI) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	includeURIs := make([]uri.URI, 0, len(includes))
 	for _, inc := range includes {
-		if inc.BadNode || inc.Path == nil || inc.Path.ChildrenBadNode() || inc.Path.Value == nil {
+		if inc.Path == nil {
 			continue
 		}
 
-		includeURI := lsputils.IncludeURIWithPaths(file, inc.Path.Value.Text, includePaths)
+		includeURI := resolve(file, strings.Trim(inc.Path.Text, "\"'"))
 		includeURIs = append(includeURIs, includeURI)
 	}
 	sort.SliceStable(includeURIs, func(i, j int) bool {
@@ -104,8 +107,6 @@ func (g *IncludeGraph) Set(file uri.URI, includes []*parser.Include, includePath
 	}
 
 	g.mapper[file] = node
-	return
-
 }
 
 func (g *IncludeGraph) Remove(file uri.URI) {
@@ -162,6 +163,6 @@ func (g *IncludeGraph) removeWithoutLock(file uri.URI) {
 
 func (g *IncludeGraph) Debug() {
 	for file, node := range g.mapper {
-		log.Debugln("file: ", file, "node: ", node)
+		slog.Debug("graph file node", "file", file, "node", node)
 	}
 }

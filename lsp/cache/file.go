@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/joyme123/protocol"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 )
 
@@ -34,10 +34,10 @@ func HashOf(data []byte) Hash {
 }
 
 // Hashf returns the hash of a printf-formatted string.
-func Hashf(format string, args ...interface{}) Hash {
+func Hashf(format string, args ...any) Hash {
 	// Although this looks alloc-heavy, it is faster than using
 	// Fprintf on sha256.New() because the allocations don't escape.
-	return HashOf([]byte(fmt.Sprintf(format, args...)))
+	return HashOf(fmt.Appendf(nil, format, args...))
 }
 
 // String returns the digest as a string of hex digits.
@@ -181,10 +181,16 @@ func (f *FileChange) FullContent(base []byte) []byte {
 func FileChangeFromLSPDidChange(params *protocol.DidChangeTextDocumentParams) []*FileChange {
 	changes := make([]*FileChange, 0, len(params.ContentChanges))
 	for i := range params.ContentChanges {
+		event, ok := params.ContentChanges[i].(*protocol.TextDocumentContentChangeWholeDocument)
+		if !ok {
+			// Incremental changes are not supported; fall back to full reload
+			// semantics using the current full content.
+			continue
+		}
 		changes = append(changes, &FileChange{
-			URI:     params.TextDocument.TextDocumentIdentifier.URI,
+			URI:     params.TextDocument.URI,
 			Version: int(params.TextDocument.Version),
-			Content: []byte(params.ContentChanges[i].Text),
+			Content: []byte(event.Text),
 			From:    FileChangeTypeDidChange,
 		})
 	}

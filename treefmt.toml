@@ -1,0 +1,7 @@
+[formatter.go]
+command = "gofumpt"
+includes = ["*.go"]
+
+[formatter.nix]
+command = "nixfmt"
+includes = ["*.nix"]

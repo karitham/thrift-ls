@@ -22,7 +22,7 @@ import (
 // The main purpose of the argument is to avoid the Function closure
 // needing to retain large objects (in practice: the snapshot) in
 // memory that can be supplied at call time by any caller.
-type Function func(ctx context.Context, arg interface{}) interface{}
+type Function func(ctx context.Context, arg any) any
 
 // A RefCounted is a value whose functional lifetime is determined by
 // reference counting.
@@ -74,7 +74,7 @@ type Promise struct {
 	// the function that will be used to populate the value
 	function Function
 	// value is set in completed state.
-	value interface{}
+	value any
 }
 
 // NewPromise returns a promise for the future result of calling the
@@ -104,7 +104,7 @@ const (
 //
 // It will never cause the value to be generated.
 // It will return the cached value, if present.
-func (p *Promise) Cached() interface{} {
+func (p *Promise) Cached() any {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.state == stateCompleted {
@@ -124,7 +124,7 @@ func (p *Promise) Cached() interface{} {
 // If all concurrent calls to Get are cancelled, the context provided
 // to the function is cancelled. A later call to Get may attempt to
 // call the function again.
-func (p *Promise) Get(ctx context.Context, arg interface{}) (interface{}, error) {
+func (p *Promise) Get(ctx context.Context, arg any) (any, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -143,7 +143,7 @@ func (p *Promise) Get(ctx context.Context, arg interface{}) (interface{}, error)
 }
 
 // run starts p.function and returns the result. p.mu must be locked.
-func (p *Promise) run(ctx context.Context, arg interface{}) (interface{}, error) {
+func (p *Promise) run(ctx context.Context, arg any) (any, error) {
 	childCtx, cancel := context.WithCancel(xcontext.Detach(ctx))
 	p.cancel = cancel
 	p.state = stateRunning
@@ -190,7 +190,7 @@ func (p *Promise) run(ctx context.Context, arg interface{}) (interface{}, error)
 }
 
 // wait waits for the value to be computed, or ctx to be cancelled. p.mu must be locked.
-func (p *Promise) wait(ctx context.Context) (interface{}, error) {
+func (p *Promise) wait(ctx context.Context) (any, error) {
 	p.waiters++
 	done := p.done
 	p.mu.Unlock()

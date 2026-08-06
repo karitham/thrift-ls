@@ -3,22 +3,22 @@ package diagnostic
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
-	"github.com/joyme123/thrift-ls/lsp/lsputils"
-	"github.com/joyme123/thrift-ls/parser"
-	log "github.com/sirupsen/logrus"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/lsp/lsputils"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
-type CycleCheck struct {
-}
+type CycleCheck struct{}
 
 func (c *CycleCheck) Diagnostic(ctx context.Context, ss *cache.Snapshot, changeFiles []uri.URI) (DiagnosticResult, error) {
 	includesMap := make(map[uri.URI][]Include)
 	for _, file := range changeFiles {
-		getIncludes(ctx, ss, file, &includesMap)
+		_ = getIncludes(ctx, ss, file, &includesMap)
 	}
 	cyclePairs := cycleDetect(&includesMap)
 
@@ -40,17 +40,18 @@ func cycleToDiagnosticItems(pairs []CyclePair) DiagnosticResult {
 
 func cyclePairToDiagnostic(pair CyclePair) protocol.Diagnostic {
 	res := protocol.Diagnostic{
-		Range:    lsputils.ASTNodeToRange(pair.include.include),
+		Range:    nodeRange(pair.include.doc, pair.include.include),
 		Severity: protocol.DiagnosticSeverityWarning,
-		Source:   "thrift-ls",
-		Message:  fmt.Sprintf("cycle dependency in %s", pair.include.file),
+		Source:   protocol.NewOptional("thrift-ls"),
+		Message:  protocol.String(fmt.Sprintf("cycle dependency in %s", pair.include.file)),
 	}
 	return res
 }
 
 type Include struct {
 	file    uri.URI
-	include *parser.Include
+	include *syntax.Include
+	doc     *syntax.Document
 }
 
 type CyclePair struct {
@@ -80,30 +81,31 @@ func cycleDetect(includesMap *map[uri.URI][]Include) []CyclePair {
 func getIncludes(ctx context.Context, ss *cache.Snapshot, file uri.URI, includesMap *map[uri.URI][]Include) error {
 	pf, err := ss.Parse(ctx, file)
 	if err != nil {
-		log.Errorf("parse %s failed: %v", file, err)
+		slog.Error("parse failed", "file", file, "err", err)
 		return err
 	}
 	if pf.AST() == nil {
-		log.Errorf("parse ast failed: %v", pf.AggregatedError())
+		slog.Error("parse ast failed", "errs", pf.AggregatedError())
 		return pf.AggregatedError()
 	}
 
-	includes := pf.AST().Includes
+	includes := pf.AST().Includes()
 	resolver := ss.Resolver()
 	for i := range includes {
-		if includes[i].Path == nil || includes[i].Path.BadNode {
+		if includes[i].Path == nil {
 			continue
 		}
-		includeURI := resolver.ResolveIncludeWithText(file, includes[i].Path.Value.Text)
+		includeURI := resolver.ResolveIncludeWithText(file, lsputils.IncludePathText(includes[i]))
 		(*includesMap)[file] = append((*includesMap)[file], Include{
 			file:    includeURI,
 			include: includes[i],
+			doc:     pf.AST(),
 		})
 
 		if _, ok := (*includesMap)[includeURI]; ok {
 			continue
 		}
-		getIncludes(ctx, ss, includeURI, includesMap)
+		_ = getIncludes(ctx, ss, includeURI, includesMap)
 	}
 
 	return nil

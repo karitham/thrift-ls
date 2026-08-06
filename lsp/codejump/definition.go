@@ -2,215 +2,178 @@ package codejump
 
 import (
 	"context"
-	"errors"
+	"log/slog"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
-	"github.com/joyme123/thrift-ls/lsp/lsputils"
-	"github.com/joyme123/thrift-ls/lsp/types"
-	"github.com/joyme123/thrift-ls/parser"
-	log "github.com/sirupsen/logrus"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/lsp/lsputils"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
+// Definition returns the locations of the definition under the cursor:
+// a type reference, a constant value identifier, or a service reference.
 func Definition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) (res []protocol.Location, err error) {
 	res = make([]protocol.Location, 0)
-	pf, err := ss.Parse(ctx, file)
-	if err != nil {
-		return
-	}
-
-	if pf.AST() == nil {
-		err = errors.New("parse ast failed")
-		return
-	}
-
-	astPos, err := pf.Mapper().LSPPosToParserPosition(types.Position{Line: pos.Line, Character: pos.Character})
-	if err != nil {
-		return
-	}
-	nodePath := parser.SearchNodePathByPosition(pf.AST(), astPos)
-	targetNode := nodePath[len(nodePath)-1]
-
-	switch targetNode.Type() {
-	case "TypeName":
-		return typeNameDefinition(ctx, ss, file, pf.AST(), targetNode)
-	case "ConstValue":
-		return constValueTypeDefinition(ctx, ss, file, pf.AST(), targetNode)
-	case "IdentifierName": // service extends
-		return serviceDefinition(ctx, ss, file, pf.AST(), targetNode)
-	}
-
-	return
-}
-
-func serviceDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *parser.Document, targetNode parser.Node) ([]protocol.Location, error) {
-	res := make([]protocol.Location, 0)
-	astFile, id, _, err := ServiceDefinitionIdentifier(ctx, ss, file, ast, targetNode)
+	pf, target, err := resolveTarget(ctx, ss, file, pos)
 	if err != nil {
 		return res, err
 	}
-	if id != nil {
-		res = append(res, jump(astFile, id.Name))
-	}
 
-	return res, nil
+	switch target.kind {
+	case TargetTypeName:
+		return typeNameDefinition(ctx, ss, file, pf, target)
+	case TargetConstValue:
+		return constValueDefinition(ctx, ss, file, pf, target)
+	case TargetService:
+		return serviceDefinition(ctx, ss, file, pf, target)
+	}
+	return res, err
 }
 
-func ServiceDefinitionIdentifier(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *parser.Document, targetNode parser.Node) (uri.URI, *parser.Identifier, string, error) {
-	identifierName := targetNode.(*parser.IdentifierName)
+// FindTypeDefinition resolves a type reference to its definition: an
+// exception, struct, enum, union, or typedef, possibly in an included file.
+func FindTypeDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *syntax.Document, ft *syntax.FieldType) (uri.URI, *syntax.Identifier, DefinitionKind, error) {
+	name := typeReferenceName(ft)
+	if name == "" || IsBasicType(name) {
+		return "", nil, DefinitionNone, nil
+	}
 
-	include, identifier := lsputils.ParseIdent(file, ast.Includes, identifierName.Text)
-	var astFile uri.URI
-	if include == "" {
-		astFile = file
-	} else {
-		resolver := ss.Resolver()
-		path := resolver.GetIncludePath(ast, include)
-		if path == "" { // doesn't match any include path
-			return "", nil, "", nil
+	_, identifier := lsputils.ParseIdent(file, ast.Includes(), name)
+	for _, astFile := range definitionFiles(ctx, ss, file, ast, name) {
+		dstAst, err := parseDefinitionFile(ctx, ss, astFile)
+		if err != nil {
+			return astFile, nil, DefinitionNone, err
 		}
-		astFile = resolver.ResolveInclude(file, path)
-	}
 
-	// now we can find destinate definition in `dstAst` by `identifier`
-	dstAst, err := ss.Parse(ctx, astFile)
-	if err != nil {
-		return astFile, nil, "", err
-	}
-
-	if len(dstAst.Errors()) > 0 {
-		log.Errorf("parse error: %v", dstAst.Errors())
-	}
-
-	dstService := GetServiceNode(dstAst.AST(), identifier)
-	if dstService != nil {
-		return astFile, dstService.Name, "Service", nil
-	}
-
-	return astFile, nil, "", nil
-}
-
-func typeNameDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *parser.Document, targetNode parser.Node) ([]protocol.Location, error) {
-	res := make([]protocol.Location, 0)
-	astFile, id, _, err := TypeNameDefinitionIdentifier(ctx, ss, file, ast, targetNode)
-	if err != nil {
-		return res, err
-	}
-	if id != nil {
-		res = append(res, jump(astFile, id.Name))
-	}
-
-	return res, nil
-}
-
-func TypeNameDefinitionIdentifier(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *parser.Document, targetNode parser.Node) (uri.URI, *parser.Identifier, string, error) {
-	typeName := targetNode.(*parser.TypeName)
-	typeV := typeName.Name
-	if IsBasicType(typeV) {
-		return "", nil, "", nil
-	}
-
-	include, identifier := lsputils.ParseIdent(file, ast.Includes, typeV)
-	var astFile uri.URI
-	if include == "" {
-		astFile = file
-	} else {
-		resolver := ss.Resolver()
-		path := resolver.GetIncludePath(ast, include)
-		if path == "" { // doesn't match any include path
-			return "", nil, "", nil
+		if dstException := GetExceptionNode(dstAst, identifier); dstException != nil {
+			return astFile, dstException.Name, DefinitionException, nil
 		}
-		astFile = resolver.ResolveInclude(file, path)
+		if dstStruct := GetStructNode(dstAst, identifier); dstStruct != nil {
+			return astFile, dstStruct.Name, DefinitionStruct, nil
+		}
+		if dstEnum := GetEnumNode(dstAst, identifier); dstEnum != nil {
+			return astFile, dstEnum.Name, DefinitionEnum, nil
+		}
+		if dstUnion := GetUnionNode(dstAst, identifier); dstUnion != nil {
+			return astFile, dstUnion.Name, DefinitionUnion, nil
+		}
+		if dstTypedef := GetTypedefNode(dstAst, identifier); dstTypedef != nil {
+			return astFile, dstTypedef.Name, DefinitionTypedef, nil
+		}
 	}
-
-	// now we can find destinate definition in `dstAst` by `identifier`
-	dstAst, err := ss.Parse(ctx, astFile)
-	if err != nil {
-		return astFile, nil, "", err
-	}
-
-	if len(dstAst.Errors()) > 0 {
-		log.Errorf("parse error: %v", dstAst.Errors())
-	}
-
-	// struct, exception, enum or union
-	dstException := GetExceptionNode(dstAst.AST(), identifier)
-	if dstException != nil {
-		return astFile, dstException.Name, "Exception", nil
-	}
-	dstStruct := GetStructNode(dstAst.AST(), identifier)
-	if dstStruct != nil {
-		return astFile, dstStruct.Identifier, "Struct", nil
-	}
-	dstEnum := GetEnumNode(dstAst.AST(), identifier)
-	if dstEnum != nil {
-		return astFile, dstEnum.Name, "Enum", nil
-	}
-	dstUnion := GetUnionNode(dstAst.AST(), identifier)
-	if dstUnion != nil {
-		return astFile, dstUnion.Name, "Union", nil
-	}
-	dstTypedef := GetTypedefNode(dstAst.AST(), identifier)
-	if dstTypedef != nil {
-		return astFile, dstTypedef.Alias, "Typedef", nil
-	}
-
-	return astFile, nil, "", nil
+	return file, nil, DefinitionNone, nil
 }
 
-// search enum
-func constValueTypeDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *parser.Document, targetNode parser.Node) ([]protocol.Location, error) {
-	res := make([]protocol.Location, 0)
-	astFile, id, err := ConstValueTypeDefinitionIdentifier(ctx, ss, file, ast, targetNode)
-	if err != nil {
-		return res, err
+// FindConstValueDefinition resolves a constant value identifier to its
+// definition: an enum value or a const, possibly in an included file.
+func FindConstValueDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *syntax.Document, value *syntax.ConstValue) (uri.URI, *syntax.Identifier, error) {
+	if value == nil || value.Kind != syntax.ValueIdent {
+		return "", nil, nil
 	}
-
-	if id != nil {
-		res = append(res, jump(astFile, id))
-	}
-
-	return res, nil
-}
-
-func ConstValueTypeDefinitionIdentifier(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *parser.Document, targetNode parser.Node) (uri.URI, *parser.Identifier, error) {
-	constValue := targetNode.(*parser.ConstValue)
-	if constValue.TypeName != "identifier" {
+	name := value.Text
+	if name == "true" || name == "false" {
 		return "", nil, nil
 	}
 
-	include, identifier := lsputils.ParseIdent(file, ast.Includes, constValue.Value.(string))
-	var astFile uri.URI
-	if include == "" {
-		astFile = file
-	} else {
-		resolver := ss.Resolver()
-		path := resolver.GetIncludePath(ast, include)
-		if path == "" { // doesn't match any include path, maybe enum value
-			include = ""
-			identifier = constValue.Value.(string)
-			astFile = file
-		} else {
-			astFile = resolver.ResolveInclude(file, path)
+	_, identifier := lsputils.ParseIdent(file, ast.Includes(), name)
+	for _, astFile := range definitionFiles(ctx, ss, file, ast, name) {
+		dstAst, err := parseDefinitionFile(ctx, ss, astFile)
+		if err != nil {
+			return astFile, nil, err
+		}
+
+		if dstEnumValue := GetEnumValueIdentifierNode(dstAst, identifier); dstEnumValue != nil {
+			return astFile, dstEnumValue, nil
+		}
+		if constIdentifier := GetConstIdentifierNode(dstAst, identifier); constIdentifier != nil {
+			return astFile, constIdentifier, nil
 		}
 	}
+	return file, nil, nil
+}
 
-	// now we can find destinate definition in `dstAst` by `identifier`
-	dstAst, err := ss.Parse(ctx, astFile)
+// FindServiceDefinition resolves a service name or extends reference to the
+// service definition.
+func FindServiceDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *syntax.Document, ident *syntax.Identifier) (uri.URI, *syntax.Identifier, error) {
+	if ident == nil {
+		return "", nil, nil
+	}
+
+	_, identifier := lsputils.ParseIdent(file, ast.Includes(), ident.Text)
+	for _, astFile := range definitionFiles(ctx, ss, file, ast, ident.Text) {
+		dstAst, err := parseDefinitionFile(ctx, ss, astFile)
+		if err != nil {
+			return astFile, nil, err
+		}
+
+		if dstService := GetServiceNode(dstAst, identifier); dstService != nil {
+			return astFile, dstService.Name, nil
+		}
+	}
+	return file, nil, nil
+}
+
+// parseDefinitionFile parses the definition file, tolerating parse errors
+// in the target file (the definitions may still be found in the partial
+// AST).
+func parseDefinitionFile(ctx context.Context, ss *cache.Snapshot, file uri.URI) (*syntax.Document, error) {
+	pf, err := ss.Parse(ctx, file)
 	if err != nil {
-		return astFile, nil, err
+		return nil, err
 	}
-
-	dstEnumValueIdentifier := GetEnumValueIdentifierNode(dstAst.AST(), identifier)
-	if dstEnumValueIdentifier != nil {
-		return astFile, dstEnumValueIdentifier, nil
+	if len(pf.Errors()) > 0 {
+		slog.Error("parse error", "errs", pf.Errors())
 	}
-
-	constIdentifier := GetConstIdentifierNode(dstAst.AST(), identifier)
-	if constIdentifier != nil {
-		return astFile, constIdentifier, nil
+	if pf.AST() == nil {
+		return nil, errNoAST
 	}
+	return pf.AST(), nil
+}
 
-	return astFile, nil, nil
+func typeNameDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
+	ft := target.parent.(*syntax.FieldType)
+	astFile, id, _, err := FindTypeDefinition(ctx, ss, file, pf.AST(), ft)
+	if err != nil {
+		return nil, err
+	}
+	if id == nil {
+		return nil, nil
+	}
+	loc, err := jumpInFile(ctx, ss, astFile, id)
+	if err != nil {
+		return nil, err
+	}
+	return []protocol.Location{loc}, nil
+}
+
+func constValueDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
+	astFile, id, err := FindConstValueDefinition(ctx, ss, file, pf.AST(), target.node.(*syntax.ConstValue))
+	if err != nil {
+		return nil, err
+	}
+	if id == nil {
+		return nil, nil
+	}
+	loc, err := jumpInFile(ctx, ss, astFile, id)
+	if err != nil {
+		return nil, err
+	}
+	return []protocol.Location{loc}, nil
+}
+
+func serviceDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
+	astFile, id, err := FindServiceDefinition(ctx, ss, file, pf.AST(), target.identifier())
+	if err != nil {
+		return nil, err
+	}
+	if id == nil {
+		return nil, nil
+	}
+	loc, err := jumpInFile(ctx, ss, astFile, id)
+	if err != nil {
+		return nil, err
+	}
+	return []protocol.Location{loc}, nil
 }

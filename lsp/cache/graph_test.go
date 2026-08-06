@@ -5,9 +5,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/joyme123/thrift-ls/parser"
 	"github.com/stretchr/testify/assert"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/resolver"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
 func Test_IncludeGraph_Set(t *testing.T) {
@@ -22,23 +24,23 @@ func Test_IncludeGraph_Set(t *testing.T) {
 
 	tmpDir, err := os.MkdirTemp("", "thrift-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	baseDir := filepath.Join(tmpDir, "base")
 	serviceDir := filepath.Join(tmpDir, "service")
-	err = os.MkdirAll(baseDir, 0755)
+	err = os.MkdirAll(baseDir, 0o755)
 	assert.NoError(t, err)
-	err = os.MkdirAll(serviceDir, 0755)
+	err = os.MkdirAll(serviceDir, 0o755)
 	assert.NoError(t, err)
 
 	// Create shared.thrift in base/
 	sharedThrift := filepath.Join(baseDir, "shared.thrift")
-	err = os.WriteFile(sharedThrift, []byte(""), 0644)
+	err = os.WriteFile(sharedThrift, []byte(""), 0o644)
 	assert.NoError(t, err)
 
 	// Create order.thrift in service/
 	orderThrift := filepath.Join(serviceDir, "order.thrift")
-	err = os.WriteFile(orderThrift, []byte(""), 0644)
+	err = os.WriteFile(orderThrift, []byte(""), 0o644)
 	assert.NoError(t, err)
 
 	orderURI := uri.File(orderThrift)
@@ -46,9 +48,9 @@ func Test_IncludeGraph_Set(t *testing.T) {
 
 	// Test: include "shared.thrift" from order.thrift with includePaths pointing to base/
 	// Should resolve to base/shared.thrift
-	graph.Set(orderURI, []*parser.Include{
-		{Path: &parser.Literal{Value: &parser.LiteralValue{Text: "shared.thrift"}}},
-	}, []string{baseDir})
+	graph.Set(orderURI, []*syntax.Include{
+		{Path: &syntax.Token{Text: "shared.thrift"}},
+	}, resolveWithPaths([]string{baseDir}))
 
 	node := graph.Get(orderURI)
 	assert.NotNil(t, node)
@@ -57,9 +59,9 @@ func Test_IncludeGraph_Set(t *testing.T) {
 	// Test: include "shared.thrift" from order.thrift without includePaths
 	// Should fall back to relative path (service/shared.thrift which doesn't exist)
 	graph2 := NewIncludeGraph()
-	graph2.Set(orderURI, []*parser.Include{
-		{Path: &parser.Literal{Value: &parser.LiteralValue{Text: "shared.thrift"}}},
-	}, []string{})
+	graph2.Set(orderURI, []*syntax.Include{
+		{Path: &syntax.Token{Text: "shared.thrift"}},
+	}, resolveWithPaths(nil))
 
 	node2 := graph2.Get(orderURI)
 	assert.NotNil(t, node2)
@@ -80,17 +82,17 @@ func Test_Graph(t *testing.T) {
 	// node3:
 	//   file:///tmp/addr.thrift
 	//   include "./base.thrift"
-	file1 := uri.New("file:///tmp/model/user.thrift")
-	file2 := uri.New("file:///tmp/base.thrift")
-	file3 := uri.New("file:///tmp/addr.thrift")
-	graph.Set(file1, []*parser.Include{
-		{Path: &parser.Literal{Value: &parser.LiteralValue{Text: "../base.thrift"}}},
-		{Path: &parser.Literal{Value: &parser.LiteralValue{Text: "../addr.thrift"}}},
-	}, nil)
+	file1 := uri.MustParse("file:///tmp/model/user.thrift")
+	file2 := uri.MustParse("file:///tmp/base.thrift")
+	file3 := uri.MustParse("file:///tmp/addr.thrift")
+	graph.Set(file1, []*syntax.Include{
+		{Path: &syntax.Token{Text: "../base.thrift"}},
+		{Path: &syntax.Token{Text: "../addr.thrift"}},
+	}, resolveWithPaths(nil))
 	graph.Set(file2, nil, nil)
-	graph.Set(file3, []*parser.Include{
-		{Path: &parser.Literal{Value: &parser.LiteralValue{Text: "./base.thrift"}}},
-	}, nil)
+	graph.Set(file3, []*syntax.Include{
+		{Path: &syntax.Token{Text: "./base.thrift"}},
+	}, resolveWithPaths(nil))
 
 	expectNode1 := &IncludeNode{
 		outdegree: []uri.URI{file3, file2},
@@ -132,4 +134,13 @@ func Test_Graph(t *testing.T) {
 	assert.Nil(t, graph.Get("file:///tmp/model/user.thrift"), "user.thrift")
 	assert.Nil(t, graph.Get("file:///tmp/base.thrift"), "base.thrift")
 	assert.Nil(t, graph.Get("file:///tmp/addr.thrift"), "addr.thrift")
+}
+
+// resolveWithPaths builds a graph resolve func from include paths, mirroring
+// the snapshot's resolver-based resolution.
+func resolveWithPaths(includePaths []string) func(uri.URI, string) uri.URI {
+	r := resolver.NewWithFS(includePaths, resolver.FS())
+	return func(cur uri.URI, includePath string) uri.URI {
+		return uri.File(r.Resolve(cur.Path(), includePath))
+	}
 }

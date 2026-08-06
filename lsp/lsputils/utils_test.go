@@ -5,9 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/joyme123/thrift-ls/parser"
 	"github.com/stretchr/testify/assert"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/syntax"
 )
 
 func Test_IncludeURI(t *testing.T) {
@@ -39,10 +40,10 @@ func Test_IncludeURI(t *testing.T) {
 		{
 			name: "case3",
 			args: args{
-				cur:         uri.URI("file:///c:/Users/Administrator/Downloads/galaxy-thrift-api-master/galaxy-thrift-api-master/sds/Common.thrift"),
+				cur:         uri.URI("file:///c:/Users/Administrator/Downloads/whitebase-master/whitebase-master/zeon/Common.thrift"),
 				includePath: "Errors.thrift",
 			},
-			want: uri.URI("file:///c:/Users/Administrator/Downloads/galaxy-thrift-api-master/galaxy-thrift-api-master/sds/Errors.thrift"),
+			want: uri.MustParse("file:///c%3A/Users/Administrator/Downloads/whitebase-master/whitebase-master/zeon/Errors.thrift"),
 		},
 		{
 			name: "case4",
@@ -66,11 +67,15 @@ include "../../user.extra.thrift"
 service Demo {
   user.Test Api(1:user.Test2 arg1, 2:user.Test3 arg2) throws (1:user.Error1 err)
 }`
-	ast, err := parser.Parse("file:///test.thrift", []byte(file))
-	assert.NoError(t, err)
+	ast, errs := syntax.Parse([]byte(file))
+	for _, e := range errs {
+		if e.Severity == syntax.SeverityError {
+			t.Fatal(e)
+		}
+	}
 
 	type args struct {
-		ast         *parser.Document
+		ast         *syntax.Document
 		includeName string
 	}
 	tests := []struct {
@@ -81,7 +86,7 @@ service Demo {
 		{
 			name: "case",
 			args: args{
-				ast:         ast.(*parser.Document),
+				ast:         ast,
 				includeName: "user",
 			},
 			want: "../../user.thrift",
@@ -89,7 +94,7 @@ service Demo {
 		{
 			name: "case",
 			args: args{
-				ast:         ast.(*parser.Document),
+				ast:         ast,
 				includeName: "user.extra",
 			},
 			want: "../../user.extra.thrift",
@@ -114,21 +119,21 @@ func TestGetIncludeName(t *testing.T) {
 		{
 			name: "file name",
 			args: args{
-				file: uri.New("base.thrift"),
+				file: uri.MustParse("base.thrift"),
 			},
 			want: "base",
 		},
 		{
 			name: "file name with dir",
 			args: args{
-				file: uri.New("/tmp/base.thrift"),
+				file: uri.MustParse("/tmp/base.thrift"),
 			},
 			want: "base",
 		},
 		{
 			name: "file name with .",
 			args: args{
-				file: uri.New("/tmp/base.subpath.thrift"),
+				file: uri.MustParse("/tmp/base.subpath.thrift"),
 			},
 			want: "base.subpath",
 		},
@@ -143,7 +148,7 @@ func TestGetIncludeName(t *testing.T) {
 func TestIncludeNames(t *testing.T) {
 	type args struct {
 		cur      uri.URI
-		includes []*parser.Include
+		includes []*syntax.Include
 	}
 	tests := []struct {
 		name             string
@@ -153,28 +158,16 @@ func TestIncludeNames(t *testing.T) {
 		{
 			name: "case 1",
 			args: args{
-				cur: uri.New("/tmp/app.thrift"),
-				includes: []*parser.Include{
+				cur: uri.MustParse("/tmp/app.thrift"),
+				includes: []*syntax.Include{
 					{
-						Path: &parser.Literal{
-							Value: &parser.LiteralValue{
-								Text: "../../base.sub.thrift",
-							},
-						},
+						Path: &syntax.Token{Text: "../../base.sub.thrift"},
 					},
 					{
-						Path: &parser.Literal{
-							Value: &parser.LiteralValue{
-								Text: "user.sub.thrift",
-							},
-						},
+						Path: &syntax.Token{Text: "user.sub.thrift"},
 					},
 					{
-						Path: &parser.Literal{
-							Value: &parser.LiteralValue{
-								Text: "app.thrift",
-							},
-						},
+						Path: &syntax.Token{Text: "app.thrift"},
 					},
 				},
 			},
@@ -202,23 +195,23 @@ func TestIncludeURIWithPaths(t *testing.T) {
 
 	tmpDir, err := os.MkdirTemp("", "thrift-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	baseDir := filepath.Join(tmpDir, "base")
 	serviceDir := filepath.Join(tmpDir, "service")
-	err = os.MkdirAll(baseDir, 0755)
+	err = os.MkdirAll(baseDir, 0o755)
 	assert.NoError(t, err)
-	err = os.MkdirAll(serviceDir, 0755)
+	err = os.MkdirAll(serviceDir, 0o755)
 	assert.NoError(t, err)
 
 	// Create shared.thrift in base/
 	sharedThrift := filepath.Join(baseDir, "shared.thrift")
-	err = os.WriteFile(sharedThrift, []byte(""), 0644)
+	err = os.WriteFile(sharedThrift, []byte(""), 0o644)
 	assert.NoError(t, err)
 
 	// Create order.thrift in service/
 	orderThrift := filepath.Join(serviceDir, "order.thrift")
-	err = os.WriteFile(orderThrift, []byte(""), 0644)
+	err = os.WriteFile(orderThrift, []byte(""), 0o644)
 	assert.NoError(t, err)
 
 	orderURI := uri.File(orderThrift)
@@ -271,7 +264,7 @@ func TestIncludeURIWithPaths(t *testing.T) {
 func TestParseIdent(t *testing.T) {
 	type args struct {
 		cur        uri.URI
-		includes   []*parser.Include
+		includes   []*syntax.Include
 		identifier string
 	}
 	tests := []struct {
@@ -283,21 +276,13 @@ func TestParseIdent(t *testing.T) {
 		{
 			name: "case 1",
 			args: args{
-				cur: uri.New("/tmp/app.thrift"),
-				includes: []*parser.Include{
+				cur: uri.MustParse("/tmp/app.thrift"),
+				includes: []*syntax.Include{
 					{
-						Path: &parser.Literal{
-							Value: &parser.LiteralValue{
-								Text: "user.sub.thrift",
-							},
-						},
+						Path: &syntax.Token{Text: "user.sub.thrift"},
 					},
 					{
-						Path: &parser.Literal{
-							Value: &parser.LiteralValue{
-								Text: "user.thrift",
-							},
-						},
+						Path: &syntax.Token{Text: "user.thrift"},
 					},
 				},
 				identifier: "user.Name",
@@ -308,21 +293,13 @@ func TestParseIdent(t *testing.T) {
 		{
 			name: "case 2",
 			args: args{
-				cur: uri.New("/tmp/app.thrift"),
-				includes: []*parser.Include{
+				cur: uri.MustParse("/tmp/app.thrift"),
+				includes: []*syntax.Include{
 					{
-						Path: &parser.Literal{
-							Value: &parser.LiteralValue{
-								Text: "user.sub.thrift",
-							},
-						},
+						Path: &syntax.Token{Text: "user.sub.thrift"},
 					},
 					{
-						Path: &parser.Literal{
-							Value: &parser.LiteralValue{
-								Text: "user.thrift",
-							},
-						},
+						Path: &syntax.Token{Text: "user.thrift"},
 					},
 				},
 				identifier: "user.sub.Name",
@@ -333,14 +310,10 @@ func TestParseIdent(t *testing.T) {
 		{
 			name: "case 3",
 			args: args{
-				cur: uri.New("/tmp/app.thrift"),
-				includes: []*parser.Include{
+				cur: uri.MustParse("/tmp/app.thrift"),
+				includes: []*syntax.Include{
 					{
-						Path: &parser.Literal{
-							Value: &parser.LiteralValue{
-								Text: "user.thrift",
-							},
-						},
+						Path: &syntax.Token{Text: "user.thrift"},
 					},
 				},
 				identifier: "user.sub.Name",

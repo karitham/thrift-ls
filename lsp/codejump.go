@@ -3,8 +3,9 @@ package lsp
 import (
 	"context"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/codejump"
+	"go.lsp.dev/protocol"
+
+	"github.com/karitham/thrift-ls/lsp/codejump"
 )
 
 func (s *Server) definition(ctx context.Context, params *protocol.DefinitionParams) (result []protocol.Location, err error) {

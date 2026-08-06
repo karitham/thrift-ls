@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
 	"github.com/stretchr/testify/assert"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
 )
 
 func TestDefinition_EnumValueInConstList(t *testing.T) {
@@ -46,7 +47,7 @@ const list<MyEnum> my_list = [MyEnum.Value1, MyEnum.Value2]`
 		{
 			name: "enum value in const list - first element",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/test.thrift",
 				pos: protocol.Position{
@@ -64,7 +65,7 @@ const list<MyEnum> my_list = [MyEnum.Value1, MyEnum.Value2]`
 						},
 						End: protocol.Position{
 							Line:      1,
-							Character: 9, // End of "Value1"
+							Character: 8, // End of "Value1"
 						},
 					},
 				},
@@ -74,7 +75,7 @@ const list<MyEnum> my_list = [MyEnum.Value1, MyEnum.Value2]`
 		{
 			name: "enum value in const list - second element",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/test.thrift",
 				pos: protocol.Position{
@@ -92,7 +93,7 @@ const list<MyEnum> my_list = [MyEnum.Value1, MyEnum.Value2]`
 						},
 						End: protocol.Position{
 							Line:      2,
-							Character: 9, // End of "Value2"
+							Character: 8, // End of "Value2"
 						},
 					},
 				},

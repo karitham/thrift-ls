@@ -3,11 +3,12 @@ package lsp
 import (
 	"context"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/symbols"
+	"go.lsp.dev/protocol"
+
+	"github.com/karitham/thrift-ls/lsp/symbols"
 )
 
-func (s *Server) documentSymbol(ctx context.Context, params *protocol.DocumentSymbolParams) (result []interface{}, err error) {
+func (s *Server) documentSymbol(ctx context.Context, params *protocol.DocumentSymbolParams) (result protocol.DocumentSymbolSlice, err error) {
 	file := params.TextDocument.URI
 	view, err := s.session.ViewOf(file)
 	if err != nil {
@@ -16,11 +17,11 @@ func (s *Server) documentSymbol(ctx context.Context, params *protocol.DocumentSy
 	ss, release := view.Snapshot()
 	defer release()
 
-	symbols := symbols.DocumentSymbols(ctx, ss, file)
+	syms := symbols.DocumentSymbols(ctx, ss, file)
 
-	for i := range symbols {
-		result = append(result, symbols[i])
+	for i := range syms {
+		result = append(result, *syms[i])
 	}
 
-	return
+	return result, err
 }

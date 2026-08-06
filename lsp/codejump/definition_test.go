@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
 	"github.com/stretchr/testify/assert"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
 )
 
 func TestDefinition(t *testing.T) {
@@ -99,7 +100,7 @@ struct Person {
 		{
 			name: "case struct",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -127,7 +128,7 @@ struct Person {
 		{
 			name: "case union",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -155,7 +156,7 @@ struct Person {
 		{
 			name: "case enum",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -183,7 +184,7 @@ struct Person {
 		{
 			name: "case exceptions",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -211,7 +212,7 @@ struct Person {
 		{
 			name: "case typedef",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -239,7 +240,7 @@ struct Person {
 		{
 			name: "case enumvalue",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -267,7 +268,7 @@ struct Person {
 		{
 			name: "case const",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -295,7 +296,7 @@ struct Person {
 		{
 			name: "case include 1",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/app.thrift",
 				pos: protocol.Position{
@@ -323,7 +324,7 @@ struct Person {
 		{
 			name: "case include 2",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/app.thrift",
 				pos: protocol.Position{

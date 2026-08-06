@@ -2,13 +2,14 @@ package lsp
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
-	"github.com/joyme123/thrift-ls/lsp/diagnostic"
-	"github.com/joyme123/thrift-ls/utils/errors"
-	log "github.com/sirupsen/logrus"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/lsp/diagnostic"
 )
 
 func (s *Server) diagnostic(ctx context.Context, ss *cache.Snapshot, changeFile *cache.FileChange) error {
@@ -16,16 +17,16 @@ func (s *Server) diagnostic(ctx context.Context, ss *cache.Snapshot, changeFile 
 		return nil
 	}
 
-	log.Debugln("-----------diagnostic called-----------")
-	defer log.Debugln("-----------diagnostic finish-----------")
+	slog.Debug("diagnostic called")
+	defer slog.Debug("diagnostic finished")
 
 	diag := diagnostic.NewDiagnostic()
 	diagRes, err := diag.Diagnostic(ctx, ss, []uri.URI{changeFile.URI})
 	if err != nil {
-		log.Errorf("diagnostic failed: %v", err)
+		slog.Error("diagnostic failed", "err", err)
 	}
 
-	log.Debugln("publish diagnostric result: ", len(diagRes))
+	slog.Debug("publish diagnostic result", "count", len(diagRes))
 
 	var errs []error
 	for file, res := range diagRes {
@@ -36,15 +37,12 @@ func (s *Server) diagnostic(ctx context.Context, ss *cache.Snapshot, changeFile 
 			URI:         file,
 			Diagnostics: res,
 		}
-		log.Debugln("file:", file, "diagnostics", res)
+		slog.Debug("file diagnostics", "file", file, "diagnostics", res)
 		err = s.client.PublishDiagnostics(ctx, params)
 		if err != nil {
 			errs = append(errs, err)
 		}
 	}
 
-	if len(errs) > 0 {
-		return errors.NewAggregate(errs)
-	}
-	return nil
+	return errors.Join(errs...)
 }

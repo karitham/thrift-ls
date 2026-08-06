@@ -2,67 +2,77 @@ package codejump
 
 import (
 	"context"
-	"errors"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
-	"github.com/joyme123/thrift-ls/lsp/types"
-	"github.com/joyme123/thrift-ls/parser"
-	log "github.com/sirupsen/logrus"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
+// TypeDefinition returns the definition of the type of the declaration
+// under the cursor: for a type reference, the type's definition; for a
+// field, function, typedef, or const name, the definition of its declared
+// type.
 func TypeDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) (res []protocol.Location, err error) {
 	res = make([]protocol.Location, 0)
-	pf, err := ss.Parse(ctx, file)
+	pf, target, err := resolveTarget(ctx, ss, file, pos)
 	if err != nil {
-		return
+		return res, err
 	}
 
-	if pf.AST() == nil {
-		err = errors.New("parse ast failed")
-		return
+	switch target.kind {
+	case TargetTypeName:
+		return typeNameDefinition(ctx, ss, file, pf, target)
+	case TargetConstValue:
+		// The type definition of a constant value is the value's own
+		// definition: the enum value or const it references.
+		astFile, id, err := FindConstValueDefinition(ctx, ss, file, pf.AST(), target.node.(*syntax.ConstValue))
+		if err != nil {
+			return nil, err
+		}
+		if id == nil {
+			return nil, nil
+		}
+		loc, err := jumpInFile(ctx, ss, astFile, id)
+		if err != nil {
+			return nil, err
+		}
+		return []protocol.Location{loc}, nil
+	case TargetDefinition:
+		return declarationTypeDefinition(ctx, ss, file, pf, target)
+	}
+	return res, err
+}
+
+// declarationTypeDefinition jumps to the definition of the declared type of
+// a field, typedef, function, or const under the cursor.
+func declarationTypeDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
+	var ft *syntax.FieldType
+	switch parent := target.parent.(type) {
+	case *syntax.Field:
+		ft = parent.Type
+	case *syntax.Typedef:
+		ft = parent.Type
+	case *syntax.Function:
+		ft = parent.Type
+	case *syntax.Const:
+		ft = parent.Type
+	}
+	if ft == nil {
+		return nil, nil
 	}
 
-	astPos, err := pf.Mapper().LSPPosToParserPosition(types.Position{Line: pos.Line, Character: pos.Character})
+	astFile, id, _, err := FindTypeDefinition(ctx, ss, file, pf.AST(), ft)
 	if err != nil {
-		return
+		return nil, err
 	}
-	nodePath := parser.SearchNodePathByPosition(pf.AST(), astPos)
-	targetNode := nodePath[len(nodePath)-1]
-
-	switch targetNode.Type() {
-	case "TypeName":
-		return typeNameDefinition(ctx, ss, file, pf.AST(), targetNode)
-	case "IdentifierName":
-		// no parent
-		if len(nodePath) <= 2 {
-			return res, nil
-		}
-		parent := nodePath[len(nodePath)-3]
-		var fieldType *parser.FieldType
-		switch parent.Type() {
-		case "Field":
-			field := parent.(*parser.Field)
-			fieldType = field.FieldType
-		case "Typedef":
-			typedef := parent.(*parser.Typedef)
-			fieldType = typedef.T
-		case "Function":
-			fn := parent.(*parser.Function)
-			fieldType = fn.FunctionType
-		case "Const":
-			cst := parent.(*parser.Const)
-			fieldType = cst.ConstType
-		}
-		if fieldType != nil && !fieldType.BadNode && fieldType.TypeName != nil {
-			return typeNameDefinition(ctx, ss, file, pf.AST(), fieldType.TypeName)
-		}
-	case "ConstValue":
-		return constValueTypeDefinition(ctx, ss, file, pf.AST(), targetNode)
-	default:
-		log.Warningln("unsupport type for type definition:", targetNode.Type())
+	if id == nil {
+		return nil, nil
 	}
-
-	return
+	loc, err := jumpInFile(ctx, ss, astFile, id)
+	if err != nil {
+		return nil, err
+	}
+	return []protocol.Location{loc}, nil
 }

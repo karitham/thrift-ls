@@ -2,12 +2,13 @@ package completion
 
 import (
 	"io/fs"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/constants"
-	log "github.com/sirupsen/logrus"
+	"go.lsp.dev/protocol"
+
+	"github.com/karitham/thrift-ls/lsp/constants"
 )
 
 func ListDirAndFiles(dir, prefix string) (res []Candidate, err error) {
@@ -25,7 +26,7 @@ func ListDirAndFiles(dir, prefix string) (res []Candidate, err error) {
 
 	pathItems := strings.Split(dir, "/")
 	if len(pathItems) < up {
-		return
+		return res, err
 	}
 
 	pathItems = pathItems[0 : len(pathItems)-up]
@@ -35,12 +36,12 @@ func ListDirAndFiles(dir, prefix string) (res []Candidate, err error) {
 	baseDir := strings.Join(pathItems, "/") + "/" + dir
 	prefix = strings.TrimSuffix(prefix, filePrefix)
 
-	log.Debugf("include completion: walk dir %s with prefix %s, filePrefix %s", baseDir, prefix, filePrefix)
-	filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, err error) error {
+	slog.Debug("include completion walk dir", "dir", baseDir, "prefix", prefix, "filePrefix", filePrefix)
+	_ = filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || baseDir == path {
 			return nil
 		}
-		log.Debugf("include completion: name: %s, prefix: %s", d.Name(), filePrefix)
+		slog.Debug("include completion name", "name", d.Name(), "prefix", filePrefix)
 		if strings.HasPrefix(d.Name(), filePrefix) {
 			if d.IsDir() {
 				res = append(res, Candidate{
@@ -63,5 +64,5 @@ func ListDirAndFiles(dir, prefix string) (res []Candidate, err error) {
 		return nil
 	})
 
-	return
+	return res, err
 }

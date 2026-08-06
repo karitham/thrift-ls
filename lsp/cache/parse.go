@@ -3,12 +3,13 @@ package cache
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sync"
 
-	"github.com/joyme123/thrift-ls/lsp/mapper"
-	"github.com/joyme123/thrift-ls/parser"
-	log "github.com/sirupsen/logrus"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/mapper"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
 type ParseCaches struct {
@@ -52,10 +53,7 @@ func (c *ParseCaches) Clone() *ParseCaches {
 	for i := range c.caches {
 		clone[i] = c.caches[i]
 	}
-	newCaches := &ParseCaches{
-		caches: clone,
-	}
-	return newCaches
+	return &ParseCaches{caches: clone}
 }
 
 func (c *ParseCaches) Tokens() map[string]struct{} {
@@ -75,7 +73,8 @@ func (c *ParseCaches) Tokens() map[string]struct{} {
 	return tokens
 }
 
-// TokensForFile returns tokens for the given file and its transitively included files
+// TokensForFile returns tokens for the given file and its transitively
+// included files.
 func (c *ParseCaches) TokensForFile(file uri.URI, getIncludes func(uri.URI) []uri.URI) map[string]struct{} {
 	tokens := make(map[string]struct{})
 	visited := make(map[uri.URI]bool)
@@ -101,104 +100,106 @@ func (c *ParseCaches) TokensForFile(file uri.URI, getIncludes func(uri.URI) []ur
 	return tokens
 }
 
-func collectTokens(ast *parser.Document, tokens map[string]struct{}) {
-	for _, item := range ast.Includes {
-		if item.Path == nil || item.Path.BadNode {
-			continue
-		}
-		tokens[item.Name()] = struct{}{}
-	}
-	for _, item := range ast.Enums {
-		if item.Name == nil || item.Name.BadNode || item.Name.Name == nil || item.Name.Name.BadNode {
-			continue
-		}
-		tokens[item.Name.Name.Text] = struct{}{}
-		for i := range item.Values {
-			if item.Values[i].BadNode || item.Values[i].Name == nil || item.Values[i].Name.BadNode ||
-				item.Values[i].Name.Name == nil || item.Values[i].Name.Name.BadNode {
-				continue
+// collectTokens collects every identifier name in the document: definition
+// names, field names, and identifier references.
+func collectTokens(ast *syntax.Document, tokens map[string]struct{}) {
+	var walk func(n syntax.Node)
+	walk = func(n syntax.Node) {
+		switch v := n.(type) {
+		case *syntax.Identifier:
+			tokens[v.Text] = struct{}{}
+		case *syntax.ConstValue:
+			if v.Kind == syntax.ValueIdent {
+				tokens[v.Text] = struct{}{}
 			}
-			tokens[item.Name.Name.Text] = struct{}{}
-		}
-	}
-	for _, item := range ast.Consts {
-		if item.Name == nil || item.Name.BadNode || item.Name.Name == nil || item.Name.Name.BadNode {
-			continue
-		}
-		tokens[item.Name.Name.Text] = struct{}{}
-	}
-	for _, item := range ast.Typedefs {
-		if item.Alias == nil || item.Alias.BadNode || item.Alias.Name == nil || item.Alias.Name.BadNode {
-			continue
-		}
-		tokens[item.Alias.Name.Text] = struct{}{}
-	}
-	for _, item := range ast.Services {
-		if item.Name == nil || item.Name.BadNode {
-			continue
-		}
-		tokens[item.Name.Name.Text] = struct{}{}
-	}
-	for _, item := range ast.Unions {
-		if item.Name == nil || item.Name.BadNode {
-			continue
-		}
-		tokens[item.Name.Name.Text] = struct{}{}
-		for i := range item.Fields {
-			if item.Fields[i].BadNode || item.Fields[i].Identifier == nil || item.Fields[i].Identifier.Name == nil || item.Fields[i].Identifier.Name.BadNode {
-				continue
+			for _, item := range v.List {
+				walk(item)
 			}
-			tokens[item.Fields[i].Identifier.Name.Text] = struct{}{}
+			for _, entry := range v.Map {
+				walk(entry.Key)
+				walk(entry.Value)
+			}
+		case *syntax.Struct:
+			walk(v.Name)
+			for _, f := range v.Fields {
+				walk(f)
+			}
+		case *syntax.Service:
+			walk(v.Name)
+			for _, fn := range v.Functions {
+				walk(fn)
+			}
+		case *syntax.Enum:
+			walk(v.Name)
+			for _, ev := range v.Values {
+				walk(ev)
+			}
+		case *syntax.Field:
+			walk(v.Type)
+			walk(v.Name)
+			if v.Value != nil {
+				walk(v.Value)
+			}
+		case *syntax.Function:
+			if v.Type != nil {
+				walk(v.Type)
+			}
+			walk(v.Name)
+			for _, a := range v.Args {
+				walk(a)
+			}
+			if v.Throws != nil {
+				for _, f := range v.Throws.Fields {
+					walk(f)
+				}
+			}
+		case *syntax.FieldType:
+			if v.Ident != nil {
+				walk(v.Ident)
+			}
+			if v.KeyType != nil {
+				walk(v.KeyType)
+			}
+			if v.ValueType != nil {
+				walk(v.ValueType)
+			}
+		case *syntax.Const:
+			walk(v.Type)
+			walk(v.Name)
+			walk(v.Value)
+		case *syntax.Typedef:
+			walk(v.Type)
+			walk(v.Name)
+		case *syntax.EnumValue:
+			walk(v.Name)
 		}
 	}
-	for _, item := range ast.Structs {
-		if item.Identifier == nil || item.Identifier.BadNode || item.Identifier.Name == nil || item.Identifier.Name.BadNode {
-			continue
-		}
-		tokens[item.Identifier.Name.Text] = struct{}{}
-
-		for _, field := range item.Fields {
-			if field.BadNode || field.Identifier == nil || field.Identifier.BadNode || field.Identifier.Name == nil || field.Identifier.Name.BadNode {
-				continue
-			}
-			tokens[field.Identifier.Name.Text] = struct{}{}
-		}
-	}
-	for _, item := range ast.Exceptions {
-		if item.Name == nil || item.Name.BadNode || item.Name.Name == nil || item.Name.Name.BadNode {
-			continue
-		}
-		tokens[item.Name.Name.Text] = struct{}{}
-		for i := range item.Fields {
-			if item.Fields[i].BadNode || item.Fields[i].Identifier == nil || item.Fields[i].Identifier.Name == nil || item.Fields[i].Identifier.Name.BadNode {
-				continue
-			}
-			tokens[item.Fields[i].Identifier.Name.Text] = struct{}{}
-		}
+	for _, n := range ast.Nodes {
+		walk(n)
 	}
 }
 
 type ParsedFile struct {
 	fh FileHandle
-	// ast is latest available ast. current fh content may not to be parsed.
-	// so it may be nil when fh content is invalid
-	ast *parser.Document
+	// ast is the latest available ast. The current fh content may not be
+	// parsed, so ast may be nil when fh content is invalid.
+	ast *syntax.Document
 
 	mapper *mapper.Mapper
 
 	// errs hold all ast parsing errors
-	errs []parser.ParserError
+	errs []syntax.Error
 }
 
 func (p *ParsedFile) Mapper() *mapper.Mapper {
 	return p.mapper
 }
 
-func (p *ParsedFile) AST() *parser.Document {
+func (p *ParsedFile) AST() *syntax.Document {
 	return p.ast
 }
 
-func (p *ParsedFile) Errors() []parser.ParserError {
+func (p *ParsedFile) Errors() []syntax.Error {
 	return p.errs
 }
 
@@ -209,7 +210,7 @@ func (p *ParsedFile) AggregatedError() error {
 	return fmt.Errorf("aggregated error: %v", p.errs)
 }
 
-// DumpAST is for debug
+// DumpAST is for debug.
 func (p *ParsedFile) DumpAST() {
 	if p.ast == nil {
 		return
@@ -219,7 +220,7 @@ func (p *ParsedFile) DumpAST() {
 	fmt.Println(string(data))
 }
 
-// TODO(jpf): use promise
+// Parse lexes and parses the file content into a ParsedFile.
 func Parse(fh FileHandle) (*ParsedFile, error) {
 	content, err := fh.Content()
 	if err != nil {
@@ -230,65 +231,15 @@ func Parse(fh FileHandle) (*ParsedFile, error) {
 		fh: fh,
 	}
 
-	psr := &parser.PEGParser{}
-
-	ast, errs := psr.Parse(fh.URI().Filename(), content)
-	for i := range errs {
-		parserErr, ok := errs[i].(parser.ParserError)
-		if ok {
-			pf.errs = append(pf.errs, parserErr)
-		}
-	}
+	ast, errs := syntax.Parse(content)
+	pf.errs = errs
 	pf.ast = ast
 
 	if len(errs) > 0 {
-		log.Debugf("peg parsed err: %v", errs)
+		slog.Debug("parse failed", "errs", errs)
 	}
 
-	mp := mapper.NewMapper(fh.URI(), content)
-	pf.mapper = mp
+	pf.mapper = mapper.NewMapper(fh.URI(), content)
 
 	return pf, nil
-}
-
-// type ParseError struct {
-// 	Pos Position
-// 	Msg string
-// }
-//
-// func (e *ParseError) Error() string {
-// 	if e.Pos.Filename != "" || e.Pos.IsValid() {
-// 		// don't print "<unknown position>"
-// 		// TODO(gri) reconsider the semantics of Position.IsValid
-// 		return e.Pos.String() + ": " + e.Msg
-// 	}
-// 	return e.Msg
-// }
-
-type Position struct {
-	Filename string // filename, if any
-	Offset   int    // offset, starting at 0
-	Line     int    // line number, starting at 1
-	Column   int    // column number, starting at 1 (byte count)
-}
-
-func (p Position) IsValid() bool {
-	return p.Line > 0
-}
-
-func (p Position) String() string {
-	s := p.Filename
-	if p.IsValid() {
-		if s != "" {
-			s += ":"
-		}
-		s += fmt.Sprintf("%d", p.Line)
-		if p.Column != 0 {
-			s += fmt.Sprintf(":%d", p.Column)
-		}
-	}
-	if s == "" {
-		s = "-"
-	}
-	return s
 }

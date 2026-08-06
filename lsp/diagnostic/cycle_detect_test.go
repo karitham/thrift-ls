@@ -5,15 +5,15 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/joyme123/thrift-ls/lsp/cache"
-	"github.com/joyme123/thrift-ls/lsp/memoize"
-	"github.com/joyme123/thrift-ls/parser"
 	"github.com/stretchr/testify/assert"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/lsp/memoize"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
 func Test_cycleDetect(t *testing.T) {
-
 	includesMap := map[uri.URI][]Include{
 		"/user.thrift": {
 			Include{file: "/goods.thrift"},
@@ -86,7 +86,7 @@ include "./test/address.thrift"`
 	file2 := `include "../user.thrift"`
 	file3 := `include "../user.thrift"`
 
-	ss := buildSnapshotForTest([]*cache.FileChange{
+	ss := buildSnapshotForTest(t, []*cache.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
@@ -107,338 +107,33 @@ include "./test/address.thrift"`
 		},
 	})
 
+	// Expected includes, built by parsing the same sources.
+	parseFor := func(uriStr, src string) *syntax.Document {
+		doc, errs := syntax.Parse([]byte(src))
+		for _, e := range errs {
+			if e.Severity == syntax.SeverityError {
+				t.Fatal(e)
+			}
+		}
+		return doc
+	}
+	userDoc := parseFor("file:///tmp/user.thrift", file1)
+	goodsDoc := parseFor("file:///tmp/test/goods.thrift", file2)
+	addressDoc := parseFor("file:///tmp/test/address.thrift", file3)
+
 	expectIncludeMap := map[uri.URI][]Include{
 		"file:///tmp/user.thrift": {
-			Include{
-				file: "file:///tmp/test/goods.thrift",
-				include: &parser.Include{
-					IncludeKeyword: &parser.IncludeKeyword{
-						Keyword: parser.Keyword{
-							Literal: &parser.KeywordLiteral{
-								Text:    "include",
-								BadNode: false,
-								Location: parser.Location{
-									StartPos: parser.Position{
-										Line:   1,
-										Col:    1,
-										Offset: 0,
-									},
-									EndPos: parser.Position{
-										Line:   1,
-										Col:    8,
-										Offset: 7,
-									},
-								},
-							},
-							BadNode: false,
-							Location: parser.Location{
-								StartPos: parser.Position{
-									Line:   1,
-									Col:    1,
-									Offset: 0,
-								},
-								EndPos: parser.Position{
-									Line:   1,
-									Col:    9,
-									Offset: 8,
-								},
-							},
-						},
-					},
-					Path: &parser.Literal{
-						Value: &parser.LiteralValue{
-							Text: "./test/goods.thrift",
-							Location: parser.Location{
-								StartPos: parser.Position{
-									Line:   1,
-									Col:    10,
-									Offset: 9,
-								},
-								EndPos: parser.Position{
-									Line:   1,
-									Col:    29,
-									Offset: 28,
-								},
-							},
-						},
-						BadNode: false,
-						Quote:   "\"",
-						Location: parser.NewLocationFromPos(
-							parser.Position{
-								Line:   1,
-								Col:    9,
-								Offset: 8,
-							},
-							parser.Position{
-								Line:   1,
-								Col:    30,
-								Offset: 29,
-							},
-						),
-					},
-					Location: parser.NewLocationFromPos(
-						parser.Position{
-							Line:   1,
-							Col:    1,
-							Offset: 0,
-						},
-						parser.Position{
-							Line:   1,
-							Col:    30,
-							Offset: 29,
-						},
-					),
-				},
-			},
-			Include{
-				file: "file:///tmp/test/address.thrift",
-				include: &parser.Include{
-					IncludeKeyword: &parser.IncludeKeyword{
-						Keyword: parser.Keyword{
-							Literal: &parser.KeywordLiteral{
-								Text:    "include",
-								BadNode: false,
-								Location: parser.Location{
-									StartPos: parser.Position{
-										Line:   2,
-										Col:    1,
-										Offset: 30,
-									},
-									EndPos: parser.Position{
-										Line:   2,
-										Col:    8,
-										Offset: 37,
-									},
-								},
-							},
-							BadNode: false,
-							Location: parser.Location{
-								StartPos: parser.Position{
-									Line:   2,
-									Col:    1,
-									Offset: 30,
-								},
-								EndPos: parser.Position{
-									Line:   2,
-									Col:    9,
-									Offset: 38,
-								},
-							},
-						},
-					},
-					Path: &parser.Literal{
-						Value: &parser.LiteralValue{
-							Text: "./test/address.thrift",
-							Location: parser.Location{
-								StartPos: parser.Position{
-									Line:   2,
-									Col:    10,
-									Offset: 39,
-								},
-								EndPos: parser.Position{
-									Line:   2,
-									Col:    31,
-									Offset: 60,
-								},
-							},
-						},
-						Quote:   "\"",
-						BadNode: false,
-						Location: parser.NewLocationFromPos(
-							parser.Position{
-								Line:   2,
-								Col:    9,
-								Offset: 38,
-							},
-							parser.Position{
-								Line:   2,
-								Col:    32,
-								Offset: 61,
-							},
-						),
-					},
-					Location: parser.NewLocationFromPos(
-						parser.Position{
-							Line:   2,
-							Col:    1,
-							Offset: 30,
-						},
-						parser.Position{
-							Line:   2,
-							Col:    32,
-							Offset: 61,
-						},
-					),
-				},
-			},
+			Include{file: "file:///tmp/test/goods.thrift", include: userDoc.Includes()[0], doc: userDoc},
+			Include{file: "file:///tmp/test/address.thrift", include: userDoc.Includes()[1], doc: userDoc},
 		},
 		"file:///tmp/test/goods.thrift": {
-			Include{
-				file: "file:///tmp/user.thrift",
-				include: &parser.Include{
-					IncludeKeyword: &parser.IncludeKeyword{
-						Keyword: parser.Keyword{
-							Literal: &parser.KeywordLiteral{
-								Text:    "include",
-								BadNode: false,
-								Location: parser.Location{
-									StartPos: parser.Position{
-										Line:   1,
-										Col:    1,
-										Offset: 0,
-									},
-									EndPos: parser.Position{
-										Line:   1,
-										Col:    8,
-										Offset: 7,
-									},
-								},
-							},
-							BadNode: false,
-							Location: parser.Location{
-								StartPos: parser.Position{
-									Line:   1,
-									Col:    1,
-									Offset: 0,
-								},
-								EndPos: parser.Position{
-									Line:   1,
-									Col:    9,
-									Offset: 8,
-								},
-							},
-						},
-					},
-					Path: &parser.Literal{
-						Value: &parser.LiteralValue{
-							Text: "../user.thrift",
-							Location: parser.Location{
-								StartPos: parser.Position{
-									Line:   1,
-									Col:    10,
-									Offset: 9,
-								},
-								EndPos: parser.Position{
-									Line:   1,
-									Col:    24,
-									Offset: 23,
-								},
-							},
-						},
-						Quote:   "\"",
-						BadNode: false,
-						Location: parser.NewLocationFromPos(
-							parser.Position{
-								Line:   1,
-								Col:    9,
-								Offset: 8,
-							},
-							parser.Position{
-								Line:   1,
-								Col:    25,
-								Offset: 24,
-							},
-						),
-					},
-					Location: parser.NewLocationFromPos(
-						parser.Position{
-							Line:   1,
-							Col:    1,
-							Offset: 0,
-						},
-						parser.Position{
-							Line:   1,
-							Col:    25,
-							Offset: 24,
-						},
-					),
-				},
-			},
+			Include{file: "file:///tmp/user.thrift", include: goodsDoc.Includes()[0], doc: goodsDoc},
 		},
 		"file:///tmp/test/address.thrift": {
-			Include{
-				file: "file:///tmp/user.thrift",
-				include: &parser.Include{
-					IncludeKeyword: &parser.IncludeKeyword{
-						Keyword: parser.Keyword{
-							Literal: &parser.KeywordLiteral{
-								Text:    "include",
-								BadNode: false,
-								Location: parser.Location{
-									StartPos: parser.Position{
-										Line:   1,
-										Col:    1,
-										Offset: 0,
-									},
-									EndPos: parser.Position{
-										Line:   1,
-										Col:    8,
-										Offset: 7,
-									},
-								},
-							},
-							BadNode: false,
-							Location: parser.Location{
-								StartPos: parser.Position{
-									Line:   1,
-									Col:    1,
-									Offset: 0,
-								},
-								EndPos: parser.Position{
-									Line:   1,
-									Col:    9,
-									Offset: 8,
-								},
-							},
-						},
-					},
-					Path: &parser.Literal{
-						Value: &parser.LiteralValue{
-							Text: "../user.thrift",
-							Location: parser.Location{
-								StartPos: parser.Position{
-									Line:   1,
-									Col:    10,
-									Offset: 9,
-								},
-								EndPos: parser.Position{
-									Line:   1,
-									Col:    24,
-									Offset: 23,
-								},
-							},
-						},
-						Quote:   "\"",
-						BadNode: false,
-						Location: parser.NewLocationFromPos(
-							parser.Position{
-								Line:   1,
-								Col:    9,
-								Offset: 8,
-							},
-							parser.Position{
-								Line:   1,
-								Col:    25,
-								Offset: 24,
-							},
-						),
-					},
-					Location: parser.NewLocationFromPos(
-						parser.Position{
-							Line:   1,
-							Col:    1,
-							Offset: 0,
-						},
-						parser.Position{
-							Line:   1,
-							Col:    25,
-							Offset: 24,
-						},
-					),
-				},
-			},
+			Include{file: "file:///tmp/user.thrift", include: addressDoc.Includes()[0], doc: addressDoc},
 		},
 	}
+
 	includeMap := make(map[uri.URI][]Include)
 
 	type args struct {
@@ -456,7 +151,7 @@ include "./test/address.thrift"`
 		{
 			name: "normal",
 			args: args{
-				ctx:         context.TODO(),
+				ctx:         t.Context(),
 				ss:          ss,
 				file:        "file:///tmp/user.thrift",
 				includesMap: &includeMap,
@@ -474,11 +169,11 @@ include "./test/address.thrift"`
 	}
 }
 
-func buildSnapshotForTest(files []*cache.FileChange) *cache.Snapshot {
+func buildSnapshotForTest(t *testing.T, files []*cache.FileChange) *cache.Snapshot {
 	store := &memoize.Store{}
 	c := cache.New(store, nil)
 	fs := cache.NewOverlayFS(c)
-	fs.Update(context.TODO(), files)
+	_ = fs.Update(t.Context(), files)
 
 	view := cache.NewView("test", "file:///tmp", fs, store, nil)
 	ss := cache.NewSnapshot(view, store, nil)

@@ -2,17 +2,17 @@ package diagnostic
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
-	"github.com/joyme123/thrift-ls/parser"
-	"github.com/joyme123/thrift-ls/utils/errors"
-	log "github.com/sirupsen/logrus"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
-type Parse struct {
-}
+type Parse struct{}
 
 func (p *Parse) Diagnostic(ctx context.Context, ss *cache.Snapshot, changeFiles []uri.URI) (DiagnosticResult, error) {
 	var errs []error
@@ -25,20 +25,14 @@ func (p *Parse) Diagnostic(ctx context.Context, ss *cache.Snapshot, changeFiles 
 			continue
 		}
 
-		// TODO(jpf): 递归解析
 		for _, err := range parseRes.Errors() {
-			parseErr, ok := err.(parser.ParserError)
-			if !ok {
-				continue
-			}
-			log.Debugf("diagnostic parse err: %v", parseErr)
-			diag := parseErrToDiagnostic(parseErr)
-			res[uri] = append(res[uri], diag)
+			slog.Debug("diagnostic parse failed", "err", err)
+			res[uri] = append(res[uri], syntaxErrorToDiagnostic(err))
 		}
 	}
 
 	if len(errs) > 0 {
-		return res, errors.NewAggregate(errs)
+		return res, errors.Join(errs...)
 	}
 
 	return res, nil
@@ -48,23 +42,26 @@ func (p *Parse) Name() string {
 	return "Parse"
 }
 
-func parseErrToDiagnostic(err parser.ParserError) protocol.Diagnostic {
-	line, col, _ := err.Pos()
-	diag := protocol.Diagnostic{
+// syntaxErrorToDiagnostic converts a syntax error or warning to an LSP
+// diagnostic.
+func syntaxErrorToDiagnostic(err syntax.Error) protocol.Diagnostic {
+	severity := protocol.DiagnosticSeverityError
+	if err.Severity == syntax.SeverityWarning {
+		severity = protocol.DiagnosticSeverityWarning
+	}
+	return protocol.Diagnostic{
 		Range: protocol.Range{
 			Start: protocol.Position{
-				Line:      uint32(line - 1),
-				Character: uint32(col - 1),
+				Line:      uint32(err.Line - 1),
+				Character: uint32(err.Col - 1),
 			},
 			End: protocol.Position{
-				Line:      uint32(line - 1),
-				Character: uint32(col - 1),
+				Line:      uint32(err.Line - 1),
+				Character: uint32(err.Col - 1),
 			},
 		},
-		Severity: protocol.DiagnosticSeverityError,
-		Source:   "thrift-ls",
-		Message:  err.InnerError().Error(),
+		Severity: severity,
+		Source:   protocol.NewOptional("thrift-ls"),
+		Message:  protocol.String(err.Message),
 	}
-
-	return diag
 }

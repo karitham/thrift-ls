@@ -2,9 +2,9 @@ package cache
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 
-	log "github.com/sirupsen/logrus"
 	"go.lsp.dev/uri"
 )
 
@@ -36,7 +36,7 @@ func (fs *overlayFS) Overlays() []*Overlay {
 }
 
 func (fs *overlayFS) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, error) {
-	log.Debug("read uri: ", uri)
+	slog.Debug("reading uri", "uri", uri)
 	fs.mu.Lock()
 	overlay, ok := fs.overlays[uri]
 	fs.mu.Unlock()
@@ -62,7 +62,7 @@ func (fs *overlayFS) Update(ctx context.Context, changes []*FileChange) error {
 		}
 		overlay := NewOverlay(change.URI, change.FullContent(base), int32(change.Version))
 
-		log.Debug("new overlay content: ", string(overlay.content), "uri", change.URI)
+		slog.Debug("new overlay content", "content", string(overlay.content), "uri", change.URI)
 
 		fs.mu.Lock()
 		fs.overlays[change.URI] = overlay

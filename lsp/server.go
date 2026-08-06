@@ -2,11 +2,12 @@ package lsp
 
 import (
 	"context"
+	"log/slog"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/format"
-	"github.com/joyme123/thrift-ls/lsp/cache"
-	log "github.com/sirupsen/logrus"
+	"go.lsp.dev/protocol"
+
+	"github.com/karitham/thrift-ls/formatter"
+	"github.com/karitham/thrift-ls/lsp/cache"
 )
 
 type Server struct {
@@ -14,10 +15,10 @@ type Server struct {
 	session *cache.Session
 
 	client     protocol.Client
-	formatOpts format.Options
+	formatOpts formatter.Options
 }
 
-func NewServer(c *cache.Cache, client protocol.Client, formatOpts format.Options) *Server {
+func NewServer(c *cache.Cache, client protocol.Client, formatOpts formatter.Options) *Server {
 	return &Server{
 		cache:      c,
 		session:    cache.NewSession(c),
@@ -27,8 +28,8 @@ func NewServer(c *cache.Cache, client protocol.Client, formatOpts format.Options
 }
 
 func (s *Server) Initialize(ctx context.Context, params *protocol.InitializeParams) (result *protocol.InitializeResult, err error) {
-	log.Debugln("------------Initialize called--------------")
-	defer log.Debugln("-----------Initialize finish--------------")
+	slog.Debug("Initialize called")
+	defer slog.Debug("Initialize finished")
 	return s.initialize(ctx, params)
 }
 
@@ -56,8 +57,8 @@ func (s *Server) SetTrace(ctx context.Context, params *protocol.SetTraceParams) 
 	return nil
 }
 
-func (s *Server) CodeAction(ctx context.Context, params *protocol.CodeActionParams) (result []protocol.CodeAction, err error) {
-	return []protocol.CodeAction{}, nil
+func (s *Server) CodeAction(ctx context.Context, params *protocol.CodeActionParams) (result []protocol.CommandOrCodeAction, err error) {
+	return []protocol.CommandOrCodeAction{}, nil
 }
 
 func (s *Server) CodeLens(ctx context.Context, params *protocol.CodeLensParams) (result []protocol.CodeLens, err error) {
@@ -72,9 +73,9 @@ func (s *Server) ColorPresentation(ctx context.Context, params *protocol.ColorPr
 	return []protocol.ColorPresentation{}, nil
 }
 
-func (s *Server) Completion(ctx context.Context, params *protocol.CompletionParams) (result *protocol.CompletionList, err error) {
-	log.Debugln("------------Completion called--------------")
-	defer log.Debugln("-----------Completion finish--------------")
+func (s *Server) Completion(ctx context.Context, params *protocol.CompletionParams) (result protocol.CompletionResult, err error) {
+	slog.Debug("Completion called")
+	defer slog.Debug("Completion finished")
 	return s.completion(ctx, params)
 }
 
@@ -82,19 +83,20 @@ func (s *Server) CompletionResolve(ctx context.Context, params *protocol.Complet
 	return params, nil
 }
 
-func (s *Server) Declaration(ctx context.Context, params *protocol.DeclarationParams) (result []protocol.Location, err error) {
-	return []protocol.Location{}, nil
+func (s *Server) Declaration(ctx context.Context, params *protocol.DeclarationParams) (result protocol.DeclarationResult, err error) {
+	return protocol.LocationSlice{}, nil
 }
 
-func (s *Server) Definition(ctx context.Context, params *protocol.DefinitionParams) (result []protocol.Location, err error) {
-	log.Debugln("-------------------Definition called-----------------")
-	defer log.Debugln("-------------------Definition finish-----------------")
-	return s.definition(ctx, params)
+func (s *Server) Definition(ctx context.Context, params *protocol.DefinitionParams) (result protocol.DefinitionResult, err error) {
+	slog.Debug("Definition called")
+	defer slog.Debug("Definition finished")
+	res, err := s.definition(ctx, params)
+	return protocol.LocationSlice(res), err
 }
 
 func (s *Server) DidChange(ctx context.Context, params *protocol.DidChangeTextDocumentParams) (err error) {
-	log.Debugln("-----------DidChange called-----------")
-	defer log.Debugln("-----------DidChange finish-----------")
+	slog.Debug("DidChange called")
+	defer slog.Debug("DidChange finished")
 	return s.didChange(ctx, params)
 }
 
@@ -115,8 +117,8 @@ func (s *Server) DidClose(ctx context.Context, params *protocol.DidCloseTextDocu
 }
 
 func (s *Server) DidOpen(ctx context.Context, params *protocol.DidOpenTextDocumentParams) (err error) {
-	log.Debugln("-----------DidOpen called-----------")
-	defer log.Debugln("-----------DidOpen finish-----------")
+	slog.Debug("DidOpen called")
+	defer slog.Debug("DidOpen finished")
 	return s.didOpen(ctx, params)
 }
 
@@ -140,13 +142,13 @@ func (s *Server) DocumentLinkResolve(ctx context.Context, params *protocol.Docum
 	return nil, nil
 }
 
-func (s *Server) DocumentSymbol(ctx context.Context, params *protocol.DocumentSymbolParams) (result []interface{}, err error) {
-	log.Debugln("-----------DocumentSymbol called-----------")
-	defer log.Debugln("-----------DocumentSymbol finish-----------")
+func (s *Server) DocumentSymbol(ctx context.Context, params *protocol.DocumentSymbolParams) (result protocol.DocumentSymbolResult, err error) {
+	slog.Debug("DocumentSymbol called")
+	defer slog.Debug("DocumentSymbol finished")
 	return s.documentSymbol(ctx, params)
 }
 
-func (s *Server) ExecuteCommand(ctx context.Context, params *protocol.ExecuteCommandParams) (result interface{}, err error) {
+func (s *Server) ExecuteCommand(ctx context.Context, params *protocol.ExecuteCommandParams) (result protocol.LSPAny, err error) {
 	return nil, nil
 }
 
@@ -155,44 +157,44 @@ func (s *Server) FoldingRanges(ctx context.Context, params *protocol.FoldingRang
 }
 
 func (s *Server) Formatting(ctx context.Context, params *protocol.DocumentFormattingParams) (result []protocol.TextEdit, err error) {
-	log.Debugln("-----------Formatting called-----------")
-	defer log.Debugln("-----------Formatting finish-----------")
+	slog.Debug("Formatting called")
+	defer slog.Debug("Formatting finished")
 	return s.formatting(ctx, params)
 }
 
 func (s *Server) Hover(ctx context.Context, params *protocol.HoverParams) (result *protocol.Hover, err error) {
-	log.Debugln("------------hover called----------------")
-	defer log.Debugln("------------hover finish------------")
+	slog.Debug("hover called")
+	defer slog.Debug("hover finished")
 	return s.hover(ctx, params)
 }
 
-func (s *Server) Implementation(ctx context.Context, params *protocol.ImplementationParams) (result []protocol.Location, err error) {
-	return []protocol.Location{}, nil
+func (s *Server) Implementation(ctx context.Context, params *protocol.ImplementationParams) (result protocol.DefinitionResult, err error) {
+	return protocol.LocationSlice{}, nil
 }
 
 func (s *Server) OnTypeFormatting(ctx context.Context, params *protocol.DocumentOnTypeFormattingParams) (result []protocol.TextEdit, err error) {
 	return []protocol.TextEdit{}, nil
 }
 
-func (s *Server) PrepareRename(ctx context.Context, params *protocol.PrepareRenameParams) (result *protocol.Range, err error) {
-	log.Debugln("--------------------PrepareRename called----------------------")
-	defer log.Debugln("--------------------PrepareRename finish----------------------")
+func (s *Server) PrepareRename(ctx context.Context, params *protocol.PrepareRenameParams) (result protocol.PrepareRenameResult, err error) {
+	slog.Debug("PrepareRename called")
+	defer slog.Debug("PrepareRename finished")
 	return s.prepareRename(ctx, params)
 }
 
 func (s *Server) RangeFormatting(ctx context.Context, params *protocol.DocumentRangeFormattingParams) (result []protocol.TextEdit, err error) {
-	return []protocol.TextEdit{}, nil
+	return s.rangeFormatting(ctx, params)
 }
 
 func (s *Server) References(ctx context.Context, params *protocol.ReferenceParams) (result []protocol.Location, err error) {
-	log.Debugln("--------------------References called----------------------")
-	defer log.Debugln("--------------------References finish----------------------")
+	slog.Debug("References called")
+	defer slog.Debug("References finished")
 	return s.references(ctx, params)
 }
 
 func (s *Server) Rename(ctx context.Context, params *protocol.RenameParams) (result *protocol.WorkspaceEdit, err error) {
-	log.Debugln("--------------------Rename called----------------------")
-	defer log.Debugln("--------------------Rename finish----------------------")
+	slog.Debug("Rename called")
+	defer slog.Debug("Rename finished")
 	return s.rename(ctx, params)
 }
 
@@ -200,14 +202,15 @@ func (s *Server) SignatureHelp(ctx context.Context, params *protocol.SignatureHe
 	return nil, nil
 }
 
-func (s *Server) Symbols(ctx context.Context, params *protocol.WorkspaceSymbolParams) (result []protocol.SymbolInformation, err error) {
-	return []protocol.SymbolInformation{}, nil
+func (s *Server) Symbols(ctx context.Context, params *protocol.WorkspaceSymbolParams) (result protocol.WorkspaceSymbolResult, err error) {
+	return protocol.SymbolInformationSlice{}, nil
 }
 
-func (s *Server) TypeDefinition(ctx context.Context, params *protocol.TypeDefinitionParams) (result []protocol.Location, err error) {
-	log.Debugln("--------------------TypeDefinition called----------------------")
-	defer log.Debugln("--------------------TypeDefinition finish----------------------")
-	return s.typeDefinition(ctx, params)
+func (s *Server) TypeDefinition(ctx context.Context, params *protocol.TypeDefinitionParams) (result protocol.DefinitionResult, err error) {
+	slog.Debug("TypeDefinition called")
+	defer slog.Debug("TypeDefinition finished")
+	res, err := s.typeDefinition(ctx, params)
+	return protocol.LocationSlice(res), err
 }
 
 func (s *Server) WillSave(ctx context.Context, params *protocol.WillSaveTextDocumentParams) (err error) {
@@ -266,7 +269,7 @@ func (s *Server) SemanticTokensFull(ctx context.Context, params *protocol.Semant
 	return nil, nil
 }
 
-func (s *Server) SemanticTokensFullDelta(ctx context.Context, params *protocol.SemanticTokensDeltaParams) (result interface{}, err error) {
+func (s *Server) SemanticTokensFullDelta(ctx context.Context, params *protocol.SemanticTokensDeltaParams) (result protocol.SemanticTokensDeltaResult, err error) {
 	return nil, nil
 }
 
@@ -287,6 +290,85 @@ func (s *Server) Moniker(ctx context.Context, params *protocol.MonikerParams) (r
 }
 
 // Request handles all no standard request
-func (s *Server) Request(ctx context.Context, method string, params interface{}) (result interface{}, err error) {
+func (s *Server) Request(ctx context.Context, method string, params any) (result any, err error) {
+	return nil, nil
+}
+
+// The following methods satisfy the full protocol.Server interface. thrift-ls
+// does not implement these features; they return empty results.
+
+func (s *Server) Progress(ctx context.Context, params *protocol.ProgressParams) error {
+	return nil
+}
+
+func (s *Server) DidOpenNotebookDocument(ctx context.Context, params *protocol.DidOpenNotebookDocumentParams) error {
+	return nil
+}
+
+func (s *Server) DidChangeNotebookDocument(ctx context.Context, params *protocol.DidChangeNotebookDocumentParams) error {
+	return nil
+}
+
+func (s *Server) DidSaveNotebookDocument(ctx context.Context, params *protocol.DidSaveNotebookDocumentParams) error {
+	return nil
+}
+
+func (s *Server) DidCloseNotebookDocument(ctx context.Context, params *protocol.DidCloseNotebookDocumentParams) error {
+	return nil
+}
+
+func (s *Server) PrepareTypeHierarchy(ctx context.Context, params *protocol.TypeHierarchyPrepareParams) ([]protocol.TypeHierarchyItem, error) {
+	return nil, nil
+}
+
+func (s *Server) Supertypes(ctx context.Context, params *protocol.TypeHierarchySupertypesParams) ([]protocol.TypeHierarchyItem, error) {
+	return nil, nil
+}
+
+func (s *Server) Subtypes(ctx context.Context, params *protocol.TypeHierarchySubtypesParams) ([]protocol.TypeHierarchyItem, error) {
+	return nil, nil
+}
+
+func (s *Server) SelectionRange(ctx context.Context, params *protocol.SelectionRangeParams) ([]protocol.SelectionRange, error) {
+	return nil, nil
+}
+
+func (s *Server) InlineValue(ctx context.Context, params *protocol.InlineValueParams) ([]protocol.InlineValue, error) {
+	return nil, nil
+}
+
+func (s *Server) InlayHint(ctx context.Context, params *protocol.InlayHintParams) ([]protocol.InlayHint, error) {
+	return nil, nil
+}
+
+func (s *Server) InlayHintResolve(ctx context.Context, params *protocol.InlayHint) (*protocol.InlayHint, error) {
+	return params, nil
+}
+
+func (s *Server) Diagnostic(ctx context.Context, params *protocol.DocumentDiagnosticParams) (protocol.DocumentDiagnosticReport, error) {
+	return nil, nil
+}
+
+func (s *Server) DiagnosticWorkspace(ctx context.Context, params *protocol.WorkspaceDiagnosticParams) (*protocol.WorkspaceDiagnosticReport, error) {
+	return nil, nil
+}
+
+func (s *Server) CodeActionResolve(ctx context.Context, params *protocol.CodeAction) (*protocol.CodeAction, error) {
+	return params, nil
+}
+
+func (s *Server) RangesFormatting(ctx context.Context, params *protocol.DocumentRangesFormattingParams) ([]protocol.TextEdit, error) {
+	return nil, nil
+}
+
+func (s *Server) InlineCompletion(ctx context.Context, params *protocol.InlineCompletionParams) (protocol.InlineCompletionResult, error) {
+	return nil, nil
+}
+
+func (s *Server) WorkspaceSymbolResolve(ctx context.Context, params *protocol.WorkspaceSymbol) (*protocol.WorkspaceSymbol, error) {
+	return params, nil
+}
+
+func (s *Server) TextDocumentContent(ctx context.Context, params *protocol.TextDocumentContentParams) (*protocol.TextDocumentContentResult, error) {
 	return nil, nil
 }

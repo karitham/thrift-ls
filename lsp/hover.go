@@ -4,8 +4,9 @@ import (
 	"context"
 	"strings"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/codejump"
+	"go.lsp.dev/protocol"
+
+	"github.com/karitham/thrift-ls/lsp/codejump"
 )
 
 func (s *Server) hover(ctx context.Context, params *protocol.HoverParams) (*protocol.Hover, error) {
@@ -36,8 +37,8 @@ func (s *Server) hover(ctx context.Context, params *protocol.HoverParams) (*prot
 	}
 
 	return &protocol.Hover{
-		Contents: protocol.MarkupContent{
-			Kind:  protocol.Markdown,
+		Contents: &protocol.MarkupContent{
+			Kind:  protocol.MarkupKindMarkdown,
 			Value: markdown_prefix + content + markdown_suffix,
 		},
 	}, nil

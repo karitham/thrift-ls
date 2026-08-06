@@ -3,15 +3,16 @@ package lsp
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path"
 	"strings"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
-	"github.com/joyme123/thrift-ls/lsp/completion"
-	"github.com/joyme123/thrift-ls/lsp/types"
-	log "github.com/sirupsen/logrus"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/lsp/completion"
+	"github.com/karitham/thrift-ls/lsp/types"
 )
 
 func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocumentParams) error {
@@ -50,8 +51,8 @@ func (s *Server) openFile(ctx context.Context, change *cache.FileChange) error {
 
 	if _, err := s.session.ViewOf(change.URI); err != nil {
 		// create view for this folder
-		filename := change.URI.Filename()
-		dir := uri.New(path.Dir(filename))
+		filename := change.URI.Path()
+		dir := uri.File(path.Dir(filename))
 		s.session.CreateView(dir)
 	}
 
@@ -61,7 +62,7 @@ func (s *Server) openFile(ctx context.Context, change *cache.FileChange) error {
 		defer release()
 		err := s.diagnostic(ctx, ss, change)
 		if err != nil {
-			log.Errorf("diagnostic error: %v", err)
+			slog.Error("diagnostic error", "err", err)
 		}
 	})
 
@@ -87,7 +88,7 @@ func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDo
 		for i := range changes {
 			err := s.diagnostic(ctx, ss, changes[i])
 			if err != nil {
-				log.Error("diagnostic error", err)
+				slog.Error("diagnostic error", "err", err)
 			}
 		}
 	})
@@ -124,18 +125,18 @@ func toLspCompletionList(items []*completion.CompletionItem, rng protocol.Range)
 	for i := range items {
 		item := protocol.CompletionItem{
 			Label:  items[i].Label,
-			Detail: items[i].Detail,
+			Detail: protocol.NewOptional(items[i].Detail),
 			Kind:   items[i].Kind,
 			TextEdit: &protocol.TextEdit{
 				NewText: items[i].InsertText,
 				Range:   rng,
 			},
-			FilterText:       strings.TrimLeft(items[i].Label, "&*"),
+			FilterText:       protocol.NewOptional(strings.TrimLeft(items[i].Label, "&*")),
 			InsertTextFormat: items[i].InsertTextFormat,
-			SortText:         fmt.Sprintf("%05d", i),
-			Preselect:        i == 0,
-			Deprecated:       items[i].Deprecated,
-			Documentation:    items[i].Documentation,
+			SortText:         protocol.NewOptional(fmt.Sprintf("%05d", i)),
+			Preselect:        protocol.NewOptional(i == 0),
+			Deprecated:       protocol.NewOptional(items[i].Deprecated),
+			Documentation:    protocol.String(items[i].Documentation),
 		}
 		list.Items = append(list.Items, item)
 	}
@@ -146,7 +147,7 @@ func (s *Server) getFileContext(ctx context.Context, uri uri.URI) (ss *cache.Sna
 	var view *cache.View
 	view, err = s.session.ViewOf(uri)
 	if err != nil {
-		return
+		return ss, release, fh, err
 	}
 
 	ss, release = view.Snapshot()
@@ -154,8 +155,8 @@ func (s *Server) getFileContext(ctx context.Context, uri uri.URI) (ss *cache.Sna
 	fh, err = ss.ReadFile(ctx, uri)
 	if err != nil {
 		release()
-		return
+		return ss, release, fh, err
 	}
 
-	return
+	return ss, release, fh, err
 }

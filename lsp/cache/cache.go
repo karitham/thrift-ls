@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"sync/atomic"
 
-	"github.com/joyme123/thrift-ls/lsp/memoize"
+	"github.com/karitham/thrift-ls/lsp/memoize"
 )
 
 type Cache struct {

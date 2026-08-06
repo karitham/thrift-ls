@@ -4,14 +4,14 @@ import (
 	"context"
 	"testing"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
 	"github.com/stretchr/testify/assert"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
 )
 
 func TestPrepareRename(t *testing.T) {
-
 	file1 := `struct Test {
   1: required string name,
   2: required string email,
@@ -82,7 +82,7 @@ const UserKind kind = "1"
 		{
 			name: "case struct",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
@@ -105,7 +105,7 @@ const UserKind kind = "1"
 		{
 			name: "case union",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
@@ -128,7 +128,7 @@ const UserKind kind = "1"
 		{
 			name: "case enum",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
@@ -151,7 +151,7 @@ const UserKind kind = "1"
 		{
 			name: "case exception",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
@@ -174,7 +174,7 @@ const UserKind kind = "1"
 		{
 			name: "typedef",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
@@ -197,7 +197,7 @@ const UserKind kind = "1"
 		{
 			name: "const",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
@@ -228,7 +228,6 @@ const UserKind kind = "1"
 }
 
 func TestRename(t *testing.T) {
-
 	file1 := `struct Test {
   1: required string name,
   2: required string email,
@@ -300,7 +299,7 @@ const UserKind kind = "1"
 		{
 			name: "case struct",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
@@ -311,7 +310,7 @@ const UserKind kind = "1"
 			},
 			wantRes: &protocol.WorkspaceEdit{
 				Changes: map[uri.URI][]protocol.TextEdit{
-					"file:///tmp/user.thrift": []protocol.TextEdit{
+					"file:///tmp/user.thrift": {
 						{
 							Range: protocol.Range{
 								Start: protocol.Position{
@@ -326,7 +325,7 @@ const UserKind kind = "1"
 							NewText: "newtext",
 						},
 					},
-					"file:///tmp/api.thrift": []protocol.TextEdit{
+					"file:///tmp/api.thrift": {
 						{
 							Range: protocol.Range{
 								Start: protocol.Position{
@@ -348,7 +347,7 @@ const UserKind kind = "1"
 		{
 			name: "case union",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
@@ -359,7 +358,7 @@ const UserKind kind = "1"
 			},
 			wantRes: &protocol.WorkspaceEdit{
 				Changes: map[uri.URI][]protocol.TextEdit{
-					"file:///tmp/user.thrift": []protocol.TextEdit{
+					"file:///tmp/user.thrift": {
 						{
 							Range: protocol.Range{
 								Start: protocol.Position{
@@ -374,7 +373,7 @@ const UserKind kind = "1"
 							NewText: "newtext",
 						},
 					},
-					"file:///tmp/api.thrift": []protocol.TextEdit{
+					"file:///tmp/api.thrift": {
 						{
 							Range: protocol.Range{
 								Start: protocol.Position{
@@ -396,7 +395,7 @@ const UserKind kind = "1"
 		{
 			name: "case enum",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
@@ -407,7 +406,7 @@ const UserKind kind = "1"
 			},
 			wantRes: &protocol.WorkspaceEdit{
 				Changes: map[uri.URI][]protocol.TextEdit{
-					"file:///tmp/user.thrift": []protocol.TextEdit{
+					"file:///tmp/user.thrift": {
 						{
 							Range: protocol.Range{
 								Start: protocol.Position{
@@ -422,7 +421,7 @@ const UserKind kind = "1"
 							NewText: "newtext",
 						},
 					},
-					"file:///tmp/api.thrift": []protocol.TextEdit{
+					"file:///tmp/api.thrift": {
 						{
 							Range: protocol.Range{
 								Start: protocol.Position{
@@ -457,7 +456,7 @@ const UserKind kind = "1"
 		{
 			name: "case exception",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
@@ -468,7 +467,7 @@ const UserKind kind = "1"
 			},
 			wantRes: &protocol.WorkspaceEdit{
 				Changes: map[uri.URI][]protocol.TextEdit{
-					"file:///tmp/user.thrift": []protocol.TextEdit{
+					"file:///tmp/user.thrift": {
 						{
 							Range: protocol.Range{
 								Start: protocol.Position{
@@ -483,7 +482,7 @@ const UserKind kind = "1"
 							NewText: "newtext",
 						},
 					},
-					"file:///tmp/api.thrift": []protocol.TextEdit{
+					"file:///tmp/api.thrift": {
 						{
 							Range: protocol.Range{
 								Start: protocol.Position{
@@ -505,7 +504,7 @@ const UserKind kind = "1"
 		{
 			name: "typedef",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
@@ -516,7 +515,7 @@ const UserKind kind = "1"
 			},
 			wantRes: &protocol.WorkspaceEdit{
 				Changes: map[uri.URI][]protocol.TextEdit{
-					"file:///tmp/user.thrift": []protocol.TextEdit{
+					"file:///tmp/user.thrift": {
 						{
 							Range: protocol.Range{
 								Start: protocol.Position{
@@ -531,7 +530,7 @@ const UserKind kind = "1"
 							NewText: "newtext",
 						},
 					},
-					"file:///tmp/api.thrift": []protocol.TextEdit{
+					"file:///tmp/api.thrift": {
 						{
 							Range: protocol.Range{
 								Start: protocol.Position{
@@ -579,7 +578,7 @@ const UserKind kind = "1"
 		{
 			name: "const",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
@@ -590,7 +589,7 @@ const UserKind kind = "1"
 			},
 			wantRes: &protocol.WorkspaceEdit{
 				Changes: map[uri.URI][]protocol.TextEdit{
-					"file:///tmp/user.thrift": []protocol.TextEdit{
+					"file:///tmp/user.thrift": {
 						{
 							Range: protocol.Range{
 								Start: protocol.Position{
@@ -605,7 +604,7 @@ const UserKind kind = "1"
 							NewText: "newtext",
 						},
 					},
-					"file:///tmp/api.thrift": []protocol.TextEdit{
+					"file:///tmp/api.thrift": {
 						{
 							Range: protocol.Range{
 								Start: protocol.Position{

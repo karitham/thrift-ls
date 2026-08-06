@@ -2,13 +2,14 @@ package cache
 
 import (
 	"context"
+	"log/slog"
 	"math/rand"
 	"strings"
 	"sync"
 
-	"github.com/joyme123/thrift-ls/lsp/memoize"
-	log "github.com/sirupsen/logrus"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/memoize"
 )
 
 type View struct {
@@ -62,7 +63,6 @@ func NewView(name string, folder uri.URI, fs FileSource, store *memoize.Store, i
 		view.snapshotMu.Lock()
 		view.snapshot.Initialize(context.Background())
 		view.snapshotMu.Unlock()
-		return
 	}()
 
 	return view
@@ -72,8 +72,8 @@ func (v *View) ContainsFile(uri uri.URI) bool {
 	// folder: file:///workdir/
 	// file: file:///workdir/file.idl
 
-	folder := v.folder.Filename()
-	file := uri.Filename()
+	folder := v.folder.Path()
+	file := uri.Path()
 
 	if !strings.HasPrefix(file, folder) {
 		return false
@@ -82,11 +82,7 @@ func (v *View) ContainsFile(uri uri.URI) bool {
 	folder = strings.TrimSuffix(folder, "/")
 	file = strings.TrimPrefix(file, folder)
 
-	if strings.HasPrefix(file, "/") {
-		return true
-	}
-
-	return false
+	return strings.HasPrefix(file, "/")
 }
 
 func (v *View) MarkFileKnown(fileURI uri.URI) {
@@ -139,24 +135,19 @@ func (v *View) FileChange(ctx context.Context, changes []*FileChange, postFns ..
 		_, err := v.snapshot.Parse(ctx, uri)
 		v.snapshotMu.Unlock()
 		if err != nil {
-			log.Errorf("parse error: %v", err)
+			slog.Error("parse error", "err", err)
 		}
 	}
 
 	for i := range postFns {
 		postFns[i]()
 	}
-	// }()
-	return
 }
 
 func (v *View) Snapshot() (*Snapshot, func()) {
 	v.snapshotMu.Lock()
 	defer v.snapshotMu.Unlock()
 
-	if v.snapshot == nil {
-
-	}
-
+	// The snapshot is created in NewView and only set to nil on shutdown.
 	return v.snapshot, v.snapshot.Acquire()
 }

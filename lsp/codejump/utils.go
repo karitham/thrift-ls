@@ -1,204 +1,211 @@
 package codejump
 
 import (
+	"context"
 	"strings"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/lsputils"
-	"github.com/joyme123/thrift-ls/parser"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/lsp/lsputils"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
-func GetExceptionNode(ast *parser.Document, name string) *parser.Exception {
+// DefinitionKind identifies the kind of a resolved definition.
+type DefinitionKind uint8
+
+const (
+	DefinitionNone DefinitionKind = iota
+	DefinitionStruct
+	DefinitionUnion
+	DefinitionException
+	DefinitionEnum
+	DefinitionTypedef
+	DefinitionConst
+	DefinitionEnumValue
+	DefinitionService
+)
+
+// definitionFiles returns the files to search for a definition, in order.
+// A qualified name ("base.User") resolves to the include file; an
+// unqualified name searches the current file first, then each included
+// file.
+func definitionFiles(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *syntax.Document, name string) []uri.URI {
+	include, _ := lsputils.ParseIdent(file, ast.Includes(), name)
+	if include != "" {
+		resolver := ss.Resolver()
+		path := resolver.GetIncludePath(ast, include)
+		if path == "" {
+			// Doesn't match any include path; treat as local.
+			return []uri.URI{file}
+		}
+		return []uri.URI{resolver.ResolveInclude(file, path)}
+	}
+
+	files := []uri.URI{file}
+	resolver := ss.Resolver()
+	for _, inc := range ast.Includes() {
+		if path := lsputils.IncludePathText(inc); path != "" {
+			files = append(files, resolver.ResolveInclude(file, path))
+		}
+	}
+	return files
+}
+
+// GetExceptionNode finds an exception declaration by name.
+func GetExceptionNode(ast *syntax.Document, name string) *syntax.Struct {
 	if ast == nil {
 		return nil
 	}
-	for _, excep := range ast.Exceptions {
-		if excep.BadNode || excep.Name == nil {
-			continue
-		}
-
-		if excep.Name.BadNode || excep.Name.Name == nil {
-			continue
-		}
-
-		if excep.Name.Name.Text == name {
+	for _, excep := range ast.Exceptions() {
+		if excep.Name != nil && excep.Name.Text == name {
 			return excep
 		}
 	}
-
 	return nil
 }
 
-func GetStructNode(ast *parser.Document, name string) *parser.Struct {
+// GetStructNode finds a struct declaration by name.
+func GetStructNode(ast *syntax.Document, name string) *syntax.Struct {
 	if ast == nil {
 		return nil
 	}
-	for _, st := range ast.Structs {
-		if st.BadNode || st.Identifier == nil {
-			continue
-		}
-
-		if st.Identifier.BadNode || st.Identifier.Name == nil {
-			continue
-		}
-
-		if st.Identifier.Name.Text == name {
+	for _, st := range ast.Structs() {
+		if st.Name != nil && st.Name.Text == name {
 			return st
 		}
 	}
-
 	return nil
 }
 
-func GetUnionNode(ast *parser.Document, name string) *parser.Union {
+// GetUnionNode finds a union declaration by name.
+func GetUnionNode(ast *syntax.Document, name string) *syntax.Struct {
 	if ast == nil {
 		return nil
 	}
-	for _, st := range ast.Unions {
-		if st.BadNode || st.Name == nil {
-			continue
-		}
-
-		if st.Name.BadNode || st.Name.Name == nil {
-			continue
-		}
-
-		if st.Name.Name.Text == name {
+	for _, st := range ast.Unions() {
+		if st.Name != nil && st.Name.Text == name {
 			return st
 		}
 	}
-
 	return nil
 }
 
-func GetEnumNode(ast *parser.Document, name string) *parser.Enum {
+// GetEnumNode finds an enum declaration by name.
+func GetEnumNode(ast *syntax.Document, name string) *syntax.Enum {
 	if ast == nil {
 		return nil
 	}
-	for _, st := range ast.Enums {
-		if st.BadNode || st.Name == nil {
-			continue
-		}
-
-		if st.Name.BadNode || st.Name.Name == nil {
-			continue
-		}
-
-		if st.Name.Name.Text == name {
+	for _, st := range ast.Enums() {
+		if st.Name != nil && st.Name.Text == name {
 			return st
 		}
 	}
-
 	return nil
 }
 
-func GetEnumNodeByEnumValue(ast *parser.Document, enumValueName string) *parser.Enum {
+// GetEnumNodeByEnumValue finds the enum declaring an enum value reference
+// like "EnumName.VALUE" or a bare value name.
+func GetEnumNodeByEnumValue(ast *syntax.Document, enumValueName string) *syntax.Enum {
 	if ast == nil {
 		return nil
 	}
-
 	enumName, _, found := strings.Cut(enumValueName, ".")
-	if !found {
-		return nil
+	if found {
+		return GetEnumNode(ast, enumName)
 	}
-
-	return GetEnumNode(ast, enumName)
+	for _, enum := range ast.Enums() {
+		for _, value := range enum.Values {
+			if value.Name != nil && value.Name.Text == enumValueName {
+				return enum
+			}
+		}
+	}
+	return nil
 }
 
-// GetEnumValueIdentifierNode enum A { ONE }, ONE is the target node
-func GetEnumValueIdentifierNode(ast *parser.Document, name string) *parser.Identifier {
+// GetEnumValueIdentifierNode returns the identifier of an enum value
+// referenced as "EnumName.VALUE", or as a bare name.
+func GetEnumValueIdentifierNode(ast *syntax.Document, name string) *syntax.Identifier {
 	if ast == nil {
 		return nil
 	}
-
 	enumName, identifier, found := strings.Cut(name, ".")
 	if !found {
+		// Bare name: search all enum values.
+		for _, enum := range ast.Enums() {
+			for _, enumValue := range enum.Values {
+				if enumValue.Name != nil && enumValue.Name.Text == name {
+					return enumValue.Name
+				}
+			}
+		}
 		return nil
 	}
-
-	for _, enum := range ast.Enums {
-		if enum.BadNode || enum.Name == nil || enum.Name.Name == nil || enum.Name.Name.Text != enumName {
+	for _, enum := range ast.Enums() {
+		if enum.Name == nil || enum.Name.Text != enumName {
 			continue
 		}
 		for _, enumValue := range enum.Values {
-			if enumValue.Name == nil || enumValue.Name.BadNode || enumValue.Name.Name == nil || enumValue.Name.Name.Text != identifier {
-				continue
+			if enumValue.Name != nil && enumValue.Name.Text == identifier {
+				return enumValue.Name
 			}
-			return enumValue.Name
 		}
 	}
-
 	return nil
 }
 
-func GetConstNode(ast *parser.Document, name string) *parser.Const {
+// GetConstNode finds a const declaration by name.
+func GetConstNode(ast *syntax.Document, name string) *syntax.Const {
 	if ast == nil {
 		return nil
 	}
-
-	for _, cst := range ast.Consts {
-		if cst.BadNode || cst.Name == nil || cst.Name.Name == nil || cst.Name.Name.Text != name {
-			continue
+	for _, cst := range ast.Consts() {
+		if cst.Name != nil && cst.Name.Text == name {
+			return cst
 		}
-		return cst
 	}
-
 	return nil
 }
 
-func GetConstIdentifierNode(ast *parser.Document, name string) *parser.Identifier {
+// GetConstIdentifierNode returns the name identifier of a const
+// declaration.
+func GetConstIdentifierNode(ast *syntax.Document, name string) *syntax.Identifier {
 	if ast == nil {
 		return nil
 	}
-
-	for _, cst := range ast.Consts {
-		if cst.BadNode || cst.Name == nil || cst.Name.Name == nil || cst.Name.Name.Text != name {
-			continue
+	for _, cst := range ast.Consts() {
+		if cst.Name != nil && cst.Name.Text == name {
+			return cst.Name
 		}
-		return cst.Name
 	}
-
 	return nil
 }
 
-func GetTypedefNode(ast *parser.Document, name string) *parser.Typedef {
+// GetTypedefNode finds a typedef declaration by name.
+func GetTypedefNode(ast *syntax.Document, name string) *syntax.Typedef {
 	if ast == nil {
 		return nil
 	}
-	for _, td := range ast.Typedefs {
-		if td.BadNode || td.Alias == nil || td.Alias.Name == nil {
-			continue
-		}
-		if td.Alias.Name.Text == name {
+	for _, td := range ast.Typedefs() {
+		if td.Name != nil && td.Name.Text == name {
 			return td
 		}
 	}
-
 	return nil
 }
 
-func GetServiceNode(ast *parser.Document, name string) *parser.Service {
+// GetServiceNode finds a service declaration by name.
+func GetServiceNode(ast *syntax.Document, name string) *syntax.Service {
 	if ast == nil {
 		return nil
 	}
-
-	for _, svc := range ast.Services {
-		if svc.BadNode || svc.Name == nil || svc.Name.Name == nil || svc.Name.Name.Text != name {
-			continue
+	for _, svc := range ast.Services() {
+		if svc.Name != nil && svc.Name.Text == name {
+			return svc
 		}
-		return svc
 	}
-
 	return nil
-}
-
-func jump(file uri.URI, node parser.Node) protocol.Location {
-	rng := lsputils.ASTNodeToRange(node)
-	return protocol.Location{
-		Range: rng,
-		URI:   file,
-	}
 }
 
 var basicType = map[string]struct{}{
@@ -215,6 +222,7 @@ var basicType = map[string]struct{}{
 	"byte":   {},
 	"binary": {},
 	"uuid":   {},
+	"slist":  {},
 }
 
 var containerType = map[string]struct{}{
@@ -223,12 +231,26 @@ var containerType = map[string]struct{}{
 	"list": {},
 }
 
+// IsBasicType reports whether t is a built-in base type.
 func IsBasicType(t string) bool {
 	_, ok := basicType[t]
 	return ok
 }
 
+// IsContainerType reports whether t is a container keyword.
 func IsContainerType(t string) bool {
 	_, ok := containerType[t]
 	return ok
+}
+
+// typeReferenceName returns the referenced type name of a FieldType, or ""
+// for base types and containers.
+func typeReferenceName(ft *syntax.FieldType) string {
+	if ft == nil {
+		return ""
+	}
+	if ft.Kind == syntax.TypeIdent && ft.Ident != nil {
+		return ft.Ident.Text
+	}
+	return ""
 }

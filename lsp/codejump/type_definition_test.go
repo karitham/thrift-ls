@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
 	"github.com/stretchr/testify/assert"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
 )
 
 func TestTypeDefinition(t *testing.T) {
@@ -80,7 +81,7 @@ const user.UserType usermale = "male"
 		{
 			name: "case struct", // user.Test
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -108,7 +109,7 @@ const user.UserType usermale = "male"
 		{
 			name: "case struct 2", // Api
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -136,7 +137,7 @@ const user.UserType usermale = "male"
 		{
 			name: "case union", // user.Test2
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -164,7 +165,7 @@ const user.UserType usermale = "male"
 		{
 			name: "case union 2", // arg1
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -192,7 +193,7 @@ const user.UserType usermale = "male"
 		{
 			name: "case enum", // user.Test3
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -220,7 +221,7 @@ const user.UserType usermale = "male"
 		{
 			name: "case enum 2", // arg2
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -248,7 +249,7 @@ const user.UserType usermale = "male"
 		{
 			name: "case exceptions", // user.Error1
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -276,7 +277,7 @@ const user.UserType usermale = "male"
 		{
 			name: "case exceptions 2", // err
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -304,7 +305,7 @@ const user.UserType usermale = "male"
 		{
 			name: "case typedef", // user.UserType
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -332,7 +333,7 @@ const user.UserType usermale = "male"
 		{
 			name: "case enumvalue",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -360,7 +361,7 @@ const user.UserType usermale = "male"
 		{
 			name: "case const",
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -388,7 +389,7 @@ const user.UserType usermale = "male"
 		{
 			name: "case typedef 2", // UserKind
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
@@ -416,7 +417,7 @@ const user.UserType usermale = "male"
 		{
 			name: "case const 2", // usermale
 			args: args{
-				ctx:  context.TODO(),
+				ctx:  t.Context(),
 				ss:   ss,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{

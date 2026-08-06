@@ -1,11 +1,13 @@
 package resolver
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
-	"github.com/joyme123/thrift-ls/parser"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
 func TestResolver_Integration_NestedIncludes(t *testing.T) {
@@ -13,7 +15,7 @@ func TestResolver_Integration_NestedIncludes(t *testing.T) {
 	tmpDir := t.TempDir()
 	includeDir := filepath.Join(tmpDir, "includes")
 
-	if err := os.MkdirAll(includeDir, 0755); err != nil {
+	if err := os.MkdirAll(includeDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -24,7 +26,7 @@ func TestResolver_Integration_NestedIncludes(t *testing.T) {
 struct BaseID {
     1: string value
 }`
-	if err := os.WriteFile(baseFile, []byte(baseContent), 0644); err != nil {
+	if err := os.WriteFile(baseFile, []byte(baseContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -38,7 +40,7 @@ struct UserID {
     1: BaseID id
     2: string name
 }`
-	if err := os.WriteFile(middleFile, []byte(middleContent), 0644); err != nil {
+	if err := os.WriteFile(middleFile, []byte(middleContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -51,53 +53,49 @@ namespace * main
 struct User {
     1: UserID user
 }`
-	if err := os.WriteFile(mainFile, []byte(mainContent), 0644); err != nil {
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	// Create resolver with include path
 	r := New([]string{includeDir})
 
-	// Test that IncludeCall resolves nested includes
-	includeCall := r.IncludeCall(mainFile)
-
-	// First level: resolve middle.thrift
-	filename, content, err := includeCall("middle.thrift")
-	if err != nil {
-		t.Fatalf("failed to resolve middle.thrift: %v", err)
-	}
+	// Resolve middle.thrift from main.thrift's perspective
+	filename := r.Resolve(mainFile, "middle.thrift")
 	if filename != middleFile {
 		t.Errorf("expected %q, got %q", middleFile, filename)
 	}
-
-	// Parse middle.thrift to get its includes
-	psr := parser.PEGParser{}
-	middleDoc, parseErrs := psr.Parse(filename, content)
-	if len(parseErrs) > 0 {
-		t.Fatalf("failed to parse middle.thrift: %v", parseErrs)
+	content, err := os.ReadFile(filename)
+	if err != nil {
+		t.Fatalf("failed to read middle.thrift: %v", err)
 	}
 
-	// Check that middle.thrift has the expected include
-	doc := middleDoc
-	if len(doc.Includes) == 0 {
+	// Parse middle.thrift to find its includes
+	middleDoc, errs := syntax.Parse(content)
+	for _, e := range errs {
+		if e.Severity == syntax.SeverityError {
+			t.Fatalf("failed to parse middle.thrift: %v", errs)
+		}
+	}
+	if len(middleDoc.Includes()) == 0 {
 		t.Fatal("expected middle.thrift to have includes")
 	}
-	if doc.Includes[0].Path.Value.Text != "base.thrift" {
-		t.Errorf("expected include path 'base.thrift', got %q", doc.Includes[0].Path.Value.Text)
+	includePath := middleDoc.Includes()[0].Path.Text
+	if strings.Trim(includePath, "\"'") != "base.thrift" {
+		t.Errorf("expected include path 'base.thrift', got %q", includePath)
 	}
 
-	// Second level: resolve base.thrift from middle.thrift's perspective
-	// Create a new include call from middle file's perspective
-	includeCallFromMiddle := r.IncludeCall(middleFile)
-	filename2, content2, err := includeCallFromMiddle("base.thrift")
-	if err != nil {
-		t.Fatalf("failed to resolve base.thrift: %v", err)
-	}
+	// Resolve base.thrift from middle.thrift's perspective
+	filename2 := r.Resolve(middleFile, strings.Trim(includePath, "\"'"))
 	if filename2 != baseFile {
 		t.Errorf("expected %q, got %q", baseFile, filename2)
 	}
 
 	// Verify content
+	content2, err := os.ReadFile(filename2)
+	if err != nil {
+		t.Fatalf("failed to read base.thrift: %v", err)
+	}
 	if string(content2) != baseContent {
 		t.Errorf("base.thrift content mismatch")
 	}
@@ -109,10 +107,10 @@ func TestResolver_Integration_ResolutionOrder(t *testing.T) {
 	includeDir := filepath.Join(tmpDir, "includes")
 	srcDir := filepath.Join(tmpDir, "src")
 
-	if err := os.MkdirAll(includeDir, 0755); err != nil {
+	if err := os.MkdirAll(includeDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(srcDir, 0755); err != nil {
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -123,7 +121,7 @@ func TestResolver_Integration_ResolutionOrder(t *testing.T) {
 struct SharedInInclude {
     1: string value
 }`
-	if err := os.WriteFile(includeVersion, []byte(includeContent), 0644); err != nil {
+	if err := os.WriteFile(includeVersion, []byte(includeContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -134,7 +132,7 @@ struct SharedInInclude {
 struct SharedInSrc {
     1: string name
 }`
-	if err := os.WriteFile(srcVersion, []byte(srcContent), 0644); err != nil {
+	if err := os.WriteFile(srcVersion, []byte(srcContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -147,7 +145,7 @@ namespace * test
 struct Data {
     1: string field
 }`
-	if err := os.WriteFile(mainFile, []byte(mainContent), 0644); err != nil {
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -181,7 +179,7 @@ func TestResolver_Integration_RelativeFallback(t *testing.T) {
 struct LocalData {
     1: string value
 }`
-	if err := os.WriteFile(localFile, []byte(localContent), 0644); err != nil {
+	if err := os.WriteFile(localFile, []byte(localContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -194,7 +192,7 @@ namespace * main
 struct Container {
     1: LocalData data
 }`
-	if err := os.WriteFile(mainFile, []byte(mainContent), 0644); err != nil {
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -222,10 +220,10 @@ func TestResolver_Integration_MultipleIncludePaths(t *testing.T) {
 	includeDir1 := filepath.Join(tmpDir, "includes1")
 	includeDir2 := filepath.Join(tmpDir, "includes2")
 
-	if err := os.MkdirAll(includeDir1, 0755); err != nil {
+	if err := os.MkdirAll(includeDir1, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(includeDir2, 0755); err != nil {
+	if err := os.MkdirAll(includeDir2, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -236,7 +234,7 @@ func TestResolver_Integration_MultipleIncludePaths(t *testing.T) {
 struct UniqueInDir2 {
     1: string value
 }`
-	if err := os.WriteFile(file2, []byte(content2), 0644); err != nil {
+	if err := os.WriteFile(file2, []byte(content2), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -247,7 +245,7 @@ struct UniqueInDir2 {
 struct BothFromDir1 {
     1: string value
 }`
-	if err := os.WriteFile(fileBoth1, []byte(contentBoth1), 0644); err != nil {
+	if err := os.WriteFile(fileBoth1, []byte(contentBoth1), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -257,14 +255,14 @@ struct BothFromDir1 {
 struct BothFromDir2 {
     1: string name
 }`
-	if err := os.WriteFile(fileBoth2, []byte(contentBoth2), 0644); err != nil {
+	if err := os.WriteFile(fileBoth2, []byte(contentBoth2), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	mainFile := filepath.Join(tmpDir, "main.thrift")
 	mainContent := `include "unique.thrift"
 include "both.thrift"`
-	if err := os.WriteFile(mainFile, []byte(mainContent), 0644); err != nil {
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -291,69 +289,12 @@ include "both.thrift"`
 	}
 }
 
-func TestResolver_Integration_ParseRecursively(t *testing.T) {
-	// Test using resolver with parser's ParseRecursively
-	tmpDir := t.TempDir()
-	includeDir := filepath.Join(tmpDir, "includes")
-
-	if err := os.MkdirAll(includeDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create types.thrift
-	typesFile := filepath.Join(includeDir, "types.thrift")
-	typesContent := `namespace * types
-
-struct Address {
-    1: string street
-    2: string city
-}`
-	if err := os.WriteFile(typesFile, []byte(typesContent), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create user.thrift that includes types
-	userFile := filepath.Join(tmpDir, "user.thrift")
-	userContent := `include "types.thrift"
-
-namespace * user
-
-struct User {
-    1: string name
-    2: Address address
-}`
-	if err := os.WriteFile(userFile, []byte(userContent), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Parse recursively using resolver
-	r := New([]string{includeDir})
-	psr := parser.PEGParser{}
-
-	results := psr.ParseRecursively(userFile, []byte(userContent), 0, r.IncludeCall(userFile))
-
-	if len(results) == 0 || results[0].Doc == nil {
-		t.Fatal("expected parsed document")
-	}
-
-	// Verify the include was resolved
-	doc := results[0].Doc
-	if len(doc.Includes) == 0 {
-		t.Fatal("expected includes in parsed document")
-	}
-
-	// Check that nested document was loaded (results[1:] contains included documents)
-	if len(results) < 2 {
-		t.Fatal("expected included documents to be loaded in results")
-	}
-}
-
 func TestResolver_Integration_DeeplyNestedIncludes(t *testing.T) {
 	// Test deeply nested include chain: a -> b -> c -> d
 	tmpDir := t.TempDir()
 	includeDir := filepath.Join(tmpDir, "includes")
 
-	if err := os.MkdirAll(includeDir, 0755); err != nil {
+	if err := os.MkdirAll(includeDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -364,7 +305,7 @@ func TestResolver_Integration_DeeplyNestedIncludes(t *testing.T) {
 struct D {
     1: string value
 }`
-	if err := os.WriteFile(dFile, []byte(dContent), 0644); err != nil {
+	if err := os.WriteFile(dFile, []byte(dContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -377,7 +318,7 @@ namespace * c
 struct C {
     1: D d_field
 }`
-	if err := os.WriteFile(cFile, []byte(cContent), 0644); err != nil {
+	if err := os.WriteFile(cFile, []byte(cContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -390,7 +331,7 @@ namespace * b
 struct B {
     1: C c_field
 }`
-	if err := os.WriteFile(bFile, []byte(bContent), 0644); err != nil {
+	if err := os.WriteFile(bFile, []byte(bContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -403,23 +344,44 @@ namespace * a
 struct A {
     1: B b_field
 }`
-	if err := os.WriteFile(aFile, []byte(aContent), 0644); err != nil {
+	if err := os.WriteFile(aFile, []byte(aContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	// Parse recursively with include path
+	// Walk the include chain: a -> b -> c -> d, resolving each include via
+	// the resolver and parsing with the syntax package.
 	r := New([]string{includeDir})
-	psr := parser.PEGParser{}
 
-	results := psr.ParseRecursively(aFile, []byte(aContent), 0, r.IncludeCall(aFile))
-
-	if len(results) == 0 || results[0].Doc == nil {
-		t.Fatal("expected parsed document")
+	parseIncludes := func(file string) ([]string, error) {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return nil, err
+		}
+		doc, errs := syntax.Parse(content)
+		for _, e := range errs {
+			if e.Severity == syntax.SeverityError {
+				return nil, fmt.Errorf("parse %s: %v", file, errs)
+			}
+		}
+		var paths []string
+		for _, inc := range doc.Includes() {
+			paths = append(paths, strings.Trim(inc.Path.Text, "\"'"))
+		}
+		return paths, nil
 	}
 
-	// Verify all nested includes were loaded (results includes main + included docs)
-	// Should have at least 4 results: a.thrift (main) + b.thrift + c.thrift + d.thrift
-	if len(results) < 4 {
-		t.Errorf("expected at least 4 results (main + 3 includes), got %d", len(results))
+	chain := []string{aFile, bFile, cFile, dFile}
+	for i := 0; i < len(chain)-1; i++ {
+		includes, err := parseIncludes(chain[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(includes) != 1 {
+			t.Fatalf("%s: expected one include, got %v", chain[i], includes)
+		}
+		next := r.Resolve(chain[i], includes[0])
+		if next != chain[i+1] {
+			t.Errorf("expected %q, got %q", chain[i+1], next)
+		}
 	}
 }

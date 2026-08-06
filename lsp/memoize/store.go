@@ -22,7 +22,7 @@ type Store struct {
 	evictionPolicy EvictionPolicy
 
 	promisesMu sync.Mutex
-	promises   map[interface{}]*Promise
+	promises   map[any]*Promise
 }
 
 // Promise returns a reference-counted promise for the future result of
@@ -35,13 +35,13 @@ type Store struct {
 //
 // Once the last reference has been released, the promise is removed from the
 // store.
-func (store *Store) Promise(key interface{}, function Function) (*Promise, func()) {
+func (store *Store) Promise(key any, function Function) (*Promise, func()) {
 	store.promisesMu.Lock()
 	p, ok := store.promises[key]
 	if !ok {
 		p = NewPromise(reflect.TypeOf(key).String(), function)
 		if store.promises == nil {
-			store.promises = map[interface{}]*Promise{}
+			store.promises = map[any]*Promise{}
 		}
 		store.promises[key] = p
 	}
@@ -82,7 +82,7 @@ func (s *Store) Stats() map[reflect.Type]int {
 // DebugOnlyIterate iterates through the store and, for each completed
 // promise, calls f(k, v) for the map key k and function result v.  It
 // should only be used for debugging purposes.
-func (s *Store) DebugOnlyIterate(f func(k, v interface{})) {
+func (s *Store) DebugOnlyIterate(f func(k, v any)) {
 	s.promisesMu.Lock()
 	defer s.promisesMu.Unlock()
 

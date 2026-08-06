@@ -4,18 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
-	"github.com/joyme123/thrift-ls/lsp/codejump"
-	"github.com/joyme123/thrift-ls/lsp/lsputils"
-	"github.com/joyme123/thrift-ls/parser"
-	log "github.com/sirupsen/logrus"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/lsp/codejump"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
-type SemanticAnalysis struct {
-}
+type SemanticAnalysis struct{}
 
 func (s *SemanticAnalysis) Diagnostic(ctx context.Context, ss *cache.Snapshot, changeFiles []uri.URI) (DiagnosticResult, error) {
 	res := make(DiagnosticResult)
@@ -44,183 +43,88 @@ func (s *SemanticAnalysis) diagnostic(ctx context.Context, ss *cache.Snapshot, c
 	}
 
 	for _, err := range pf.Errors() {
-		log.Debugln("parse err", err)
+		slog.Debug("parse failed", "err", err)
 	}
 
 	res := s.checkDefineConflict(ctx, pf)
-
 	items := s.checkDefinitionExist(ctx, ss, changeFile, pf)
 	res = append(res, items...)
 
 	return res, nil
 }
 
+// checkDefineConflict reports duplicate field names, function names, and
+// top-level definition names.
 func (s *SemanticAnalysis) checkDefineConflict(ctx context.Context, pf *cache.ParsedFile) []protocol.Diagnostic {
 	var ret []protocol.Diagnostic
 
-	processStructLike := func(fields []*parser.Field) {
+	processStructLike := func(fields []*syntax.Field) {
 		fieldMap := make(map[string]struct{})
 		for i := range fields {
 			field := fields[i]
-			if field.IsBadNode() || field.ChildrenBadNode() {
-				continue
-			}
-			if _, exist := fieldMap[field.Identifier.Name.Text]; exist {
-				// struct conflict
+			if _, exist := fieldMap[field.Name.Text]; exist {
 				ret = append(ret, protocol.Diagnostic{
-					Range:    lsputils.ASTNodeToRange(field.Identifier.Name),
+					Range:    nodeRange(pf.AST(), field.Name),
 					Severity: protocol.DiagnosticSeverityError,
-					Source:   "thrift-ls",
-					Message:  fmt.Sprintf("field name conflict with other field"),
+					Source:   protocol.NewOptional("thrift-ls"),
+					Message:  protocol.String("field name conflict with other field"),
 				})
 			}
-			fieldMap[field.Identifier.Name.Text] = struct{}{}
+			fieldMap[field.Name.Text] = struct{}{}
 		}
 	}
 
 	definitionNameMap := make(map[string]string)
 
-	structMap := make(map[string]struct{})
-	for _, st := range pf.AST().Structs {
-		if st.IsBadNode() || st.ChildrenBadNode() {
-			continue
-		}
-
-		if _, exist := structMap[st.Identifier.Name.Text]; exist {
-			// struct conflict
+	processDefinition := func(name string, node syntax.Node, kind string) {
+		if previous, exist := definitionNameMap[name]; exist {
 			ret = append(ret, protocol.Diagnostic{
-				Range:    lsputils.ASTNodeToRange(st.Identifier.Name),
+				Range:    nodeRange(pf.AST(), node),
 				Severity: protocol.DiagnosticSeverityError,
-				Source:   "thrift-ls",
-				Message:  fmt.Sprintf("struct name conflict with other struct"),
+				Source:   protocol.NewOptional("thrift-ls"),
+				Message:  protocol.String(fmt.Sprintf("%s name conflict with other %s", kind, previous)),
 			})
 		}
+		definitionNameMap[name] = kind
+	}
 
-		if t, exist := definitionNameMap[st.Identifier.Name.Text]; exist && t != st.Type() {
-			// struct conflict
-			ret = append(ret, protocol.Diagnostic{
-				Range:    lsputils.ASTNodeToRange(st.Identifier.Name),
-				Severity: protocol.DiagnosticSeverityHint,
-				Source:   "thrift-ls",
-				Message:  fmt.Sprintf("struct name conflict with other type"),
-			})
-		}
-
-		structMap[st.Identifier.Name.Text] = struct{}{}
-		definitionNameMap[st.Identifier.Name.Text] = st.Type()
-
+	for _, st := range pf.AST().Structs() {
+		processDefinition(st.Name.Text, st.Name, "struct")
 		processStructLike(st.Fields)
 	}
-
-	unionMap := make(map[string]struct{})
-	for _, union := range pf.AST().Unions {
-		if union.IsBadNode() || union.ChildrenBadNode() {
-			continue
-		}
-
-		if _, exist := unionMap[union.Name.Name.Text]; exist {
-			// union conflict
-			ret = append(ret, protocol.Diagnostic{
-				Range:    lsputils.ASTNodeToRange(union.Name.Name),
-				Severity: protocol.DiagnosticSeverityError,
-				Source:   "thrift-ls",
-				Message:  fmt.Sprintf("union name conflict with other union"),
-			})
-		}
-
-		if t, exist := definitionNameMap[union.Name.Name.Text]; exist && t != union.Type() {
-			// union conflict with others
-			ret = append(ret, protocol.Diagnostic{
-				Range:    lsputils.ASTNodeToRange(union.Name.Name),
-				Severity: protocol.DiagnosticSeverityHint,
-				Source:   "thrift-ls",
-				Message:  fmt.Sprintf("union name conflict with other type"),
-			})
-		}
-
-		unionMap[union.Name.Name.Text] = struct{}{}
-		definitionNameMap[union.Name.Name.Text] = union.Type()
-
+	for _, union := range pf.AST().Unions() {
+		processDefinition(union.Name.Text, union.Name, "union")
 		processStructLike(union.Fields)
 	}
-
-	excepMap := make(map[string]struct{})
-	for _, excep := range pf.AST().Exceptions {
-		if excep.IsBadNode() || excep.ChildrenBadNode() {
-			continue
-		}
-
-		if _, exist := excepMap[excep.Name.Name.Text]; exist {
-			// exception conflict
-			ret = append(ret, protocol.Diagnostic{
-				Range:    lsputils.ASTNodeToRange(excep.Name.Name),
-				Severity: protocol.DiagnosticSeverityError,
-				Source:   "thrift-ls",
-				Message:  fmt.Sprintf("exception name conflict with other exception"),
-			})
-		}
-
-		if t, exist := definitionNameMap[excep.Name.Name.Text]; exist && t != excep.Type() {
-			// union conflict with others
-			ret = append(ret, protocol.Diagnostic{
-				Range:    lsputils.ASTNodeToRange(excep.Name.Name),
-				Severity: protocol.DiagnosticSeverityHint,
-				Source:   "thrift-ls",
-				Message:  fmt.Sprintf("exception name conflict with other type"),
-			})
-		}
-
-		excepMap[excep.Name.Name.Text] = struct{}{}
-		definitionNameMap[excep.Name.Name.Text] = excep.Type()
-
+	for _, excep := range pf.AST().Exceptions() {
+		processDefinition(excep.Name.Text, excep.Name, "exception")
 		processStructLike(excep.Fields)
-
+	}
+	for _, enum := range pf.AST().Enums() {
+		processDefinition(enum.Name.Text, enum.Name, "enum")
+	}
+	for _, cst := range pf.AST().Consts() {
+		processDefinition(cst.Name.Text, cst.Name, "const")
+	}
+	for _, td := range pf.AST().Typedefs() {
+		processDefinition(td.Name.Text, td.Name, "typedef")
 	}
 
-	svcMap := make(map[string]struct{})
-	for _, svc := range pf.AST().Services {
-		if svc.IsBadNode() || svc.ChildrenBadNode() {
-			continue
-		}
-		if _, exist := svcMap[svc.Name.Name.Text]; exist {
-			// service conflict
-			ret = append(ret, protocol.Diagnostic{
-				Range:    lsputils.ASTNodeToRange(svc.Name.Name),
-				Severity: protocol.DiagnosticSeverityError,
-				Source:   "thrift-ls",
-				Message:  fmt.Sprintf("service name conflict with other service"),
-			})
-		}
-
-		if t, exist := definitionNameMap[svc.Name.Name.Text]; exist && t != svc.Type() {
-			// service conflict with others
-			ret = append(ret, protocol.Diagnostic{
-				Range:    lsputils.ASTNodeToRange(svc.Name.Name),
-				Severity: protocol.DiagnosticSeverityHint,
-				Source:   "thrift-ls",
-				Message:  fmt.Sprintf("service name conflict with other type"),
-			})
-		}
-
-		svcMap[svc.Name.Name.Text] = struct{}{}
-		definitionNameMap[svc.Name.Name.Text] = svc.Type()
+	for _, svc := range pf.AST().Services() {
+		processDefinition(svc.Name.Text, svc.Name, "service")
 
 		fnMap := make(map[string]struct{})
 		for _, fn := range svc.Functions {
-			if fn.IsBadNode() || svc.ChildrenBadNode() {
-				continue
-			}
-			if _, exist := fnMap[fn.Name.Name.Text]; exist {
-				// function conflict
+			if _, exist := fnMap[fn.Name.Text]; exist {
 				ret = append(ret, protocol.Diagnostic{
-					Range:    lsputils.ASTNodeToRange(fn.Name.Name),
+					Range:    nodeRange(pf.AST(), fn.Name),
 					Severity: protocol.DiagnosticSeverityWarning,
-					Source:   "thrift-ls",
-					Message:  fmt.Sprintf("function name conflict with other function"),
+					Source:   protocol.NewOptional("thrift-ls"),
+					Message:  protocol.String("function name conflict with other function"),
 				})
 			}
-			fnMap[fn.Name.Name.Text] = struct{}{}
-			processStructLike(fn.Arguments)
+			fnMap[fn.Name.Text] = struct{}{}
+			processStructLike(fn.Args)
 			if fn.Throws != nil {
 				processStructLike(fn.Throws.Fields)
 			}
@@ -230,27 +134,22 @@ func (s *SemanticAnalysis) checkDefineConflict(ctx context.Context, pf *cache.Pa
 	return ret
 }
 
-// same as goto definition
-// struct/union/exception field type
+// checkDefinitionExist reports field types, const values, and return types
+// that reference undefined definitions.
 func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile) []protocol.Diagnostic {
 	ret := make([]protocol.Diagnostic, 0)
 
-	// struct/union/exception/function arguments/throw fields field type
-	processStructLike := func(fields []*parser.Field) {
+	processStructLike := func(fields []*syntax.Field) {
 		for i := range fields {
 			field := fields[i]
-			if field.IsBadNode() || field.ChildrenBadNode() {
-				continue
-			}
-			items := s.checkTypeExist(ctx, ss, file, pf, field.FieldType)
+			items := s.checkTypeExist(ctx, ss, file, pf, field.Type)
 			ret = append(ret, items...)
 
-			// default value check
-			if field.ConstValue != nil {
-				items := s.checkConstValueExist(ctx, ss, file, pf, field.ConstValue)
+			if field.Value != nil {
+				items := s.checkConstValueExist(ctx, ss, file, pf, field.Value)
 				ret = append(ret, items...)
 
-				dig := s.checkConstValueMatchType(ctx, field)
+				dig := s.checkConstValueMatchType(pf, field)
 				if dig != nil {
 					ret = append(ret, *dig)
 				}
@@ -258,31 +157,25 @@ func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, ss *cache.S
 		}
 	}
 
-	for _, st := range pf.AST().Structs {
+	for _, st := range pf.AST().Structs() {
 		processStructLike(st.Fields)
 	}
-
-	for _, union := range pf.AST().Unions {
+	for _, union := range pf.AST().Unions() {
 		processStructLike(union.Fields)
 	}
-
-	for _, excep := range pf.AST().Exceptions {
+	for _, excep := range pf.AST().Exceptions() {
 		processStructLike(excep.Fields)
 	}
-
-	for _, cst := range pf.AST().Consts {
+	for _, cst := range pf.AST().Consts() {
 		items := s.checkConstValueExist(ctx, ss, file, pf, cst.Value)
 		ret = append(ret, items...)
 	}
-
-	for _, svc := range pf.AST().Services {
+	for _, svc := range pf.AST().Services() {
 		for _, fn := range svc.Functions {
-			if fn.FunctionType != nil {
-				items := s.checkTypeExist(ctx, ss, file, pf, fn.FunctionType)
-				ret = append(ret, items...)
-			}
+			items := s.checkTypeExist(ctx, ss, file, pf, fn.Type)
+			ret = append(ret, items...)
 
-			processStructLike(fn.Arguments)
+			processStructLike(fn.Args)
 			if fn.Throws != nil {
 				processStructLike(fn.Throws.Fields)
 			}
@@ -293,123 +186,159 @@ func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, ss *cache.S
 }
 
 func (s *SemanticAnalysis) checkConstValueExist(ctx context.Context, ss *cache.Snapshot,
-	file uri.URI, pf *cache.ParsedFile, cst *parser.ConstValue) (res []protocol.Diagnostic) {
-	if cst.TypeName != "identifier" {
-		return
+	file uri.URI, pf *cache.ParsedFile, cst *syntax.ConstValue,
+) (res []protocol.Diagnostic) {
+	if cst == nil || cst.Kind != syntax.ValueIdent {
+		return res
 	}
 
-	if cst.Value == "true" || cst.Value == "false" {
-		return
+	if cst.Text == "true" || cst.Text == "false" {
+		return res
 	}
 
-	_, id, err := codejump.ConstValueTypeDefinitionIdentifier(ctx, ss, file, pf.AST(), cst)
+	_, id, err := codejump.FindConstValueDefinition(ctx, ss, file, pf.AST(), cst)
 	if err != nil || id == nil {
 		res = append(res, protocol.Diagnostic{
-			Range:    lsputils.ASTNodeToRange(cst),
+			Range:    nodeRange(pf.AST(), cst),
 			Severity: protocol.DiagnosticSeverityError,
-			Source:   "thrift-ls",
-			Message:  fmt.Sprintf("default value doesn't exist"),
+			Source:   protocol.NewOptional("thrift-ls"),
+			Message:  protocol.String("default value doesn't exist"),
 		})
 	}
 
-	return
+	return res
 }
 
-func (s *SemanticAnalysis) checkConstValueMatchType(ctx context.Context, field *parser.Field) (res *protocol.Diagnostic) {
-	if field.BadNode || field.ChildrenBadNode() {
+func (s *SemanticAnalysis) checkConstValueMatchType(pf *cache.ParsedFile, field *syntax.Field) (res *protocol.Diagnostic) {
+	if field.Value == nil {
 		return nil
 	}
+	expect := typeName(field.Type)
+	value := field.Value
+	valueKind := value.Kind
 
-	expectTypeName := field.FieldType.TypeName
-
-	if field.ConstValue != nil {
-		valueType := field.ConstValue.TypeName
-		// TypeName can be: list, map, pair, string, identifier, i64, double
-		switch valueType {
-		case "list", "map", "string", "double":
-			if expectTypeName.Name != valueType {
-				return &protocol.Diagnostic{
-					Range:    lsputils.ASTNodeToRange(field.ConstValue),
-					Severity: protocol.DiagnosticSeverityError,
-					Source:   "thrift-ls",
-					Message:  fmt.Sprintf("expect %s but got %s", expectTypeName.Name, valueType),
-				}
+	switch valueKind {
+	case syntax.ValueList, syntax.ValueMap, syntax.ValueString, syntax.ValueDouble:
+		if !sameKind(expect, valueKind) {
+			return mismatchDiagnostic(pf.AST(), field, expect, kindName(valueKind))
+		}
+	case syntax.ValueInt:
+		// true/false lex as int constants but are bools.
+		if value.Text == "true" || value.Text == "false" {
+			if expect != "bool" {
+				return mismatchDiagnostic(pf.AST(), field, expect, "bool")
 			}
-		case "identifier":
-			if valueType == "identifier" &&
-				(field.ConstValue.Value == "true" || field.ConstValue.Value == "false") {
-				valueType = "bool"
-			}
-			if expectTypeName.Name == "bool" {
-				if field.ConstValue.Value != "true" && field.ConstValue.Value != "false" {
-					return &protocol.Diagnostic{
-						Range:    lsputils.ASTNodeToRange(field.ConstValue),
-						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  fmt.Sprintf("expect %s but got %s", expectTypeName.Name, valueType),
-					}
-				}
-			} else if codejump.IsBasicType(valueType) {
-				return &protocol.Diagnostic{
-					Range:    lsputils.ASTNodeToRange(field.ConstValue),
-					Severity: protocol.DiagnosticSeverityError,
-					Source:   "thrift-ls",
-					Message:  fmt.Sprintf("expect %s but got %s", expectTypeName.Name, valueType),
-				}
-			}
-		case "i64":
-			if expectTypeName.Name != "i8" &&
-				expectTypeName.Name != "i16" &&
-				expectTypeName.Name != "i32" &&
-				expectTypeName.Name != "i64" {
-				return &protocol.Diagnostic{
-					Range:    lsputils.ASTNodeToRange(field.ConstValue),
-					Severity: protocol.DiagnosticSeverityError,
-					Source:   "thrift-ls",
-					Message:  fmt.Sprintf("expect %s but got %s", expectTypeName.Name, valueType),
-				}
-			}
+			return nil
+		}
+		switch expect {
+		case "i8", "i16", "i32", "i64":
+		default:
+			return mismatchDiagnostic(pf.AST(), field, expect, "i64")
+		}
+	case syntax.ValueIdent:
+		if expect == "bool" {
+			return mismatchDiagnostic(pf.AST(), field, expect, "identifier")
 		}
 	}
 
 	return nil
 }
 
+func sameKind(expect string, kind syntax.ConstValueKind) bool {
+	switch kind {
+	case syntax.ValueList:
+		return expect == "list"
+	case syntax.ValueMap:
+		return expect == "map"
+	case syntax.ValueString:
+		return expect == "string"
+	case syntax.ValueDouble:
+		return expect == "double"
+	}
+	return false
+}
+
+func kindName(kind syntax.ConstValueKind) string {
+	switch kind {
+	case syntax.ValueList:
+		return "list"
+	case syntax.ValueMap:
+		return "map"
+	case syntax.ValueString:
+		return "string"
+	case syntax.ValueDouble:
+		return "double"
+	case syntax.ValueInt:
+		return "int"
+	case syntax.ValueIdent:
+		return "identifier"
+	}
+	return "unknown"
+}
+
+func mismatchDiagnostic(doc *syntax.Document, field *syntax.Field, expect, got string) *protocol.Diagnostic {
+	return &protocol.Diagnostic{
+		Range:    nodeRange(doc, field.Value),
+		Severity: protocol.DiagnosticSeverityError,
+		Source:   protocol.NewOptional("thrift-ls"),
+		Message:  protocol.String(fmt.Sprintf("expect %s but got %s", expect, got)),
+	}
+}
+
+// typeName returns the referenced type name of a field type, or the
+// container/base keyword.
+func typeName(ft *syntax.FieldType) string {
+	if ft == nil {
+		return ""
+	}
+	switch ft.Kind {
+	case syntax.TypeIdent:
+		return ft.Ident.Text
+	case syntax.TypeMap:
+		return "map"
+	case syntax.TypeList:
+		return "list"
+	case syntax.TypeSet:
+		return "set"
+	case syntax.TypeBase:
+		return ft.Base.String()
+	}
+	return ""
+}
+
 func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, ss *cache.Snapshot,
-	file uri.URI, pf *cache.ParsedFile, ft *parser.FieldType) (res []protocol.Diagnostic) {
-	if codejump.IsContainerType(ft.TypeName.Name) {
+	file uri.URI, pf *cache.ParsedFile, ft *syntax.FieldType,
+) (res []protocol.Diagnostic) {
+	if ft == nil {
+		return res
+	}
+	switch ft.Kind {
+	case syntax.TypeMap, syntax.TypeList, syntax.TypeSet:
 		return s.checkContainerTypeExist(ctx, ss, file, pf, ft)
-	} else if codejump.IsBasicType(ft.TypeName.Name) {
+	case syntax.TypeBase:
 		return nil
-	} else {
-		_, id, _, err := codejump.TypeNameDefinitionIdentifier(ctx, ss, file, pf.AST(), ft.TypeName)
+	case syntax.TypeIdent:
+		_, id, _, err := codejump.FindTypeDefinition(ctx, ss, file, pf.AST(), ft)
 		if err != nil || id == nil {
 			res = append(res, protocol.Diagnostic{
-				Range:    lsputils.ASTNodeToRange(ft),
+				Range:    nodeRange(pf.AST(), ft.Ident),
 				Severity: protocol.DiagnosticSeverityError,
-				Source:   "thrift-ls",
-				Message:  fmt.Sprintf("field type doesn't exist"),
+				Source:   protocol.NewOptional("thrift-ls"),
+				Message:  protocol.String("field type doesn't exist"),
 			})
 		}
 	}
-
 	return res
 }
 
 func (s *SemanticAnalysis) checkContainerTypeExist(ctx context.Context,
-	ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, ft *parser.FieldType) (res []protocol.Diagnostic) {
-
+	ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, ft *syntax.FieldType,
+) (res []protocol.Diagnostic) {
 	if ft.KeyType != nil {
-		items := s.checkTypeExist(ctx, ss, file, pf, ft.KeyType)
-		res = append(res, items...)
+		res = append(res, s.checkTypeExist(ctx, ss, file, pf, ft.KeyType)...)
 	}
-
 	if ft.ValueType != nil {
-		items := s.checkTypeExist(ctx, ss, file, pf, ft.ValueType)
-		res = append(res, items...)
+		res = append(res, s.checkTypeExist(ctx, ss, file, pf, ft.ValueType)...)
 	}
-
 	return res
 }
-
-// TODO(jpf): 类型和默认值的类型要一致

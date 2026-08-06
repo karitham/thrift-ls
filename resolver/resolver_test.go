@@ -1,235 +1,132 @@
 package resolver
 
 import (
+	"bytes"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/fstest"
+	"time"
+
+	"github.com/karitham/thrift-ls/options"
 )
 
-func TestResolve_Relative(t *testing.T) {
-	// Create temp dir and files
-	tmpDir := t.TempDir()
-
-	// Create files
-	mainFile := filepath.Join(tmpDir, "main.thrift")
-	includeFile := filepath.Join(tmpDir, "types.thrift")
-
-	if err := os.WriteFile(mainFile, []byte("// main"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(includeFile, []byte("// types"), 0644); err != nil {
+// TestConfigRelativeIncludePaths verifies that include paths in a config are
+// resolved relative to the config file, so they work regardless of the
+// process working directory.
+func TestConfigRelativeIncludePaths(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "thriftls.json")
+	if err := os.WriteFile(cfgPath, []byte(`{"includePaths": ["project/base"]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	r := New([]string{})
-
-	// Test resolving relative to main file
-	resolved := r.Resolve(mainFile, "types.thrift")
-	if resolved != includeFile {
-		t.Errorf("expected %q, got %q", includeFile, resolved)
-	}
-}
-
-func TestResolve_IncludePath(t *testing.T) {
-	// Create temp dirs
-	tmpDir := t.TempDir()
-	includeDir := filepath.Join(tmpDir, "includes")
-	mainDir := filepath.Join(tmpDir, "src")
-
-	if err := os.MkdirAll(includeDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(mainDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create files
-	mainFile := filepath.Join(mainDir, "main.thrift")
-	includeFile := filepath.Join(includeDir, "shared.thrift")
-
-	if err := os.WriteFile(mainFile, []byte("// main"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(includeFile, []byte("// shared"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Resolver with include path
-	r := New([]string{includeDir})
-
-	// Resolve should find file in include path
-	resolved := r.Resolve(mainFile, "shared.thrift")
-	if resolved != includeFile {
-		t.Errorf("expected %q, got %q", includeFile, resolved)
-	}
-}
-
-func TestResolve_Fallback(t *testing.T) {
-	// Create temp dir
-	tmpDir := t.TempDir()
-	mainFile := filepath.Join(tmpDir, "main.thrift")
-
-	if err := os.WriteFile(mainFile, []byte("// main"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	r := New([]string{})
-
-	// Non-existent file should return relative path as fallback
-	resolved := r.Resolve(mainFile, "missing.thrift")
-	expected := filepath.Join(tmpDir, "missing.thrift")
-	if resolved != expected {
-		t.Errorf("expected %q, got %q", expected, resolved)
-	}
-}
-
-func TestResolveContent(t *testing.T) {
-	// Create temp files
-	tmpDir := t.TempDir()
-	mainFile := filepath.Join(tmpDir, "main.thrift")
-	includeFile := filepath.Join(tmpDir, "types.thrift")
-
-	content := []byte("struct User { 1: string Name }")
-	if err := os.WriteFile(mainFile, []byte("// main"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(includeFile, content, 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	r := New([]string{})
-
-	filename, data, err := r.ResolveContent(mainFile, "types.thrift")
+	cfg, err := options.Load(cfgPath)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("Load: %v", err)
 	}
-	if filename != includeFile {
-		t.Errorf("expected filename %q, got %q", includeFile, filename)
+	if cfg.IncludePaths == nil || len(*cfg.IncludePaths) != 1 {
+		t.Fatalf("includePaths = %v", cfg.IncludePaths)
 	}
-	if string(data) != string(content) {
-		t.Errorf("expected content %q, got %q", content, data)
+	want := filepath.Join(dir, "project", "base")
+	if got := (*cfg.IncludePaths)[0]; got != want {
+		t.Errorf("includePaths[0] = %q, want %q", got, want)
+	}
+
+	// Resolution works from any CWD, against a hermetic in-memory fs. The
+	// config-relative include path is absolute, so the map keys are too
+	// (fstest.MapFS only supports relative keys).
+	baseFile := filepath.Join(dir, "project", "base", "types.thrift")
+	fsys := absMapFS{baseFile: []byte("struct T {}")}
+	r := NewWithFS(*cfg.IncludePaths, fsys)
+	cur := filepath.Join(dir, "project", "app.thrift")
+	if got := r.Resolve(cur, "types.thrift"); got != baseFile {
+		t.Errorf("Resolve = %q, want %q", got, baseFile)
 	}
 }
 
-func TestResolveContent_NotFound(t *testing.T) {
-	// Create temp file but not the include
-	tmpDir := t.TempDir()
-	mainFile := filepath.Join(tmpDir, "main.thrift")
+// absMapFS is an in-memory fs.FS keyed by absolute paths, for hermetic tests
+// of absolute include-path resolution.
+type absMapFS map[string][]byte
 
-	if err := os.WriteFile(mainFile, []byte("// main"), 0644); err != nil {
-		t.Fatal(err)
+func (m absMapFS) Stat(name string) (fs.FileInfo, error) {
+	if _, ok := m[name]; !ok {
+		return nil, &fs.PathError{Op: "stat", Path: name, Err: fs.ErrNotExist}
 	}
-
-	r := New([]string{})
-
-	filename, data, err := r.ResolveContent(mainFile, "missing.thrift")
-	if data != nil {
-		t.Error("expected nil content for missing file")
-	}
-	if err == nil {
-		t.Error("expected error for missing file")
-	}
-	// Should still return the attempted path
-	expected := filepath.Join(tmpDir, "missing.thrift")
-	if filename != expected {
-		t.Errorf("expected filename %q, got %q", expected, filename)
-	}
+	return absMapFileInfo{name: name}, nil
 }
 
-func TestIncludeCall_IncludePath(t *testing.T) {
-	// Create temp dirs with separate include path
-	tmpDir := t.TempDir()
-	includeDir := filepath.Join(tmpDir, "includes")
-	mainDir := filepath.Join(tmpDir, "src")
+func (m absMapFS) Open(name string) (fs.File, error) {
+	data, ok := m[name]
+	if !ok {
+		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
+	}
+	return &absMapFile{Reader: bytes.NewReader(data), info: absMapFileInfo{name: name}}, nil
+}
 
-	if err := os.MkdirAll(includeDir, 0755); err != nil {
+type absMapFileInfo struct{ name string }
+
+func (absMapFileInfo) Name() string       { return "" }
+func (absMapFileInfo) Size() int64        { return 0 }
+func (absMapFileInfo) Mode() fs.FileMode  { return 0 }
+func (absMapFileInfo) ModTime() time.Time { return time.Time{} }
+func (absMapFileInfo) IsDir() bool        { return false }
+func (absMapFileInfo) Sys() any           { return nil }
+
+type absMapFile struct {
+	*bytes.Reader
+	info fs.FileInfo
+}
+
+func (f *absMapFile) Stat() (fs.FileInfo, error) { return f.info, nil }
+func (f *absMapFile) Close() error               { return nil }
+
+// TestConfigAbsoluteIncludePaths keeps absolute paths as-is.
+func TestConfigAbsoluteIncludePaths(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "thriftls.json")
+	abs := filepath.Join(dir, "elsewhere")
+	if err := os.WriteFile(cfgPath, []byte(`{"includePaths": ["`+abs+`"]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(mainDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create files
-	mainFile := filepath.Join(mainDir, "main.thrift")
-	includeFile := filepath.Join(includeDir, "shared.thrift")
-
-	content := []byte("namespace * test\nstruct User { 1: string Name }")
-	if err := os.WriteFile(mainFile, []byte("// main"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(includeFile, content, 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	r := New([]string{includeDir})
-	includeCall := r.IncludeCall(mainFile)
-
-	filename, data, err := includeCall("shared.thrift")
+	cfg, err := options.Load(cfgPath)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("Load: %v", err)
 	}
-	if filename != includeFile {
-		t.Errorf("expected filename %q, got %q", includeFile, filename)
-	}
-	if string(data) != string(content) {
-		t.Errorf("expected content %q, got %q", content, data)
+	if got := (*cfg.IncludePaths)[0]; got != abs {
+		t.Errorf("includePaths[0] = %q, want %q", got, abs)
 	}
 }
 
-func TestIncludeCall_Fallback(t *testing.T) {
-	// Test fallback to relative resolution when not in include paths
-	tmpDir := t.TempDir()
-	mainFile := filepath.Join(tmpDir, "main.thrift")
-	localFile := filepath.Join(tmpDir, "local.thrift")
+// TestResolveOrder verifies resolution order against a hermetic fs:
+// relative to the current file first, then each include path.
+func TestResolveOrder(t *testing.T) {
+	fsys := fstest.MapFS{
+		"proj/service/types.thrift":      &fstest.MapFile{Data: []byte("local")},
+		"proj/base/types.thrift":         &fstest.MapFile{Data: []byte("base")},
+		"proj/base/other.thrift":         &fstest.MapFile{Data: []byte("base")},
+		"proj/vendor/types.thrift":       &fstest.MapFile{Data: []byte("vendor")},
+		"proj/vendor/deep/nested.thrift": &fstest.MapFile{Data: []byte("nested")},
+	}
+	r := NewWithFS([]string{"proj/base", "proj/vendor"}, fsys)
+	cur := "proj/service/order.thrift"
 
-	if err := os.WriteFile(mainFile, []byte("// main"), 0644); err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name        string
+		includePath string
+		want        string
+	}{
+		{"local file wins", "types.thrift", "proj/service/types.thrift"},
+		{"first include path", "other.thrift", "proj/base/other.thrift"},
+		{"second include path", "deep/nested.thrift", "proj/vendor/deep/nested.thrift"},
+		{"missing falls back to relative", "missing.thrift", "proj/service/missing.thrift"},
 	}
-	content := []byte("// local file")
-	if err := os.WriteFile(localFile, content, 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	r := New([]string{})
-	includeCall := r.IncludeCall(mainFile)
-
-	filename, data, err := includeCall("local.thrift")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if filename != localFile {
-		t.Errorf("expected filename %q, got %q", localFile, filename)
-	}
-	if string(data) != string(content) {
-		t.Errorf("expected content %q, got %q", content, data)
-	}
-}
-
-func TestIncludeCall_NilIncludePaths(t *testing.T) {
-	// Test with nil include paths
-	tmpDir := t.TempDir()
-	mainFile := filepath.Join(tmpDir, "main.thrift")
-	localFile := filepath.Join(tmpDir, "local.thrift")
-
-	if err := os.WriteFile(mainFile, []byte("// main"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	content := []byte("// local")
-	if err := os.WriteFile(localFile, content, 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	r := New(nil)
-	includeCall := r.IncludeCall(mainFile)
-
-	filename, data, err := includeCall("local.thrift")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if filename != localFile {
-		t.Errorf("expected filename %q, got %q", localFile, filename)
-	}
-	if string(data) != string(content) {
-		t.Errorf("expected content %q, got %q", content, data)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := r.Resolve(cur, tt.includePath); got != tt.want {
+				t.Errorf("Resolve(%q) = %q, want %q", tt.includePath, got, tt.want)
+			}
+		})
 	}
 }

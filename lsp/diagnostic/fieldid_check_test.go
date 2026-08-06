@@ -5,10 +5,11 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
 	"github.com/stretchr/testify/assert"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
 )
 
 func Test_FieldIDCheck_Diagnostic(t *testing.T) {
@@ -39,7 +40,7 @@ service Demo {
 }
 `
 
-	ss := buildSnapshotForTest([]*cache.FileChange{
+	ss := buildSnapshotForTest(t, []*cache.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
@@ -63,7 +64,7 @@ service Demo {
 			name: "case1",
 			c:    &FieldIDCheck{},
 			args: args{
-				ctx: context.TODO(),
+				ctx: t.Context(),
 				ss:  ss,
 				changeFiles: []uri.URI{
 					"file:///tmp/user.thrift",
@@ -84,8 +85,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id conflict",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id conflict"),
 					},
 					{
 						Range: protocol.Range{
@@ -99,8 +100,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id conflict",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id conflict"),
 					},
 					{
 						Range: protocol.Range{
@@ -114,8 +115,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id should be a positive integer in [1, 32767]",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 					{
 						Range: protocol.Range{
@@ -129,8 +130,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id should be a positive integer in [1, 32767]",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 
 					// union
@@ -146,8 +147,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id conflict",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id conflict"),
 					},
 					{
 						Range: protocol.Range{
@@ -161,8 +162,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id conflict",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id conflict"),
 					},
 					{
 						Range: protocol.Range{
@@ -176,8 +177,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id should be a positive integer in [1, 32767]",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 					{
 						Range: protocol.Range{
@@ -191,8 +192,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id should be a positive integer in [1, 32767]",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 
 					// exception
@@ -208,8 +209,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id conflict",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id conflict"),
 					},
 					{
 						Range: protocol.Range{
@@ -223,8 +224,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id conflict",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id conflict"),
 					},
 					{
 						Range: protocol.Range{
@@ -238,8 +239,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id should be a positive integer in [1, 32767]",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 					{
 						Range: protocol.Range{
@@ -253,8 +254,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id should be a positive integer in [1, 32767]",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 
 					// function params
@@ -270,8 +271,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id should be a positive integer in [1, 32767]",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 					{
 						Range: protocol.Range{
@@ -285,8 +286,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id conflict",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id conflict"),
 					},
 					{
 						Range: protocol.Range{
@@ -300,8 +301,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id conflict",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id conflict"),
 					},
 					{
 						Range: protocol.Range{
@@ -315,8 +316,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id should be a positive integer in [1, 32767]",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 
 					// function throws
@@ -332,8 +333,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id should be a positive integer in [1, 32767]",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 					{
 						Range: protocol.Range{
@@ -347,8 +348,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id conflict",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id conflict"),
 					},
 					{
 						Range: protocol.Range{
@@ -362,8 +363,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id conflict",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id conflict"),
 					},
 					{
 						Range: protocol.Range{
@@ -377,8 +378,8 @@ service Demo {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field id should be a positive integer in [1, 32767]",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 				},
 			},

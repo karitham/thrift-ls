@@ -1,9 +1,10 @@
 package completion
 
 import (
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
-	"github.com/joyme123/thrift-ls/lsp/types"
+	"go.lsp.dev/protocol"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/lsp/types"
 )
 
 type CompletionRequest struct {

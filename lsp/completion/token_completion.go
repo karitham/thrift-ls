@@ -3,24 +3,24 @@ package completion
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
-	"github.com/joyme123/thrift-ls/lsp/lsputils"
-	"github.com/joyme123/thrift-ls/parser"
-	"github.com/joyme123/thrift-ls/utils"
-	log "github.com/sirupsen/logrus"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
 var DefaultTokenCompletion Interface = &TokenCompletion{}
 
-// TokenCompletion is token based completion. It generates completion list based on identifier in ast
-type TokenCompletion struct {
-}
+// TokenCompletion is token based completion. It generates completion list
+// based on identifiers in the AST.
+type TokenCompletion struct{}
 
 var keywords = map[string]protocol.InsertTextFormat{
 	"bool":                  protocol.InsertTextFormatPlainText,
@@ -55,8 +55,6 @@ type Candidate struct {
 }
 
 func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cmp *CompletionRequest) ([]*CompletionItem, protocol.Range, error) {
-	tokens := ss.TokensForFile(cmp.Fh.URI())
-
 	rng := protocol.Range{
 		Start: protocol.Position{
 			Line:      cmp.Pos.Line,
@@ -68,13 +66,10 @@ func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cm
 		},
 	}
 
-	log.Debugln("all tokens:", tokens)
-
 	parsedFile, err := ss.Parse(ctx, cmp.Fh.URI())
 	if err != nil {
 		return nil, rng, err
 	}
-
 	if parsedFile.AST() == nil {
 		return nil, rng, fmt.Errorf("parser ast failed")
 	}
@@ -84,24 +79,27 @@ func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cm
 		return nil, rng, err
 	}
 
+	tokens := ss.TokensForFile(cmp.Fh.URI())
+
+	slog.Debug("all tokens", "tokens", tokens)
+
 	candidates := make([]Candidate, 0)
 
-	log.Debugln("parser pos: ", pos)
-	includeLiteralPos := pos
-	includeLiteralPos.Col = includeLiteralPos.Col - 1 // remove quote
-	nodePath := parser.SearchNodePathByPosition(parsedFile.AST(), includeLiteralPos)
-	if items, includeRng, err := c.includeCompletion(ss, cmp.Fh.URI(), nodePath); err == nil {
-		for i := range items {
-			candidates = append(candidates, items[i])
-		}
+	slog.Debug("parser pos", "pos", pos)
+
+	// Include completion: the cursor is inside an include path literal.
+	includePos := pos
+	includePos.Col--
+	includePath := parsedFile.AST().SearchNodePathByPosition(includePos)
+	if items, includeRng, err := c.includeCompletion(ss, cmp.Fh.URI(), parsedFile.AST(), includePath); err == nil {
+		candidates = append(candidates, items...)
 		if len(items) > 0 {
 			rng = includeRng
-			log.Debugln("include completion candidates: ", candidates)
+			slog.Debug("include completion candidates", "candidates", candidates)
 		}
 	}
 
 	if len(candidates) == 0 {
-		nodePath = parser.SearchNodePathByPosition(parsedFile.AST(), pos)
 		content, err := cmp.Fh.Content()
 		if err != nil {
 			return nil, rng, err
@@ -109,7 +107,7 @@ func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cm
 		var prefix []byte
 		// get prefix by pos
 		for i := pos.Offset - 1; i >= 0; i-- {
-			if utils.Space(content[i]) || content[i] == '.' || content[i] == '\'' || content[i] == '"' {
+			if unicode.IsSpace(rune(content[i])) || content[i] == '.' || content[i] == '\'' || content[i] == '"' {
 				prefix = content[i+1 : pos.Offset]
 				rng.Start.Character = rng.Start.Character - uint32(len(prefix))
 				break
@@ -131,11 +129,22 @@ func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cm
 				})
 			}
 		}
-		for i := range keywords {
-			searchCandidate(i, keywords[i])
-		}
-		for i := range tokens {
-			searchCandidate(i, protocol.InsertTextFormatPlainText)
+
+		// Semantic completion: context-aware candidates for type and
+		// constant value positions; fall back to keywords and all
+		// identifiers otherwise.
+		semantic := semanticCandidates(ctx, ss, cmp.Fh.URI(), parsedFile, pos)
+		if len(semantic) > 0 {
+			for _, cand := range semantic {
+				searchCandidate(cand.showText, cand.format)
+			}
+		} else {
+			for i := range keywords {
+				searchCandidate(i, keywords[i])
+			}
+			for i := range tokens {
+				searchCandidate(i, protocol.InsertTextFormatPlainText)
+			}
 		}
 
 		// Sort candidates: prefix matches first (by length, shorter first), then alphabetically
@@ -156,7 +165,7 @@ func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cm
 			candidates = candidates[:10]
 		}
 
-		log.Debugln("token prefix:", string(prefix), "candidates: ", candidates)
+		slog.Debug("token prefix", "prefix", string(prefix), "candidates", candidates)
 	}
 
 	res := make([]*CompletionItem, 0, len(candidates))
@@ -167,25 +176,36 @@ func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cm
 	return res, rng, nil
 }
 
-func (c *TokenCompletion) includeCompletion(ss *cache.Snapshot, file uri.URI, nodePath []parser.Node) (res []Candidate, rng protocol.Range, err error) {
-	if len(nodePath) < 3 {
-		return
+// includeCompletion completes include path literals by listing the
+// directory of the current file.
+func (c *TokenCompletion) includeCompletion(ss *cache.Snapshot, file uri.URI, doc *syntax.Document, path []syntax.Node) (res []Candidate, rng protocol.Range, err error) {
+	if len(path) == 0 {
+		return res, rng, err
+	}
+	include, ok := path[len(path)-1].(*syntax.Include)
+	if !ok || include.Path == nil {
+		return res, rng, err
 	}
 
-	if nodePath[len(nodePath)-1].Type() != "LiteralValue" || nodePath[len(nodePath)-2].Type() != "Literal" || nodePath[len(nodePath)-3].Type() != "Include" {
-		return
+	pathPrefix := include.Path.Text
+	start, end := doc.TokenRange(include.Path)
+	rng = protocol.Range{
+		Start: protocol.Position{
+			Line:      uint32(start.Line - 1),
+			Character: uint32(start.Col - 1),
+		},
+		End: protocol.Position{
+			Line:      uint32(end.Line - 1),
+			Character: uint32(end.Col - 1),
+		},
 	}
 
-	targetNode := nodePath[len(nodePath)-1].(*parser.LiteralValue)
-	pathPrefix := targetNode.Text
-	rng = lsputils.ASTNodeToRange(targetNode)
+	currentDir := filepath.Dir(file.Path())
 
-	currentDir := filepath.Dir(file.Filename())
-
-	log.Debugf("search prefix %s in path %s", pathPrefix, currentDir)
+	slog.Debug("searching prefix in path", "prefix", pathPrefix, "dir", currentDir)
 
 	res, err = ListDirAndFiles(currentDir, pathPrefix)
 
-	log.Debugln("include completion: ", res, "err", err)
-	return
+	slog.Debug("include completion", "res", res, "err", err)
+	return res, rng, err
 }

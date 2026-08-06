@@ -6,28 +6,15 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/parser"
 	"go.lsp.dev/uri"
-)
 
-func ASTNodeToRange(node parser.Node) protocol.Range {
-	return protocol.Range{
-		Start: protocol.Position{
-			Line:      uint32(node.Pos().Line - 1),
-			Character: uint32(node.Pos().Col - 1),
-		},
-		End: protocol.Position{
-			Line:      uint32(node.End().Line - 1),
-			Character: uint32(node.End().Col - 1),
-		},
-	}
-}
+	"github.com/karitham/thrift-ls/syntax"
+)
 
 // GetIncludeName return include name by file uri
 // for example: file uri is file:///base.thrift, then `base` is include name
 func GetIncludeName(file uri.URI) string {
-	fileName := file.Filename()
+	fileName := file.Path()
 	index := strings.LastIndexByte(fileName, filepath.Separator)
 	if index == -1 {
 		return fileName
@@ -41,21 +28,31 @@ func GetIncludeName(file uri.URI) string {
 	return string(fileName[0:index])
 }
 
+// IncludePathText returns the include path of an include node without its
+// quotes. The syntax token keeps the raw literal text, including quotes.
+func IncludePathText(inc *syntax.Include) string {
+	if inc == nil || inc.Path == nil {
+		return ""
+	}
+	return strings.Trim(inc.Path.Text, "\"'")
+}
+
 // includeName: base.User. `base` is the includeName. returns ../../base.thrift
 // if doesn't match, return empty string
-func GetIncludePath(ast *parser.Document, includeName string) string {
-	for _, include := range ast.Includes {
-		if include.BadNode || include.Path == nil || include.Path.BadNode || include.Path.Value == nil {
+func GetIncludePath(ast *syntax.Document, includeName string) string {
+	for _, include := range ast.Includes() {
+		path := IncludePathText(include)
+		if path == "" {
 			continue
 		}
-		items := strings.Split(include.Path.Value.Text, "/")
-		path := items[len(items)-1]
+		items := strings.Split(path, "/")
+		path = items[len(items)-1]
 		if !strings.HasSuffix(path, ".thrift") {
 			continue
 		}
 		name := strings.TrimSuffix(path, ".thrift")
 		if name == includeName {
-			return include.Path.Value.Text
+			return IncludePathText(include)
 		}
 	}
 
@@ -65,7 +62,7 @@ func GetIncludePath(ast *parser.Document, includeName string) string {
 // cur is current file uri. for example file:///tmp/user.thrift
 // includePath is include name used in code. for example: base.thrift
 func IncludeURI(cur uri.URI, includePath string) uri.URI {
-	filePath := cur.Filename()
+	filePath := cur.Path()
 	items := strings.Split(filePath, string(filepath.Separator))
 	basePath := strings.TrimSuffix(filePath, items[len(items)-1])
 
@@ -77,7 +74,7 @@ func IncludeURI(cur uri.URI, includePath string) uri.URI {
 // IncludeURIWithPaths resolves include path, first trying relative to current file,
 // then trying each include path
 func IncludeURIWithPaths(cur uri.URI, includePath string, includePaths []string) uri.URI {
-	filePath := cur.Filename()
+	filePath := cur.Path()
 	items := strings.Split(filePath, string(filepath.Separator))
 	basePath := strings.TrimSuffix(filePath, items[len(items)-1])
 	path := filepath.Join(basePath, includePath)
@@ -105,7 +102,7 @@ func IncludeURIWithPaths(cur uri.URI, includePath string, includePaths []string)
 //  2. include.identifier
 //
 // it returns include, ident
-func ParseIdent(cur uri.URI, includes []*parser.Include, identifier string) (include, ident string) {
+func ParseIdent(cur uri.URI, includes []*syntax.Include, identifier string) (include, ident string) {
 	includeNames := IncludeNames(cur, includes)
 	// parse include from includeNames
 
@@ -119,19 +116,19 @@ func ParseIdent(cur uri.URI, includes []*parser.Include, identifier string) (inc
 
 	for _, incName := range includeNames {
 		prefix := incName + "."
-		if strings.HasPrefix(identifier, prefix) {
-			return incName, strings.TrimPrefix(identifier, prefix)
+		if after, ok := strings.CutPrefix(identifier, prefix); ok {
+			return incName, after
 		}
 	}
 
 	return "", identifier
 }
 
-// IncludeNames returns include names from include ast nodes
-func IncludeNames(cur uri.URI, includes []*parser.Include) (includeNames []string) {
+// includeNames returns include names from include ast nodes
+func IncludeNames(cur uri.URI, includes []*syntax.Include) (includeNames []string) {
 	for _, inc := range includes {
-		if inc.Path != nil && inc.Path.Value != nil {
-			path := inc.Path.Value.Text
+		path := IncludePathText(inc)
+		if path != "" {
 			u := IncludeURI(cur, path)
 			includeName := GetIncludeName(u)
 			includeNames = append(includeNames, includeName)

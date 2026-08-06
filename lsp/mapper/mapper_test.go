@@ -3,10 +3,11 @@ package mapper
 import (
 	"testing"
 
-	"github.com/joyme123/thrift-ls/lsp/types"
-	"github.com/joyme123/thrift-ls/parser"
 	"github.com/stretchr/testify/assert"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/types"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
 func TestMapper_LSPPosToParserPosition(t *testing.T) {
@@ -30,7 +31,7 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 		name      string
 		fields    fields
 		args      args
-		want      parser.Position
+		want      syntax.Position
 		assertion assert.ErrorAssertionFunc
 	}{
 		{
@@ -45,7 +46,7 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 					Character: 5,
 				},
 			},
-			want: parser.Position{
+			want: syntax.Position{
 				Line:   2,
 				Col:    6,
 				Offset: 19,
@@ -64,7 +65,7 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 					Character: 5,
 				},
 			},
-			want:      parser.InvalidPosition,
+			want:      syntax.InvalidPosition,
 			assertion: assert.Error,
 		},
 		{
@@ -79,7 +80,7 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 					Character: 28,
 				},
 			},
-			want:      parser.InvalidPosition,
+			want:      syntax.InvalidPosition,
 			assertion: assert.Error,
 		},
 		{
@@ -94,7 +95,7 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 					Character: 1,
 				},
 			},
-			want: parser.Position{
+			want: syntax.Position{
 				Line:   3,
 				Col:    2,
 				Offset: 42,
@@ -113,7 +114,7 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 					Character: 2,
 				},
 			},
-			want:      parser.InvalidPosition,
+			want:      syntax.InvalidPosition,
 			assertion: assert.Error,
 		},
 		{
@@ -128,7 +129,7 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 					Character: 12,
 				},
 			},
-			want: parser.Position{
+			want: syntax.Position{
 				Line:   1,
 				Col:    11,
 				Offset: 16,
@@ -147,7 +148,7 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 					Character: 12,
 				},
 			},
-			want:      parser.InvalidPosition,
+			want:      syntax.InvalidPosition,
 			assertion: assert.Error,
 		},
 		{
@@ -162,7 +163,7 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 					Character: 15,
 				},
 			},
-			want:      parser.InvalidPosition,
+			want:      syntax.InvalidPosition,
 			assertion: assert.Error,
 		},
 	}

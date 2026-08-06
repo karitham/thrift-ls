@@ -3,22 +3,20 @@ package diagnostic
 import (
 	"context"
 	"errors"
-	"fmt"
+	"log/slog"
+	"strconv"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
-	"github.com/joyme123/thrift-ls/lsp/lsputils"
-	"github.com/joyme123/thrift-ls/parser"
-	log "github.com/sirupsen/logrus"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
-type FieldIDCheck struct {
-}
+type FieldIDCheck struct{}
 
-// FieldIDCheck checks struct, union, exception, function pramas, function throws field id
-// field id format: have a unique, positive integer identifier.
-// ref doc: http://diwakergupta.github.io/thrift-missing-guide/#_defining_structs
+// FieldIDCheck checks struct, union, exception, function parameter, and
+// throws field ids: they must be unique positive integers in [1, 32767].
 func (c *FieldIDCheck) Diagnostic(ctx context.Context, ss *cache.Snapshot, changeFiles []uri.URI) (DiagnosticResult, error) {
 	res := make(DiagnosticResult)
 	for _, file := range changeFiles {
@@ -41,36 +39,38 @@ func (c *FieldIDCheck) diagnostic(ctx context.Context, ss *cache.Snapshot, file 
 	if err != nil {
 		return nil, err
 	}
-
 	if pf.AST() == nil {
 		return nil, errors.New("parse ast failed")
 	}
 
 	for _, err := range pf.Errors() {
-		log.Debugln("parse err", err)
+		slog.Debug("parse failed", "err", err)
 	}
 
 	var ret []protocol.Diagnostic
 
-	processStructLike := func(fields []*parser.Field) {
-		fieldIDSet := make(map[int][]*parser.Field)
+	processStructLike := func(fields []*syntax.Field) {
+		fieldIDSet := make(map[int][]*syntax.Field)
 		for i := range fields {
 			field := fields[i]
-			if field.Index == nil || field.Index.BadNode {
+			if field.FieldID == nil {
 				continue
 			}
-			fieldIDSet[field.Index.Value] = append(fieldIDSet[field.Index.Value], field)
+			value, err := strconv.ParseInt(field.FieldID.Text, 0, 32)
+			if err != nil {
+				continue
+			}
+			fieldIDSet[int(value)] = append(fieldIDSet[int(value)], field)
 		}
 
 		for fieldID, set := range fieldIDSet {
 			if fieldID < 1 || fieldID > 32767 {
 				for _, field := range set {
-					// field ID exceeded
 					ret = append(ret, protocol.Diagnostic{
-						Range:    lsputils.ASTNodeToRange(field.Index),
+						Range:    tokenRange(pf.AST(), field.FieldID),
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  fmt.Sprintf("field id should be a positive integer in [1, 32767]"),
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					})
 				}
 			}
@@ -79,34 +79,28 @@ func (c *FieldIDCheck) diagnostic(ctx context.Context, ss *cache.Snapshot, file 
 				continue
 			}
 			for _, field := range set {
-				// field id conflict
 				ret = append(ret, protocol.Diagnostic{
-					Range:    lsputils.ASTNodeToRange(field.Index),
+					Range:    tokenRange(pf.AST(), field.FieldID),
 					Severity: protocol.DiagnosticSeverityError,
-					Source:   "thrift-ls",
-					Message:  fmt.Sprintf("field id conflict"),
+					Source:   protocol.NewOptional("thrift-ls"),
+					Message:  protocol.String("field id conflict"),
 				})
 			}
 		}
 	}
 
-	for _, st := range pf.AST().Structs {
+	for _, st := range pf.AST().Structs() {
 		processStructLike(st.Fields)
 	}
-
-	for _, union := range pf.AST().Unions {
+	for _, union := range pf.AST().Unions() {
 		processStructLike(union.Fields)
 	}
-
-	for _, excep := range pf.AST().Exceptions {
-
+	for _, excep := range pf.AST().Exceptions() {
 		processStructLike(excep.Fields)
-
 	}
-
-	for _, svc := range pf.AST().Services {
+	for _, svc := range pf.AST().Services() {
 		for _, fn := range svc.Functions {
-			processStructLike(fn.Arguments)
+			processStructLike(fn.Args)
 			if fn.Throws != nil {
 				processStructLike(fn.Throws.Fields)
 			}

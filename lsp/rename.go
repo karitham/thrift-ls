@@ -3,8 +3,9 @@ package lsp
 import (
 	"context"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/codejump"
+	"go.lsp.dev/protocol"
+
+	"github.com/karitham/thrift-ls/lsp/codejump"
 )
 
 func (s *Server) prepareRename(ctx context.Context, params *protocol.PrepareRenameParams) (*protocol.Range, error) {

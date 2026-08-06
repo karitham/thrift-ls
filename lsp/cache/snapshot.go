@@ -1,16 +1,21 @@
 package cache
 
 import (
+	"bytes"
 	"context"
+	"io/fs"
+	"log/slog"
 	"math/rand"
 	"strings"
 	"sync"
+	"time"
 
-	"github.com/joyme123/thrift-ls/lsp/memoize"
-	"github.com/joyme123/thrift-ls/parser"
-	"github.com/joyme123/thrift-ls/resolver"
-	log "github.com/sirupsen/logrus"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/lsputils"
+	"github.com/karitham/thrift-ls/lsp/memoize"
+	"github.com/karitham/thrift-ls/resolver"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
 // Resolver provides centralized include path resolution.
@@ -25,9 +30,58 @@ type Resolver struct {
 func NewResolver(ss *Snapshot) *Resolver {
 	return &Resolver{
 		ss:      ss,
-		central: resolver.New(ss.includePaths),
+		central: resolver.NewWithFS(ss.includePaths, &snapshotFS{ss: ss}),
 	}
 }
+
+// snapshotFS is an fs.FS for include resolution: files open in the snapshot
+// (editor overlays) exist first, everything else falls through to the disk.
+// This lets includes resolve for files that are open but not yet saved.
+type snapshotFS struct {
+	ss   *Snapshot
+	disk fs.FS
+}
+
+func (s *snapshotFS) Stat(name string) (fs.FileInfo, error) {
+	if _, ok := s.ss.files.Get(uri.File(name)); ok {
+		return snapshotFileInfo{}, nil
+	}
+	if s.disk == nil {
+		s.disk = resolver.FS()
+	}
+	return fs.Stat(s.disk, name)
+}
+
+func (s *snapshotFS) Open(name string) (fs.File, error) {
+	if fh, ok := s.ss.files.Get(uri.File(name)); ok {
+		content, err := fh.Content()
+		if err != nil {
+			return nil, err
+		}
+		return &snapshotFile{Reader: bytes.NewReader(content), info: snapshotFileInfo{}}, nil
+	}
+	if s.disk == nil {
+		s.disk = resolver.FS()
+	}
+	return s.disk.Open(name)
+}
+
+type snapshotFileInfo struct{}
+
+func (snapshotFileInfo) Name() string       { return "" }
+func (snapshotFileInfo) Size() int64        { return 0 }
+func (snapshotFileInfo) Mode() fs.FileMode  { return 0 }
+func (snapshotFileInfo) ModTime() time.Time { return time.Time{} }
+func (snapshotFileInfo) IsDir() bool        { return false }
+func (snapshotFileInfo) Sys() any           { return nil }
+
+type snapshotFile struct {
+	*bytes.Reader
+	info fs.FileInfo
+}
+
+func (f *snapshotFile) Stat() (fs.FileInfo, error) { return f.info, nil }
+func (f *snapshotFile) Close() error               { return nil }
 
 // IncludePaths returns the include paths configured for this snapshot
 func (r *Resolver) IncludePaths() []string {
@@ -37,7 +91,7 @@ func (r *Resolver) IncludePaths() []string {
 // ResolveInclude resolves an include path to a file URI.
 // It first tries relative to the current file, then tries each include path.
 func (r *Resolver) ResolveInclude(cur uri.URI, includePath string) uri.URI {
-	filePath := cur.Filename()
+	filePath := cur.Path()
 	resolvedPath := r.central.Resolve(filePath, includePath)
 	return uri.File(resolvedPath)
 }
@@ -50,12 +104,12 @@ func (r *Resolver) ResolveIncludeWithText(cur uri.URI, includeText string) uri.U
 
 // GetIncludePath returns the include path text for a given include name.
 // Returns empty string if not found.
-func (r *Resolver) GetIncludePath(ast *parser.Document, includeName string) string {
-	for _, include := range ast.Includes {
-		if include.BadNode || include.Path == nil || include.Path.BadNode || include.Path.Value == nil {
+func (r *Resolver) GetIncludePath(ast *syntax.Document, includeName string) string {
+	for _, include := range ast.Includes() {
+		if include.Path == nil {
 			continue
 		}
-		path := include.Path.Value.Text
+		path := lsputils.IncludePathText(include)
 		name := getIncludeNameFromPath(path)
 		if name == includeName {
 			return path
@@ -66,7 +120,7 @@ func (r *Resolver) GetIncludePath(ast *parser.Document, includeName string) stri
 
 // GetIncludeURI returns the URI for an included file by include name.
 // Returns empty URI if not found.
-func (r *Resolver) GetIncludeURI(cur uri.URI, ast *parser.Document, includeName string) uri.URI {
+func (r *Resolver) GetIncludeURI(cur uri.URI, ast *syntax.Document, includeName string) uri.URI {
 	path := r.GetIncludePath(ast, includeName)
 	if path == "" {
 		return ""
@@ -126,7 +180,6 @@ func (s *Snapshot) Acquire() func() {
 }
 
 func (s *Snapshot) Initialize(ctx context.Context) {
-
 }
 
 func (s *Snapshot) Graph() *IncludeGraph {
@@ -140,14 +193,14 @@ func (s *Snapshot) Resolver() *Resolver {
 }
 
 func (s *Snapshot) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, error) {
-	log.Debugln("snapshot read file", uri)
+	slog.Debug("snapshot read file", "uri", uri)
 	s.view.MarkFileKnown(uri)
 
 	if fh, ok := s.files.Get(uri); ok {
 		return fh, nil
 	}
 
-	log.Debugln("snapshot read from fs")
+	slog.Debug("snapshot read from fs")
 	fh, err := s.view.fs.ReadFile(ctx, uri)
 	if err != nil {
 		return nil, err
@@ -177,16 +230,16 @@ func (s *Snapshot) Parse(ctx context.Context, uri uri.URI) (*ParsedFile, error) 
 
 	// DEBUG
 	// content, _ := fh.Content()
-	// log.Debugln("parse content:", string(content))
+	// slog.Debug("parse content", "content", string(content))
 
 	pf, err := Parse(fh)
 	if err != nil {
-		log.Debugf("snapshot parse err: %v", err)
+		slog.Debug("snapshot parse failed", "err", err)
 		return nil, err
 	}
 
 	if pf.AST() != nil {
-		s.graph.Set(uri, pf.AST().Includes, s.includePaths)
+		s.graph.Set(uri, pf.AST().Includes(), s.Resolver().ResolveInclude)
 	}
 	s.parsedCache.Set(uri, pf)
 
@@ -227,16 +280,22 @@ func (s *Snapshot) clone() (*Snapshot, func()) {
 }
 
 func BuildSnapshotForTest(files []*FileChange) *Snapshot {
-	store := &memoize.Store{}
-	c := New(store, nil)
-	fs := NewOverlayFS(c)
-	fs.Update(context.TODO(), files)
+	return BuildSnapshotForTestWithPaths(nil, files)
+}
 
-	view := NewView("test", "file:///tmp", fs, store, nil)
-	ss := NewSnapshot(view, store, nil)
+// BuildSnapshotForTestWithPaths is BuildSnapshotForTest with configured
+// include paths, for cross-project include resolution tests.
+func BuildSnapshotForTestWithPaths(includePaths []string, files []*FileChange) *Snapshot {
+	store := &memoize.Store{}
+	c := New(store, includePaths)
+	fs := NewOverlayFS(c)
+	_ = fs.Update(context.TODO(), files)
+
+	view := NewView("test", "file:///tmp", fs, store, includePaths)
+	ss := NewSnapshot(view, store, includePaths)
 
 	for _, f := range files {
-		ss.Parse(context.TODO(), f.URI)
+		_, _ = ss.Parse(context.TODO(), f.URI)
 	}
 
 	return ss

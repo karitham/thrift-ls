@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"unicode/utf8"
 
-	"github.com/joyme123/thrift-ls/lsp/types"
-	"github.com/joyme123/thrift-ls/parser"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/types"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
 type Mapper struct {
@@ -57,19 +59,38 @@ func (m *Mapper) GetLSPEndPosition() types.Position {
 	}
 }
 
+// OffsetToLSPPosition converts a byte offset in the mapped content to an LSP
+// position (0-based line, UTF-16 code-unit column).
+func (m *Mapper) OffsetToLSPPosition(offset int) (types.Position, error) {
+	m.initLineStart()
+	if offset < 0 || offset > len(m.content) {
+		return types.Position{}, fmt.Errorf("invalid offset: %d, total content: %d", offset, len(m.content))
+	}
+
+	line := sort.Search(len(m.lineStart), func(i int) bool { return m.lineStart[i] > offset }) - 1
+	if line < 0 {
+		line = 0
+	}
+
+	return types.Position{
+		Line:      uint32(line),
+		Character: uint32(utf16Count(m.content[m.lineStart[line]:offset])),
+	}, nil
+}
+
 // convert from utf16-based to rune-based position
-func (m *Mapper) LSPPosToParserPosition(pos types.Position) (parser.Position, error) {
+func (m *Mapper) LSPPosToParserPosition(pos types.Position) (syntax.Position, error) {
 	m.initLineStart()
 	line := int(pos.Line) + 1
 	if line > len(m.lineStart) {
-		return parser.InvalidPosition, fmt.Errorf("invalid position line, request line: %d, total line: %d", line, len(m.lineStart))
+		return syntax.InvalidPosition, fmt.Errorf("invalid position line, request line: %d, total line: %d", line, len(m.lineStart))
 	}
 
 	if !m.nonASCII {
 		col := int(pos.Character) + 1
 		offset := m.lineStart[pos.Line] + int(pos.Character)
 		if offset > len(m.content) {
-			return parser.InvalidPosition, fmt.Errorf("invalid position offset: %d, total content: %d, %s", offset, len(m.content), string(m.content))
+			return syntax.InvalidPosition, fmt.Errorf("invalid position offset: %d, total content: %d, %s", offset, len(m.content), string(m.content))
 		}
 		var lineLength int
 		if int(pos.Line+1) >= len(m.lineStart) {
@@ -79,10 +100,10 @@ func (m *Mapper) LSPPosToParserPosition(pos types.Position) (parser.Position, er
 		}
 
 		if col > lineLength+1 { // if line length is 0, col is 1 means col is at end of line
-			return parser.InvalidPosition, fmt.Errorf("invalid position column: %d, line length: %d, %s", col, lineLength, string(m.content))
+			return syntax.InvalidPosition, fmt.Errorf("invalid position column: %d, line length: %d, %s", col, lineLength, string(m.content))
 		}
 
-		return parser.Position{
+		return syntax.Position{
 			Line:   line,
 			Col:    col,
 			Offset: offset,
@@ -98,20 +119,21 @@ func (m *Mapper) LSPPosToParserPosition(pos types.Position) (parser.Position, er
 	}
 	lineBytes := m.content[lineStart:lineEnd]
 
-	utf16Col := -1
-	bytesCol := -1
+	utf16Col := 0
+	bytesCol := 0
 	for len(lineBytes) > 0 {
 		if utf16Col >= int(pos.Character) {
 			break
 		}
-		utf16Col++
 		if lineBytes[0] < utf8.RuneSelf {
+			utf16Col++
 			lineBytes = lineBytes[1:]
 			bytesCol++
 			continue
 		}
 
 		r, size := utf8.DecodeRune(lineBytes)
+		utf16Col++
 		if r >= 0x10000 {
 			utf16Col++
 		}
@@ -119,21 +141,21 @@ func (m *Mapper) LSPPosToParserPosition(pos types.Position) (parser.Position, er
 		bytesCol += size
 	}
 
-	runeLen := utf8.RuneCount(m.content[lineStart : lineStart+bytesCol+1])
+	runeLen := utf8.RuneCount(m.content[lineStart : lineStart+bytesCol])
 	offset := lineStart + bytesCol
-	if offset >= len(m.content) {
-		return parser.InvalidPosition, errors.New("invalid position character")
+	if offset > len(m.content) {
+		return syntax.InvalidPosition, errors.New("invalid position character")
 	}
 
 	/*
 		if offset >= m.lineStart[pos.Line+1] {
-			return parser.InvalidPosition, errors.New("invalid position character")
+			return syntax.InvalidPosition, errors.New("invalid position character")
 		}
 	*/
 
-	return parser.Position{
+	return syntax.Position{
 		Line:   line,
-		Col:    runeLen,
+		Col:    runeLen + 1,
 		Offset: lineStart + bytesCol,
 	}, nil
 }

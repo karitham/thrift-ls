@@ -1,19 +1,19 @@
 package lsp
 
 import (
-	"context"
 	"testing"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/format"
-	"github.com/joyme123/thrift-ls/lsp/cache"
-	"github.com/joyme123/thrift-ls/lsp/memoize"
 	"github.com/stretchr/testify/assert"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/formatter"
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/lsp/memoize"
 )
 
 func Test_DidOpen(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	fileURI, err := uri.Parse("file:///tmp/file.thrift")
 	assert.NoError(t, err)
 	fileContent := `
@@ -34,7 +34,7 @@ struct Test {
 
 	store := &memoize.Store{}
 	cache := cache.New(store, nil)
-	srv := NewServer(cache, nil, format.Options{})
+	srv := NewServer(cache, nil, formatter.Options{})
 	err = srv.DidOpen(ctx, params)
 	assert.NoError(t, err)
 
@@ -49,7 +49,7 @@ struct Test {
 }
 
 func Test_DidChange(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	fileURI, err := uri.Parse("file:///tmp/file.thrift")
 	assert.NoError(t, err)
 	fileContentInit := `
@@ -84,7 +84,7 @@ struct Test {
 			Version: 1,
 		},
 		ContentChanges: []protocol.TextDocumentContentChangeEvent{
-			{
+			&protocol.TextDocumentContentChangeWholeDocument{
 				Text: fileContent,
 			},
 		},
@@ -92,7 +92,7 @@ struct Test {
 
 	store := &memoize.Store{}
 	cache := cache.New(store, nil)
-	srv := NewServer(cache, nil, format.Options{})
+	srv := NewServer(cache, nil, formatter.Options{})
 
 	err = srv.DidOpen(ctx, openParams)
 	assert.NoError(t, err)
@@ -109,7 +109,7 @@ struct Test {
 }
 
 func Test_Completion(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 
 	for _, tt := range []struct {
 		name           string
@@ -155,7 +155,7 @@ struct Test {
 
 			store := &memoize.Store{}
 			cache := cache.New(store, nil)
-			srv := NewServer(cache, nil, format.Options{})
+			srv := NewServer(cache, nil, formatter.Options{})
 			err = srv.DidOpen(ctx, openParams)
 			assert.NoError(t, err)
 
@@ -170,23 +170,26 @@ struct Test {
 					},
 				},
 				WorkDoneProgressParams: protocol.WorkDoneProgressParams{
-					WorkDoneToken: &protocol.ProgressToken{},
+					WorkDoneToken: protocol.String(""),
 				},
 				PartialResultParams: protocol.PartialResultParams{
-					PartialResultToken: &protocol.ProgressToken{},
+					PartialResultToken: protocol.String(""),
 				},
-				Context: &protocol.CompletionContext{
+				Context: protocol.CompletionContext{
 					TriggerKind: protocol.CompletionTriggerKindInvoked,
 				},
 			}
 
-			completionList, err := srv.Completion(ctx, completionParams)
+			completionResult, err := srv.Completion(ctx, completionParams)
 			assert.NoError(t, err)
 
+			assert.IsType(t, &protocol.CompletionList{}, completionResult)
+			completionList := completionResult.(*protocol.CompletionList)
 			assert.True(t, len(completionList.Items) > 0)
 			assert.True(t, len(completionList.Items) <= 10)
 			assert.Equal(t, tt.wantLabel, completionList.Items[0].Label)
-			assert.Equal(t, tt.wantPreselect, completionList.Items[0].Preselect)
+			preselect, _ := completionList.Items[0].Preselect.Get()
+			assert.Equal(t, tt.wantPreselect, preselect)
 
 			textEdit, ok := completionList.Items[0].TextEdit.(*protocol.TextEdit)
 			assert.True(t, ok)
@@ -200,7 +203,7 @@ struct Test {
 }
 
 func Test_CompletionIncludeScope(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 
 	for _, tt := range []struct {
 		name          string
@@ -250,7 +253,7 @@ struct Test {
 
 			store := &memoize.Store{}
 			cache := cache.New(store, []string{"/tmp"})
-			srv := NewServer(cache, nil, format.Options{})
+			srv := NewServer(cache, nil, formatter.Options{})
 
 			err = srv.DidOpen(ctx, baseParams)
 			assert.NoError(t, err)
@@ -268,19 +271,21 @@ struct Test {
 					},
 				},
 				WorkDoneProgressParams: protocol.WorkDoneProgressParams{
-					WorkDoneToken: &protocol.ProgressToken{},
+					WorkDoneToken: protocol.String(""),
 				},
 				PartialResultParams: protocol.PartialResultParams{
-					PartialResultToken: &protocol.ProgressToken{},
+					PartialResultToken: protocol.String(""),
 				},
-				Context: &protocol.CompletionContext{
+				Context: protocol.CompletionContext{
 					TriggerKind: protocol.CompletionTriggerKindInvoked,
 				},
 			}
 
-			completionList, err := srv.Completion(ctx, completionParams)
+			completionResult, err := srv.Completion(ctx, completionParams)
 			assert.NoError(t, err)
 
+			assert.IsType(t, &protocol.CompletionList{}, completionResult)
+			completionList := completionResult.(*protocol.CompletionList)
 			labels := make([]string, len(completionList.Items))
 			for i, item := range completionList.Items {
 				labels[i] = item.Label
@@ -294,7 +299,7 @@ struct Test {
 }
 
 func Test_CompletionNoGlobalPollution(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 
 	for _, tt := range []struct {
 		name          string
@@ -354,7 +359,7 @@ struct Other {
 
 			store := &memoize.Store{}
 			cache := cache.New(store, nil)
-			srv := NewServer(cache, nil, format.Options{})
+			srv := NewServer(cache, nil, formatter.Options{})
 
 			err = srv.DidOpen(ctx, file1Params)
 			assert.NoError(t, err)
@@ -375,19 +380,21 @@ struct Other {
 					},
 				},
 				WorkDoneProgressParams: protocol.WorkDoneProgressParams{
-					WorkDoneToken: &protocol.ProgressToken{},
+					WorkDoneToken: protocol.String(""),
 				},
 				PartialResultParams: protocol.PartialResultParams{
-					PartialResultToken: &protocol.ProgressToken{},
+					PartialResultToken: protocol.String(""),
 				},
-				Context: &protocol.CompletionContext{
+				Context: protocol.CompletionContext{
 					TriggerKind: protocol.CompletionTriggerKindInvoked,
 				},
 			}
 
-			completionList, err := srv.Completion(ctx, completionParams)
+			completionResult, err := srv.Completion(ctx, completionParams)
 			assert.NoError(t, err)
 
+			assert.IsType(t, &protocol.CompletionList{}, completionResult)
+			completionList := completionResult.(*protocol.CompletionList)
 			labels := make([]string, len(completionList.Items))
 			for i, item := range completionList.Items {
 				labels[i] = item.Label

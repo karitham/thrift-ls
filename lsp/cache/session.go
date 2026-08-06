@@ -52,7 +52,7 @@ func (s *Session) Initialize(fn func()) {
 }
 
 func (s *Session) CreateView(folder uri.URI) {
-	view := NewView(folder.Filename(), folder, s.overlayFS, s.cache.store, s.cache.IncludePaths)
+	view := NewView(folder.Path(), folder, s.overlayFS, s.cache.store, s.cache.IncludePaths)
 	s.views = append(s.views, view)
 }
 
@@ -86,5 +86,5 @@ func (s *Session) ViewOf(fileURI uri.URI) (*View, error) {
 }
 
 func (s *Session) UpdateOverlayFS(ctx context.Context, changes []*FileChange) error {
-	return s.overlayFS.Update(ctx, changes)
+	return s.Update(ctx, changes)
 }

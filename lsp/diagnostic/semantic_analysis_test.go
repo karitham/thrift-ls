@@ -5,14 +5,14 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
 	"github.com/stretchr/testify/assert"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
 )
 
 func Test_SemanticAnalysis_Diagnostic(t *testing.T) {
-
 	file1 := `struct Student {
 	1: required string name,
 	2: required User user1,
@@ -53,7 +53,7 @@ struct TestUUID {
 	1: required uuid id
 }
 `
-	ss := buildSnapshotForTest([]*cache.FileChange{
+	ss := buildSnapshotForTest(t, []*cache.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
@@ -75,7 +75,7 @@ struct TestUUID {
 		{
 			name: "case 1",
 			args: args{
-				ctx: context.TODO(),
+				ctx: t.Context(),
 				ss:  ss,
 				changeFiles: []uri.URI{
 					"file:///tmp/user.thrift",
@@ -91,12 +91,12 @@ struct TestUUID {
 							},
 							End: protocol.Position{
 								Line:      2,
-								Character: 18,
+								Character: 17,
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field type doesn't exist",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field type doesn't exist"),
 					},
 					{
 						Range: protocol.Range{
@@ -110,8 +110,8 @@ struct TestUUID {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "struct name conflict with other struct",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("struct name conflict with other struct"),
 					},
 					{
 						Range: protocol.Range{
@@ -121,12 +121,12 @@ struct TestUUID {
 							},
 							End: protocol.Position{
 								Line:      10,
-								Character: 18,
+								Character: 17,
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field type doesn't exist",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field type doesn't exist"),
 					},
 					{
 						Range: protocol.Range{
@@ -140,8 +140,8 @@ struct TestUUID {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "default value doesn't exist",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("default value doesn't exist"),
 					},
 					{
 						Range: protocol.Range{
@@ -151,12 +151,12 @@ struct TestUUID {
 							},
 							End: protocol.Position{
 								Line:      16,
-								Character: 18,
+								Character: 17,
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field type doesn't exist",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field type doesn't exist"),
 					},
 					{
 						Range: protocol.Range{
@@ -166,12 +166,12 @@ struct TestUUID {
 							},
 							End: protocol.Position{
 								Line:      21,
-								Character: 21,
+								Character: 20,
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field type doesn't exist",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field type doesn't exist"),
 					},
 					{
 						Range: protocol.Range{
@@ -181,12 +181,12 @@ struct TestUUID {
 							},
 							End: protocol.Position{
 								Line:      21,
-								Character: 75,
+								Character: 74,
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "field type doesn't exist",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("field type doesn't exist"),
 					},
 					{
 						Range: protocol.Range{
@@ -200,8 +200,8 @@ struct TestUUID {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "expect i32 but got bool",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("expect i32 but got bool"),
 					},
 					{
 						Range: protocol.Range{
@@ -215,8 +215,8 @@ struct TestUUID {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "expect i32 but got string",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("expect i32 but got string"),
 					},
 					{
 						Range: protocol.Range{
@@ -230,8 +230,8 @@ struct TestUUID {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "expect string but got bool",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("expect string but got bool"),
 					},
 					{
 						Range: protocol.Range{
@@ -245,8 +245,8 @@ struct TestUUID {
 							},
 						},
 						Severity: protocol.DiagnosticSeverityError,
-						Source:   "thrift-ls",
-						Message:  "expect string but got i64",
+						Source:   protocol.NewOptional("thrift-ls"),
+						Message:  protocol.String("expect string but got i64"),
 					},
 				},
 			},

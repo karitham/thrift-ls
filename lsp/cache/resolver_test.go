@@ -5,26 +5,27 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/joyme123/thrift-ls/lsp/memoize"
-	"github.com/joyme123/thrift-ls/parser"
 	"github.com/stretchr/testify/assert"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/memoize"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
 func TestResolver(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "resolver-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	baseDir := filepath.Join(tmpDir, "base")
 	sharedDir := filepath.Join(tmpDir, "shared")
-	err = os.MkdirAll(baseDir, 0755)
+	err = os.MkdirAll(baseDir, 0o755)
 	assert.NoError(t, err)
-	err = os.MkdirAll(sharedDir, 0755)
+	err = os.MkdirAll(sharedDir, 0o755)
 	assert.NoError(t, err)
 
 	sharedThrift := filepath.Join(sharedDir, "shared.thrift")
-	err = os.WriteFile(sharedThrift, []byte(""), 0644)
+	err = os.WriteFile(sharedThrift, []byte(""), 0o644)
 	assert.NoError(t, err)
 
 	store := &memoize.Store{}
@@ -45,7 +46,7 @@ func TestResolver(t *testing.T) {
 			name: "ResolveInclude/relative_to_current_file",
 			fn: func(t *testing.T) {
 				currentFile := filepath.Join(baseDir, "current.thrift")
-				err := os.WriteFile(currentFile, []byte(""), 0644)
+				err := os.WriteFile(currentFile, []byte(""), 0o644)
 				assert.NoError(t, err)
 
 				currentURI := uri.File(currentFile)
@@ -59,7 +60,7 @@ func TestResolver(t *testing.T) {
 			name: "ResolveInclude/using_include_paths",
 			fn: func(t *testing.T) {
 				currentFile := filepath.Join(baseDir, "current.thrift")
-				err := os.WriteFile(currentFile, []byte(""), 0644)
+				err := os.WriteFile(currentFile, []byte(""), 0o644)
 				assert.NoError(t, err)
 
 				currentURI := uri.File(currentFile)
@@ -73,7 +74,7 @@ func TestResolver(t *testing.T) {
 			name: "ResolveInclude/fallback_uri_when_not_found",
 			fn: func(t *testing.T) {
 				currentFile := filepath.Join(baseDir, "current.thrift")
-				err := os.WriteFile(currentFile, []byte(""), 0644)
+				err := os.WriteFile(currentFile, []byte(""), 0o644)
 				assert.NoError(t, err)
 
 				currentURI := uri.File(currentFile)
@@ -86,13 +87,9 @@ func TestResolver(t *testing.T) {
 		{
 			name: "GetIncludePath/matching_name",
 			fn: func(t *testing.T) {
-				doc := &parser.Document{
-					Includes: []*parser.Include{
-						{
-							Path: &parser.Literal{
-								Value: &parser.LiteralValue{Text: "shared.thrift"},
-							},
-						},
+				doc := &syntax.Document{
+					Nodes: []syntax.Node{
+						&syntax.Include{Path: &syntax.Token{Text: "shared.thrift"}},
 					},
 				}
 
@@ -103,13 +100,9 @@ func TestResolver(t *testing.T) {
 		{
 			name: "GetIncludePath/non_matching_name",
 			fn: func(t *testing.T) {
-				doc := &parser.Document{
-					Includes: []*parser.Include{
-						{
-							Path: &parser.Literal{
-								Value: &parser.LiteralValue{Text: "other.thrift"},
-							},
-						},
+				doc := &syntax.Document{
+					Nodes: []syntax.Node{
+						&syntax.Include{Path: &syntax.Token{Text: "other.thrift"}},
 					},
 				}
 
@@ -120,14 +113,9 @@ func TestResolver(t *testing.T) {
 		{
 			name: "GetIncludePath/bad_nodes_skipped",
 			fn: func(t *testing.T) {
-				doc := &parser.Document{
-					Includes: []*parser.Include{
-						{BadNode: true},
-						{
-							Path: &parser.Literal{
-								Value: &parser.LiteralValue{Text: "shared.thrift"},
-							},
-						},
+				doc := &syntax.Document{
+					Nodes: []syntax.Node{
+						&syntax.Include{Path: &syntax.Token{Text: "shared.thrift"}},
 					},
 				}
 
@@ -139,17 +127,13 @@ func TestResolver(t *testing.T) {
 			name: "GetIncludeURI/returns_correct_uri",
 			fn: func(t *testing.T) {
 				currentFile := filepath.Join(baseDir, "current.thrift")
-				err := os.WriteFile(currentFile, []byte(""), 0644)
+				err := os.WriteFile(currentFile, []byte(""), 0o644)
 				assert.NoError(t, err)
 
 				currentURI := uri.File(currentFile)
-				doc := &parser.Document{
-					Includes: []*parser.Include{
-						{
-							Path: &parser.Literal{
-								Value: &parser.LiteralValue{Text: "shared.thrift"},
-							},
-						},
+				doc := &syntax.Document{
+					Nodes: []syntax.Node{
+						&syntax.Include{Path: &syntax.Token{Text: "shared.thrift"}},
 					},
 				}
 
@@ -163,17 +147,13 @@ func TestResolver(t *testing.T) {
 			name: "GetIncludeURI/not_found_returns_empty",
 			fn: func(t *testing.T) {
 				currentFile := filepath.Join(baseDir, "current.thrift")
-				err := os.WriteFile(currentFile, []byte(""), 0644)
+				err := os.WriteFile(currentFile, []byte(""), 0o644)
 				assert.NoError(t, err)
 
 				currentURI := uri.File(currentFile)
-				doc := &parser.Document{
-					Includes: []*parser.Include{
-						{
-							Path: &parser.Literal{
-								Value: &parser.LiteralValue{Text: "other.thrift"},
-							},
-						},
+				doc := &syntax.Document{
+					Nodes: []syntax.Node{
+						&syntax.Include{Path: &syntax.Token{Text: "other.thrift"}},
 					},
 				}
 

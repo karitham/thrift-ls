@@ -2,167 +2,121 @@ package codejump
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/joyme123/protocol"
-	"github.com/joyme123/thrift-ls/lsp/cache"
-	"github.com/joyme123/thrift-ls/lsp/lsputils"
-	"github.com/joyme123/thrift-ls/lsp/types"
-	"github.com/joyme123/thrift-ls/parser"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/lsp/lsputils"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
+// PrepareRename returns the range of the identifier under the cursor when
+// renaming is supported: definition names, const values, and services.
 func PrepareRename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) (res *protocol.Range, err error) {
-	pf, err := ss.Parse(ctx, file)
+	pf, target, err := resolveTarget(ctx, ss, file, pos)
 	if err != nil {
-		return
+		return res, err
 	}
 
-	if pf.AST() == nil {
-		err = errors.New("parse ast failed")
-		return
-	}
-
-	astPos, err := pf.Mapper().LSPPosToParserPosition(types.Position{Line: pos.Line, Character: pos.Character})
-	if err != nil {
-		return
-	}
-	nodePath := parser.SearchNodePathByPosition(pf.AST(), astPos)
-	targetNode := nodePath[len(nodePath)-1]
-
-	switch targetNode.Type() {
-	case "IdentifierName", "ConstValue":
-		rg := lsputils.ASTNodeToRange(targetNode)
+	switch target.kind {
+	case TargetDefinition, TargetConstValue, TargetService:
+		rg := nodeRange(pf.AST(), target.node)
 		return &rg, nil
-	default:
-		err = fmt.Errorf("%s doesn't support rename", targetNode.Type())
-		return
 	}
+	return nil, fmt.Errorf("rename not supported at this position")
 }
 
+// Rename renames the definition under the cursor and all its references,
+// preserving include qualifiers on qualified references (user.Test becomes
+// user.newtext, not newtext).
 func Rename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position, newName string) (res *protocol.WorkspaceEdit, err error) {
-	pf, err := ss.Parse(ctx, file)
+	pf, target, err := resolveTarget(ctx, ss, file, pos)
 	if err != nil {
-		return
+		return res, err
 	}
 
-	if pf.AST() == nil {
-		err = errors.New("parse ast failed")
-		return
-	}
-
-	astPos, err := pf.Mapper().LSPPosToParserPosition(types.Position{Line: pos.Line, Character: pos.Character})
-	if err != nil {
-		return
-	}
-	nodePath := parser.SearchNodePathByPosition(pf.AST(), astPos)
-	targetNode := nodePath[len(nodePath)-1]
-
-	self := lsputils.ASTNodeToRange(targetNode)
-
-	switch targetNode.Type() {
-	case "IdentifierName":
-		if len(nodePath) <= 2 {
-			return
+	var refs []referenceHit
+	switch target.kind {
+	case TargetTypeName:
+		ft := target.parent.(*syntax.FieldType)
+		if typeReferenceName(ft) == "" || IsBasicType(typeReferenceName(ft)) {
+			return nil, fmt.Errorf("rename not supported for basic types")
 		}
-		// identifierName -> identifier -> definition
-		parentDefinitionNode := nodePath[len(nodePath)-3]
-		definitionType := parentDefinitionNode.Type()
-		if definitionType == "EnumValue" || definitionType == "Const" {
-			var typeName string
-			if definitionType == "Const" {
-				typeName = fmt.Sprintf("%s.%s", lsputils.GetIncludeName(file), targetNode.(*parser.IdentifierName).Text)
-			} else {
-				enumNode := nodePath[len(nodePath)-4]
-				typeName = fmt.Sprintf("%s.%s.%s", lsputils.GetIncludeName(file), enumNode.(*parser.Enum).Name.Name.Text, targetNode.(*parser.IdentifierName).Text)
-			}
-			// search in const value
-			locations, err := searchConstValueIdentifierReferences(ctx, ss, file, typeName)
-			if err != nil {
-				return nil, err
-			}
-
-			locations = append(locations, protocol.Location{
-				URI:   file,
-				Range: self,
-			})
-
-			return convertLocationToWorkspaceEdit(locations, file, newName), nil
-		} else if definitionType == "Service" {
-			svcName := targetNode.(*parser.IdentifierName).Text
-			if !strings.Contains(svcName, ".") {
-				svcName = fmt.Sprintf("%s.%s", lsputils.GetIncludeName(file), svcName)
-			} else {
-				include, _ := lsputils.ParseIdent(file, pf.AST().Includes, svcName)
-				resolver := ss.Resolver()
-				path := resolver.GetIncludePath(pf.AST(), include)
-				if path != "" { // doesn't match any include path
-					file = resolver.ResolveInclude(file, path)
-				}
-			}
-			locations, err := searchServiceReferences(ctx, ss, file, svcName)
-			if err != nil {
-				return nil, err
-			}
-
-			locations = append(locations, protocol.Location{
-				URI:   file,
-				Range: self,
-			})
-
-			return convertLocationToWorkspaceEdit(locations, file, newName), nil
-		}
-
-		if _, ok := validReferenceDefinitionType[definitionType]; !ok {
-			return
-		}
-
-		// typeName is base.User
-		typeName := fmt.Sprintf("%s.%s", lsputils.GetIncludeName(file), targetNode.(*parser.IdentifierName).Text)
-		locations, err := searchIdentifierReferences(ctx, ss, file, typeName, definitionType)
+		refs, err = searchTypeNameReferences(ctx, ss, file, pf, target)
 		if err != nil {
 			return nil, err
 		}
 
-		locations = append(locations, protocol.Location{
-			URI:   file,
-			Range: self,
-		})
-		return convertLocationToWorkspaceEdit(locations, file, newName), nil
-	case "ConstValue":
-		locations, err := searchConstValueReferences(ctx, ss, file, pf.AST(), nodePath, targetNode)
+	case TargetConstValue:
+		value := target.node.(*syntax.ConstValue)
+		if _, id, err := FindConstValueDefinition(ctx, ss, file, pf.AST(), value); err != nil {
+			return nil, err
+		} else if id == nil {
+			return nil, fmt.Errorf("definition not found")
+		}
+		refs, err = searchConstValueReferences(ctx, ss, file, pf, target)
 		if err != nil {
 			return nil, err
 		}
 
-		locations = append(locations, protocol.Location{
-			URI:   file,
-			Range: self,
-		})
-		return convertLocationToWorkspaceEdit(locations, file, newName), nil
+	case TargetService:
+		svcName := target.identifier().Text
+		if !strings.Contains(svcName, ".") {
+			svcName = fmt.Sprintf("%s.%s", lsputils.GetIncludeName(file), svcName)
+		} else {
+			include, _ := lsputils.ParseIdent(file, pf.AST().Includes(), svcName)
+			resolver := ss.Resolver()
+			if path := resolver.GetIncludePath(pf.AST(), include); path != "" {
+				file = resolver.ResolveInclude(file, path)
+			}
+		}
+		refs, err = searchServiceReferences(ctx, ss, file, svcName)
+		if err != nil {
+			return nil, err
+		}
+
+	case TargetDefinition:
+		refs, err = searchDefinitionReferences(ctx, ss, file, pf, target)
+		if err != nil {
+			return nil, err
+		}
+
 	default:
-		err = fmt.Errorf("%s doesn't support rename", targetNode.Type())
-		return
+		return nil, fmt.Errorf("rename not supported at this position")
 	}
+
+	// The definition under the cursor itself.
+	refs = append(refs, referenceHit{
+		loc: protocol.Location{
+			URI:   file,
+			Range: nodeRange(pf.AST(), target.node),
+		},
+		text: "",
+	})
+
+	return convertHitsToWorkspaceEdit(refs, newName), nil
 }
 
-func convertLocationToWorkspaceEdit(locations []protocol.Location, fileURI uri.URI, newName string) *protocol.WorkspaceEdit {
-	res := &protocol.WorkspaceEdit{
-		Changes: make(map[protocol.DocumentURI][]protocol.TextEdit),
-	}
-
-	for _, loc := range locations {
-		newText := newName
-		if loc.URI != fileURI {
-			newText = lsputils.GetIncludeName(fileURI) + "." + newName
+// convertHitsToWorkspaceEdit groups the edits by file. A reference whose
+// text has an include qualifier (user.Test) keeps the qualifier: the new
+// text becomes user.newtext.
+func convertHitsToWorkspaceEdit(refs []referenceHit, newName string) *protocol.WorkspaceEdit {
+	changes := make(map[uri.URI][]protocol.TextEdit)
+	for i := range refs {
+		text := newName
+		if dot := strings.LastIndexByte(refs[i].text, '.'); dot >= 0 {
+			text = refs[i].text[:dot+1] + newName
 		}
-		res.Changes[loc.URI] = append(res.Changes[loc.URI], protocol.TextEdit{
-			Range:   loc.Range,
-			NewText: newText,
+		changes[refs[i].loc.URI] = append(changes[refs[i].loc.URI], protocol.TextEdit{
+			Range:   refs[i].loc.Range,
+			NewText: text,
 		})
 	}
 
-	return res
+	return &protocol.WorkspaceEdit{
+		Changes: changes,
+	}
 }
