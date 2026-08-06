@@ -7,18 +7,17 @@ import (
 	"github.com/karitham/thrift-ls/syntax"
 )
 
-// fieldList formats struct-like body fields. Fields are joined with ", "
-// when the body stays on one line and with newlines otherwise; the comma in
-// break mode comes from each field's own trailing separator, driven by the
+// fieldList formats struct-like body fields. Fields are joined with their
+// separator when the body stays on one line and with newlines otherwise; in
+// break mode each field's own trailing separator is emitted, driven by the
 // FieldLineComma option. Blank lines between fields are preserved and force
 // the body to break. Column alignment applies per blank-line group,
 // matching the previous formatter.
 func (f *formatter) fieldList(fields []*syntax.Field, bodyID int) doc.Doc {
-	sep := doc.IfBreak(doc.Line, doc.Concat{doc.Text(","), doc.Line})
 	var parts []doc.Doc
 	for i, field := range fields {
 		if i > 0 {
-			parts = append(parts, sep)
+			parts = append(parts, fieldSep(fields[i-1].Sep, f.opts.FieldLineComma))
 			if f.blankBefore(field) >= 1 {
 				parts = append(parts, doc.HardLine)
 			}
@@ -28,13 +27,41 @@ func (f *formatter) fieldList(fields []*syntax.Field, bodyID int) doc.Doc {
 	return doc.Concat(parts)
 }
 
+// fieldSep is the separator between two list items: a newline when the
+// enclosing group breaks, otherwise the separator text — per-field when
+// preserving (each item keeps its own trailing separator), or a single
+// forced separator per the comma mode.
+func fieldSep(prevSep syntax.TokenKind, mode CommaMode) doc.Doc {
+	return doc.IfBreak(doc.Line, doc.Concat{doc.Text(sepText(prevSep, mode)), doc.Line})
+}
+
+// sepText is the separator text between two flat list items: each item's
+// own trailing separator when preserving, or a forced separator per the
+// comma mode.
+func sepText(prevSep syntax.TokenKind, mode CommaMode) string {
+	switch mode {
+	case CommaAdd:
+		return ","
+	case CommaSemicolon:
+		return ";"
+	case CommaRemove:
+		return ""
+	}
+	switch prevSep {
+	case syntax.TokenComma:
+		return ","
+	case syntax.TokenSemicolon:
+		return ";"
+	}
+	return ""
+}
+
 // enumValueList formats enum bodies with the same layout as fieldList.
 func (f *formatter) enumValueList(values []*syntax.EnumValue, bodyID int) doc.Doc {
-	sep := doc.IfBreak(doc.Line, doc.Concat{doc.Text(","), doc.Line})
 	var parts []doc.Doc
 	for i, value := range values {
 		if i > 0 {
-			parts = append(parts, sep)
+			parts = append(parts, fieldSep(values[i-1].Sep, f.opts.FieldLineComma))
 			if f.blankBefore(value) >= 1 {
 				parts = append(parts, doc.HardLine)
 			}
@@ -131,7 +158,7 @@ func (f *formatter) field(v *syntax.Field, align *columnAlign, bodyID int) doc.D
 	content := f.fieldContent(v, align, false)
 	if bodyID != 0 {
 		content = doc.IfBreakFor(
-			doc.Concat{f.fieldContent(v, align, true), f.trailingSep(v.Sep)},
+			doc.Concat{f.fieldContent(v, align, true), trailingSep(v.Sep, f.opts.FieldLineComma)},
 			content,
 			bodyID,
 		)
@@ -200,7 +227,7 @@ func (f *formatter) enumValue(v *syntax.EnumValue, align *columnAlign, bodyID in
 	content := f.enumValueContent(v, align, false)
 	if bodyID != 0 {
 		content = doc.IfBreakFor(
-			doc.Concat{f.enumValueContent(v, align, true), f.trailingSep(v.Sep)},
+			doc.Concat{f.enumValueContent(v, align, true), trailingSep(v.Sep, f.opts.FieldLineComma)},
 			content,
 			bodyID,
 		)
@@ -228,18 +255,22 @@ func (f *formatter) enumValueContent(v *syntax.EnumValue, align *columnAlign, pa
 }
 
 // trailingSep returns the trailing separator for the given original
-// separator, per the FieldLineComma option: always a comma when adding,
+// separator, per the comma mode: always a comma or semicolon when forcing,
 // nothing when removing, the original separator when preserving.
-func (f *formatter) trailingSep(sep syntax.TokenKind) doc.Doc {
-	switch f.opts.FieldLineComma {
+func trailingSep(sep syntax.TokenKind, mode CommaMode) doc.Doc {
+	switch mode {
 	case CommaAdd:
 		return doc.Text(",")
+	case CommaSemicolon:
+		return doc.Text(";")
 	case CommaRemove:
 		return doc.Concat{}
 	default:
 		switch sep {
-		case syntax.TokenComma, syntax.TokenSemicolon:
+		case syntax.TokenComma:
 			return doc.Text(",")
+		case syntax.TokenSemicolon:
+			return doc.Text(";")
 		}
 		return doc.Concat{}
 	}

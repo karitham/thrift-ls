@@ -27,13 +27,14 @@ const ConfigFileName = "thriftls.json"
 
 // Patch is a partial set of options; nil fields are unset.
 type Patch struct {
-	PrintWidth     *int      `json:"printWidth"`
-	Indent         *Indent   `json:"indent"`
-	TabWidth       *int      `json:"tabWidth"`
-	Align          *string   `json:"align"`
-	FieldLineComma *string   `json:"fieldLineComma"`
-	IncludePaths   *[]string `json:"includePaths"`
-	LogLevel       *int      `json:"logLevel"`
+	PrintWidth        *int      `json:"printWidth"`
+	Indent            *Indent   `json:"indent"`
+	TabWidth          *int      `json:"tabWidth"`
+	Align             *string   `json:"align"`
+	FieldLineComma    *string   `json:"fieldLineComma"`
+	FunctionLineComma *string   `json:"functionLineComma"`
+	IncludePaths      *[]string `json:"includePaths"`
+	LogLevel          *int      `json:"logLevel"`
 }
 
 // Apply overlays p onto base: every set field of p replaces the
@@ -54,6 +55,9 @@ func (p Patch) Apply(base Patch) Patch {
 	}
 	if p.FieldLineComma != nil {
 		out.FieldLineComma = p.FieldLineComma
+	}
+	if p.FunctionLineComma != nil {
+		out.FunctionLineComma = p.FunctionLineComma
 	}
 	if p.IncludePaths != nil {
 		out.IncludePaths = p.IncludePaths
@@ -91,8 +95,11 @@ func (p Patch) Validate() error {
 	if p.Align != nil && !oneOf(*p.Align, "field", "assign", "disable") {
 		return fmt.Errorf("align must be one of \"field\", \"assign\", \"disable\", got %q", *p.Align)
 	}
-	if p.FieldLineComma != nil && !oneOf(*p.FieldLineComma, "add", "remove", "disable", "preserve") {
-		return fmt.Errorf("fieldLineComma must be one of \"add\", \"remove\", \"disable\" (keep as written), got %q", *p.FieldLineComma)
+	if p.FieldLineComma != nil && !oneOf(*p.FieldLineComma, "add", "remove", "semicolon", "disable", "preserve") {
+		return fmt.Errorf("fieldLineComma must be one of \"add\", \"remove\", \"semicolon\", \"disable\" (keep as written), got %q", *p.FieldLineComma)
+	}
+	if p.FunctionLineComma != nil && !oneOf(*p.FunctionLineComma, "add", "remove", "semicolon", "disable", "preserve") {
+		return fmt.Errorf("functionLineComma must be one of \"add\", \"remove\", \"semicolon\", \"disable\" (keep as written), got %q", *p.FunctionLineComma)
 	}
 	if p.Indent != nil {
 		if p.Indent.Width <= 0 || !isWhitespaceOnly(p.Indent.Value) {
@@ -133,16 +140,27 @@ func (p Patch) Formatter() (formatter.Options, error) {
 		}
 	}
 	if p.FieldLineComma != nil {
-		switch *p.FieldLineComma {
-		case "add":
-			o.FieldLineComma = formatter.CommaAdd
-		case "remove":
-			o.FieldLineComma = formatter.CommaRemove
-		case "disable", "preserve":
-			o.FieldLineComma = formatter.CommaPreserve
-		}
+		o.FieldLineComma = commaMode(*p.FieldLineComma)
+	}
+	if p.FunctionLineComma != nil {
+		o.FunctionLineComma = commaMode(*p.FunctionLineComma)
 	}
 	return o, nil
+}
+
+// commaMode maps a config value to a formatter comma mode. The value is
+// validated before this is called.
+func commaMode(s string) formatter.CommaMode {
+	switch s {
+	case "add":
+		return formatter.CommaAdd
+	case "remove":
+		return formatter.CommaRemove
+	case "semicolon":
+		return formatter.CommaSemicolon
+	default: // "disable", "preserve"
+		return formatter.CommaPreserve
+	}
 }
 
 // Indent is a resolved indentation: the string emitted for one level and

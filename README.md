@@ -70,16 +70,17 @@ find . -name "*.thrift" | xargs -n 1 thriftls format -w
 
 Formatting flags:
 
-| Flag                | Meaning                                                                                            |
-| ------------------- | -------------------------------------------------------------------------------------------------- |
-| `-w`                | Overwrite the file with the formatted result                                                       |
-| `-d`                | Print a diff instead of the formatted result                                                       |
-| `--printWidth`      | Target line width (default 80)                                                                     |
-| `--indent`          | Indentation: a literal like `"  "` or `"\t"`, a number like `8`, or a legacy spec like `"2spaces"` |
-| `--align`           | `field`, `assign`, or `disable`                                                                    |
-| `--fieldLineComma`  | `add`, `remove`, or `disable` (keep as written)                                                    |
-| `--config`          | Path to a `thriftls.json` config file                                                              |
-| `-I`                | Additional include path, like the thrift compiler's `-I` (repeatable)                              |
+| Flag                  | Meaning                                                                                            |
+| --------------------- | -------------------------------------------------------------------------------------------------- |
+| `-w`                  | Overwrite the file with the formatted result                                                       |
+| `-d`                  | Print a diff instead of the formatted result                                                       |
+| `--printWidth`        | Target line width (default 80)                                                                     |
+| `--indent`            | Indentation: a literal like `"  "` or `"\t"`, a number like `8`, or a legacy spec like `"2spaces"` |
+| `--align`             | `field`, `assign`, or `disable`                                                                    |
+| `--fieldLineComma`    | Struct/enum field separators: `add`, `remove`, `semicolon`, or `disable` (keep as written)         |
+| `--functionLineComma` | Service arg/throws separators: `add`, `remove`, `semicolon`, or `disable` (keep as written)        |
+| `--config`            | Path to a `thriftls.json` config file                                                              |
+| `-I`                  | Additional include path, like the thrift compiler's `-I` (repeatable)                              |
 
 Flags override the config file.
 
@@ -132,11 +133,25 @@ Controls column alignment of struct/union/exception fields and enum values.
 
 ### fieldLineComma
 
-Controls trailing separators on field lines.
+Controls trailing separators on struct/union/exception fields and enum values.
 
 - `disable`: Keep as written (default)
 - `add`: Always add trailing commas
+- `semicolon`: Always add trailing semicolons
 - `remove`: Remove trailing separators
+
+### functionLineComma
+
+Controls trailing separators on service arguments and throws entries,
+independently of `fieldLineComma`.
+
+- `disable`: Keep as written (default)
+- `add`: Always add trailing commas
+- `semicolon`: Always add trailing semicolons
+- `remove`: Remove trailing separators
+
+Broken (multiline) argument and throws blocks are column-aligned like
+struct fields, controlled by `align`.
 
 ### includePaths
 

@@ -95,7 +95,11 @@ func formatFlags() []cli.Flag {
 		},
 		&cli.StringFlag{
 			Name:  "fieldLineComma",
-			Usage: `trailing commas: "add", "remove", or "disable" to keep as written`,
+			Usage: `struct/union/exception field separators: "add", "remove", "semicolon", or "disable" to keep as written`,
+		},
+		&cli.StringFlag{
+			Name:  "functionLineComma",
+			Usage: `service argument and throws separators: "add", "remove", "semicolon", or "disable" to keep as written`,
 		},
 		&cli.StringFlag{
 			Name:  "config",
@@ -188,6 +192,10 @@ func formatPatch(cmd *cli.Command) (options.Patch, error) {
 	if cmd.IsSet("fieldLineComma") {
 		v := cmd.String("fieldLineComma")
 		p.FieldLineComma = &v
+	}
+	if cmd.IsSet("functionLineComma") {
+		v := cmd.String("functionLineComma")
+		p.FunctionLineComma = &v
 	}
 	if paths := cmd.StringSlice("I"); len(paths) > 0 {
 		p.IncludePaths = &paths

@@ -7,17 +7,21 @@ import (
 	"github.com/karitham/thrift-ls/syntax"
 )
 
+// hasParseErrors reports whether any error is a hard parse error.
+func hasParseErrors(errs []syntax.Error) bool {
+	for _, err := range errs {
+		if err.Severity == syntax.SeverityError {
+			return true
+		}
+	}
+	return false
+}
+
 // fmtSrc formats src at the given width with the given options. It fails the
 // test when parsing fails.
 func fmtSrc(t *testing.T, src string, opts Options) string {
 	t.Helper()
-	doc, errs := syntax.Parse([]byte(src))
-	for _, err := range errs {
-		if err.Severity == syntax.SeverityError {
-			t.Fatalf("parse errors: %v", errs)
-		}
-	}
-	got, err := Format(doc, opts)
+	got, err := Format(parseDoc(t, src), opts)
 	if err != nil {
 		t.Fatalf("Format: %v", err)
 	}
@@ -28,10 +32,8 @@ func fmtSrc(t *testing.T, src string, opts Options) string {
 func parseDoc(t *testing.T, src string) *syntax.Document {
 	t.Helper()
 	doc, errs := syntax.Parse([]byte(src))
-	for _, err := range errs {
-		if err.Severity == syntax.SeverityError {
-			t.Fatalf("parse errors: %v", errs)
-		}
+	if hasParseErrors(errs) {
+		t.Fatalf("parse errors: %v", errs)
 	}
 	return doc
 }
@@ -41,6 +43,13 @@ func testOpts(width int) Options {
 	o.PrintWidth = width
 	o.Indent = "  "
 	o.TabWidth = 2
+	return o
+}
+
+// commaOpts returns testOpts at width with the given FieldLineComma.
+func commaOpts(width int, mode CommaMode) Options {
+	o := testOpts(width)
+	o.FieldLineComma = mode
 	return o
 }
 
@@ -58,12 +67,30 @@ func runCase(t *testing.T, src string, opts Options, want string) {
 		t.Errorf("not idempotent:\n first: %q\nsecond: %q", got, again)
 	}
 	// Self-validation: the output must parse cleanly.
-	_, errs := syntax.Parse([]byte(got))
-	for _, err := range errs {
-		if err.Severity == syntax.SeverityError {
-			t.Errorf("formatted output does not parse: %v", errs)
-			break
-		}
+	if _, errs := syntax.Parse([]byte(got)); hasParseErrors(errs) {
+		t.Errorf("formatted output does not parse: %v", errs)
+	}
+}
+
+// formatCase is one formatting test case. A zero width means the default 80.
+type formatCase struct {
+	name  string
+	src   string
+	width int
+	want  string
+}
+
+// runFormatCases runs width-based table cases through runCase.
+func runFormatCases(t *testing.T, cases []formatCase) {
+	t.Helper()
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			width := tt.width
+			if width == 0 {
+				width = 80
+			}
+			runCase(t, tt.src, testOpts(width), tt.want)
+		})
 	}
 }
 
@@ -80,7 +107,7 @@ func TestFormatAnnotations(t *testing.T) {
 		},
 		{
 			name: "empty annotation before an enum",
-			src:  "@deprecation.Deprecated{}\nenum Status {\n  A\n  B\n}\n",
+			src:  "@deprecation.Deprecated{}\nenum Status {\n  A,\n  B,\n}\n",
 			want: "@deprecation.Deprecated{}\nenum Status { A, B }\n",
 		},
 		{
@@ -136,12 +163,7 @@ func TestFormatHeaders(t *testing.T) {
 }
 
 func TestFormatTypedefs(t *testing.T) {
-	tests := []struct {
-		name  string
-		src   string
-		width int
-		want  string
-	}{
+	tests := []formatCase{
 		{
 			name: "simple",
 			src:  "typedef\ti64\tTimestamp",
@@ -164,24 +186,11 @@ func TestFormatTypedefs(t *testing.T) {
 			want:  "typedef string Id (\n  id_type = \"uuid\",\n  long_annotation = \"some value\"\n)\n",
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			width := tt.width
-			if width == 0 {
-				width = 80
-			}
-			runCase(t, tt.src, testOpts(width), tt.want)
-		})
-	}
+	runFormatCases(t, tests)
 }
 
 func TestFormatConsts(t *testing.T) {
-	tests := []struct {
-		name  string
-		src   string
-		width int
-		want  string
-	}{
+	tests := []formatCase{
 		{
 			name: "scalars",
 			src:  "const i32 a = 0xa1\nconst double b = -1.5e-3\nconst string c = \"x\"",
@@ -233,12 +242,7 @@ func TestFormatConsts(t *testing.T) {
 }
 
 func TestFormatStructs(t *testing.T) {
-	tests := []struct {
-		name  string
-		src   string
-		width int
-		want  string
-	}{
+	tests := []formatCase{
 		{
 			name: "empty struct",
 			src:  "struct Empty {}",
@@ -309,29 +313,21 @@ func TestFormatStructs(t *testing.T) {
 			want:  "struct S {\n  1: i32 &parent\n}\n",
 		},
 		{
-			name: "semicolon separators normalized",
+			name: "semicolon separators preserved",
 			src:  "struct S {\n  1: i32 a;\n  2: string b;\n}",
-			want: "struct S { 1: i32 a, 2: string b }\n",
+			want: "struct S { 1: i32 a; 2: string b }\n",
+		},
+		{
+			name: "mixed separators preserved per field",
+			src:  "struct S {\n  1: i32 a;\n  2: string b,\n  3: bool c\n}",
+			want: "struct S { 1: i32 a; 2: string b, 3: bool c }\n",
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			width := tt.width
-			if width == 0 {
-				width = 80
-			}
-			runCase(t, tt.src, testOpts(width), tt.want)
-		})
-	}
+	runFormatCases(t, tests)
 }
 
 func TestFormatEnums(t *testing.T) {
-	tests := []struct {
-		name  string
-		src   string
-		width int
-		want  string
-	}{
+	tests := []formatCase{
 		{
 			name: "empty enum",
 			src:  "enum E {}",
@@ -365,24 +361,11 @@ func TestFormatEnums(t *testing.T) {
 			want:  "enum E {\n  A (\n    a_anno = \"y\"\n  )\n} (\n  e_anno = \"x\"\n)\n",
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			width := tt.width
-			if width == 0 {
-				width = 80
-			}
-			runCase(t, tt.src, testOpts(width), tt.want)
-		})
-	}
+	runFormatCases(t, tests)
 }
 
 func TestFormatFunctions(t *testing.T) {
-	tests := []struct {
-		name  string
-		src   string
-		width int
-		want  string
-	}{
+	tests := []formatCase{
 		{
 			name:  "short signature stays flat",
 			src:   "service S {\n  void ping()\n}",
@@ -417,13 +400,13 @@ func TestFormatFunctions(t *testing.T) {
 			name:  "everything breaks when signature is long",
 			src:   "service S {\n  i32 getUser(1: i64 id, 2: string name) throws (NotFound e)\n}",
 			width: 45,
-			want:  "service S {\n  i32 getUser(\n    1: i64 id,\n    2: string name\n  ) throws (\n    NotFound e\n  )\n}\n",
+			want:  "service S {\n  i32 getUser(\n    1: i64    id,\n    2: string name\n  ) throws (\n    NotFound e\n  )\n}\n",
 		},
 		{
 			name:  "args break without throws",
 			src:   "service S {\n  i32 getUser(1: i64 id, 2: string name)\n}",
 			width: 35,
-			want:  "service S {\n  i32 getUser(\n    1: i64 id,\n    2: string name\n  )\n}\n",
+			want:  "service S {\n  i32 getUser(\n    1: i64    id,\n    2: string name\n  )\n}\n",
 		},
 		{
 			name:  "one arg stays flat",
@@ -450,20 +433,11 @@ func TestFormatFunctions(t *testing.T) {
 			want:  "service Child extends Parent {\n  void f()\n}\n",
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			runCase(t, tt.src, testOpts(tt.width), tt.want)
-		})
-	}
+	runFormatCases(t, tests)
 }
 
 func TestFormatComments(t *testing.T) {
-	tests := []struct {
-		name  string
-		src   string
-		width int
-		want  string
-	}{
+	tests := []formatCase{
 		{
 			name:  "leading comments",
 			src:   "// before\nstruct S {\n  1: i32 a\n}",
@@ -523,15 +497,7 @@ func TestFormatComments(t *testing.T) {
 			want:  "service S {\n  void f(\n    1: i32 a // arg comment\n  )\n}\n",
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			width := tt.width
-			if width == 0 {
-				width = 80
-			}
-			runCase(t, tt.src, testOpts(width), tt.want)
-		})
-	}
+	runFormatCases(t, tests)
 }
 
 func TestFormatOptions(t *testing.T) {
@@ -543,21 +509,13 @@ func TestFormatOptions(t *testing.T) {
 	}{
 		{
 			name: "comma add",
-			opts: func() Options {
-				o := testOpts(30)
-				o.FieldLineComma = CommaAdd
-				return o
-			}(),
+			opts: commaOpts(30, CommaAdd),
 			src:  "struct S {\n  1: i32 a\n  2: string b\n}",
 			want: "struct S {\n  1: i32    a,\n  2: string b,\n}\n",
 		},
 		{
 			name: "comma remove",
-			opts: func() Options {
-				o := testOpts(30)
-				o.FieldLineComma = CommaRemove
-				return o
-			}(),
+			opts: commaOpts(30, CommaRemove),
 			src:  "struct S {\n  1: i32 a,\n  2: string b,\n}",
 			want: "struct S {\n  1: i32    a\n  2: string b\n}\n",
 		},
@@ -674,5 +632,69 @@ struct User { 1: required i64 id } (tag = "x")`
 	}
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestFormatSeparators(t *testing.T) {
+	tests := []struct {
+		name string
+		opts Options
+		src  string
+		want string
+	}{
+		{
+			name: "fields semicolon, functions comma",
+			opts: func() Options {
+				o := testOpts(30)
+				o.FieldLineComma = CommaSemicolon
+				o.FunctionLineComma = CommaAdd
+				return o
+			}(),
+			src:  "struct S {\n  1: i32 a\n  2: string b\n}\n\nservice F {\n  void go(1: i32 x) throws (\n    1: E err\n  )\n}",
+			want: "struct S {\n  1: i32    a;\n  2: string b;\n}\n\nservice F {\n  void go(1: i32 x) throws (\n    1: E err,\n  )\n}\n",
+		},
+		{
+			name: "semicolon mode flat",
+			opts: commaOpts(80, CommaSemicolon),
+			src:  "struct S {\n  1: i32 a\n  2: string b\n}",
+			want: "struct S { 1: i32 a; 2: string b }\n",
+		},
+		{
+			name: "preserve keeps per-field separators when broken",
+			opts: testOpts(30),
+			src:  "struct S {\n  1: i32 a;\n  2: string b,\n  3: bool c\n}",
+			want: "struct S {\n  1: i32    a;\n  2: string b,\n  3: bool   c\n}\n",
+		},
+		{
+			name: "function preserve keeps argument separators",
+			opts: testOpts(30),
+			src:  "service F {\n  void go(1: i32 x; 2: string y)\n}",
+			want: "service F {\n  void go(\n    1: i32    x;\n    2: string y\n  )\n}\n",
+		},
+		{
+			name: "function comma add forces commas on throws",
+			opts: func() Options {
+				o := testOpts(30)
+				o.FunctionLineComma = CommaAdd
+				return o
+			}(),
+			src:  "service F {\n  void go(1: i32 x) throws (\n    1: E err\n    2: F fail\n  )\n}",
+			want: "service F {\n  void go(1: i32 x) throws (\n    1: E err,\n    2: F fail,\n  )\n}\n",
+		},
+		{
+			name: "function comma remove drops argument separators",
+			opts: func() Options {
+				o := testOpts(30)
+				o.FunctionLineComma = CommaRemove
+				return o
+			}(),
+			src:  "service F {\n  void go(1: i32 x, 2: string y)\n}",
+			want: "service F {\n  void go(\n    1: i32    x\n    2: string y\n  )\n}\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCase(t, tt.src, tt.opts, tt.want)
+		})
 	}
 }

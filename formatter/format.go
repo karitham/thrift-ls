@@ -34,10 +34,13 @@ const (
 type CommaMode uint8
 
 const (
-	// CommaPreserve keeps the original separators (',', ';', or none).
+	// CommaPreserve keeps the original separators as written (',', ';',
+	// or none).
 	CommaPreserve CommaMode = iota
 	// CommaAdd adds a trailing comma everywhere.
 	CommaAdd
+	// CommaSemicolon adds a trailing semicolon everywhere.
+	CommaSemicolon
 	// CommaRemove removes all trailing separators.
 	CommaRemove
 )
@@ -53,8 +56,13 @@ type Options struct {
 	TabWidth int
 	// Align controls column alignment (default AlignField).
 	Align AlignMode
-	// FieldLineComma controls trailing separators (default CommaPreserve).
+	// FieldLineComma controls trailing separators after
+	// struct/union/exception fields and enum values (default
+	// CommaPreserve).
 	FieldLineComma CommaMode
+	// FunctionLineComma controls trailing separators after service
+	// arguments and throws entries (default CommaPreserve).
+	FunctionLineComma CommaMode
 	// NoTrailingNewline suppresses the final newline that is otherwise
 	// appended to the formatted output.
 	NoTrailingNewline bool

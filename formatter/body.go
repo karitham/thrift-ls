@@ -143,10 +143,11 @@ func (f *formatter) functionHeader(v *syntax.Function) string {
 // or broken. The states are printed flat (or measured flat), so line docs
 // render as spaces; throwsBroken inserts hard lines to break the clause.
 func (f *formatter) functionFlat(v *syntax.Function, throwsBroken bool) doc.Doc {
+	args := f.flatFieldsJoin(v.Args)
 	parts := []doc.Doc{
 		doc.Text(f.functionHeader(v)),
 		doc.Text("("),
-		doc.Join(doc.Text(", "), f.flatFields(v.Args)),
+		args,
 		doc.Text(")"),
 	}
 	if v.Throws != nil {
@@ -155,12 +156,29 @@ func (f *formatter) functionFlat(v *syntax.Function, throwsBroken bool) doc.Doc 
 		} else {
 			parts = append(parts,
 				doc.Text(" throws ("),
-				doc.Join(doc.Text(", "), f.flatFields(v.Throws.Fields)),
+				f.flatFieldsJoin(v.Throws.Fields),
 				doc.Text(")"),
 			)
 		}
 	}
 	parts = append(parts, f.annotationsDoc(v.Annotations))
+	return doc.Concat(parts)
+}
+
+// flatFieldsJoin joins fields with their separators on one line: each
+// field's own separator when preserving, or a single forced separator per
+// the FunctionLineComma mode.
+func (f *formatter) flatFieldsJoin(fields []*syntax.Field) doc.Doc {
+	parts := make([]doc.Doc, 0, len(fields))
+	for i, field := range fields {
+		if i > 0 {
+			parts = append(parts, doc.Concat{
+				doc.Text(sepText(fields[i-1].Sep, f.opts.FunctionLineComma)),
+				doc.Line,
+			})
+		}
+		parts = append(parts, f.fieldContent(field, nil, false))
+	}
 	return doc.Concat(parts)
 }
 
@@ -178,15 +196,6 @@ func (f *formatter) functionBrokenArgs(v *syntax.Function) doc.Doc {
 	return doc.Concat(parts)
 }
 
-// flatFields renders fields joined by ", " on one line, without comments.
-func (f *formatter) flatFields(fields []*syntax.Field) []doc.Doc {
-	out := make([]doc.Doc, 0, len(fields))
-	for _, field := range fields {
-		out = append(out, f.fieldContent(field, nil, false))
-	}
-	return out
-}
-
 // brokenFields renders fields one per line, each with its trailing
 // separator per the FieldLineComma option. Comments and blank lines inside
 // the list are preserved.
@@ -199,7 +208,10 @@ func (f *formatter) brokenFields(fields []*syntax.Field) doc.Doc {
 				parts = append(parts, doc.HardLineNoBreak)
 			}
 		}
-		content := doc.Concat{f.fieldContent(field, nil, false), f.trailingSep(field.Sep)}
+		content := doc.Concat{
+			f.fieldContent(field, f.alignmentFor(fields, i), true),
+			trailingSep(field.Sep, f.opts.FunctionLineComma),
+		}
 		fieldDoc := append(f.leadingComments(field), content)
 		fieldDoc = append(fieldDoc, f.trailingComments(field)...)
 		parts = append(parts, doc.Concat(fieldDoc))

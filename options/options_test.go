@@ -245,3 +245,41 @@ func TestLoadRejectsUnknownOverrideKeys(t *testing.T) {
 		t.Fatal("Load accepted a config with an overrides key")
 	}
 }
+
+// TestPatchCommaModes maps every config value to the formatter modes.
+func TestPatchCommaModes(t *testing.T) {
+	tests := []struct {
+		value    string
+		field    formatter.CommaMode
+		function formatter.CommaMode
+	}{
+		{"add", formatter.CommaAdd, formatter.CommaAdd},
+		{"remove", formatter.CommaRemove, formatter.CommaRemove},
+		{"semicolon", formatter.CommaSemicolon, formatter.CommaSemicolon},
+		{"disable", formatter.CommaPreserve, formatter.CommaPreserve},
+		{"preserve", formatter.CommaPreserve, formatter.CommaPreserve},
+	}
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			p := Patch{FieldLineComma: &tt.value, FunctionLineComma: &tt.value}
+			o, err := p.Formatter()
+			if err != nil {
+				t.Fatalf("Formatter: %v", err)
+			}
+			if o.FieldLineComma != tt.field || o.FunctionLineComma != tt.function {
+				t.Errorf("value %q: field=%v function=%v", tt.value, o.FieldLineComma, o.FunctionLineComma)
+			}
+		})
+	}
+
+	// The two options map independently.
+	semicolon, add := "semicolon", "add"
+	p := Patch{FieldLineComma: &semicolon, FunctionLineComma: &add}
+	o, err := p.Formatter()
+	if err != nil {
+		t.Fatalf("Formatter: %v", err)
+	}
+	if o.FieldLineComma != formatter.CommaSemicolon || o.FunctionLineComma != formatter.CommaAdd {
+		t.Errorf("independent mapping failed: %+v", o)
+	}
+}
