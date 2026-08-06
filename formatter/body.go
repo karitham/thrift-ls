@@ -36,9 +36,11 @@ func (f *formatter) bracedBody(fields []*syntax.Field) doc.Doc {
 		return doc.Text(" {}")
 	}
 	bodyID := f.id()
+	inner := append([]doc.Doc{doc.Line, f.fieldList(fields, bodyID)}, f.closingTrivia(fields[len(fields)-1])...)
+	open := append([]doc.Doc{doc.Text(" {")}, f.openTrivia(fields[0])...)
 	content := doc.Concat{
-		doc.Text(" {"),
-		doc.Indent(doc.Concat{doc.Line, f.fieldList(fields, bodyID)}),
+		doc.Concat(open),
+		doc.Indent(doc.Concat(inner)),
 		doc.IfBreak(doc.SoftLine, doc.Text(" ")),
 		doc.Text("}"),
 	}
@@ -55,9 +57,11 @@ func (f *formatter) bracedEnumBody(values []*syntax.EnumValue) doc.Doc {
 		return doc.Text(" {}")
 	}
 	bodyID := f.id()
+	inner := append([]doc.Doc{doc.Line, f.enumValueList(values, bodyID)}, f.closingTrivia(values[len(values)-1])...)
+	open := append([]doc.Doc{doc.Text(" {")}, f.openTrivia(values[0])...)
 	content := doc.Concat{
-		doc.Text(" {"),
-		doc.Indent(doc.Concat{doc.Line, f.enumValueList(values, bodyID)}),
+		doc.Concat(open),
+		doc.Indent(doc.Concat(inner)),
 		doc.IfBreak(doc.SoftLine, doc.Text(" ")),
 		doc.Text("}"),
 	}
@@ -67,6 +71,40 @@ func (f *formatter) bracedEnumBody(values []*syntax.EnumValue) doc.Doc {
 	return doc.GroupID(bodyID, content)
 }
 
+// closingTrivia returns the comments attached to the token that closes a
+// body (the one right after the last item), as docs each ending with a hard
+// line. The leading hard line forces the body to break so the comments stay
+// inside; the caller's closing line provides the newline after the last one.
+func (f *formatter) closingTrivia(last syntax.Node) []doc.Doc {
+	close := f.token(last.TokEnd() + 1)
+	var parts []doc.Doc
+	if len(close.Leading) > 0 {
+		parts = append(parts, doc.HardLine)
+		for i, c := range close.Leading {
+			parts = append(parts, doc.Text(c.Text))
+			if i < len(close.Leading)-1 {
+				parts = append(parts, doc.HardLine)
+			}
+		}
+	}
+	return parts
+}
+
+// openTrivia returns the trailing comments of the token that opens a body
+// (the one right before the first item), as line-suffix docs, plus a break
+// parent so the body goes multiline. Empty when there are none.
+func (f *formatter) openTrivia(first syntax.Node) []doc.Doc {
+	open := f.token(first.TokStart() - 1)
+	var parts []doc.Doc
+	if len(open.Trailing) > 0 {
+		for _, c := range open.Trailing {
+			parts = append(parts, doc.LineSuffix(doc.Text(" "+c.Text)))
+		}
+		parts = append(parts, doc.BreakParent)
+	}
+	return parts
+}
+
 // service formats a service declaration. The body is always multiline:
 // functions are too complex to flatten.
 func (f *formatter) service(v *syntax.Service) doc.Doc {
@@ -74,9 +112,7 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 	for i, fn := range v.Functions {
 		if i > 0 {
 			parts = append(parts, doc.HardLineNoBreak)
-			if f.blankBefore(fn) >= 1 {
-				parts = append(parts, doc.HardLineNoBreak)
-			}
+			parts = append(parts, f.blankLines(fn, doc.HardLineNoBreak)...)
 		}
 		parts = append(parts, f.function(fn))
 	}
@@ -213,9 +249,7 @@ func (f *formatter) brokenFields(fields []*syntax.Field) doc.Doc {
 	for i, field := range fields {
 		if i > 0 {
 			parts = append(parts, doc.HardLineNoBreak)
-			if f.blankBefore(field) >= 1 {
-				parts = append(parts, doc.HardLineNoBreak)
-			}
+			parts = append(parts, f.blankLines(field, doc.HardLineNoBreak)...)
 		}
 		content := doc.Concat{
 			f.fieldContent(field, f.alignmentFor(fields, i), true),
@@ -234,17 +268,27 @@ func (f *formatter) brokenParens(open, close string, fields []*syntax.Field) doc
 	if len(fields) == 0 {
 		return doc.Text(open + close)
 	}
-	return doc.Concat{
-		doc.Text(open),
-		doc.Indent(doc.Concat{doc.HardLineNoBreak, f.brokenFields(fields)}),
-		doc.HardLineNoBreak,
-		doc.Text(close),
-	}
+	inner := append([]doc.Doc{doc.HardLineNoBreak, f.brokenFields(fields)}, f.closingTrivia(fields[len(fields)-1])...)
+	parts := append([]doc.Doc{doc.Text(open)}, f.openTrivia(fields[0])...)
+	parts = append(parts, doc.Indent(doc.Concat(inner)), doc.HardLineNoBreak, doc.Text(close))
+	return doc.Concat(parts)
 }
 
 // fieldsForcedBroken reports whether any field has comments or blank lines
 // that require the multiline function layout.
 func (f *formatter) fieldsForcedBroken(fields []*syntax.Field) bool {
+	if len(fields) == 0 {
+		return false
+	}
+	// Comments on the opening or closing paren would be lost in the flat
+	// layout.
+	if len(f.token(fields[0].TokStart()-1).Trailing) > 0 {
+		return true
+	}
+	close := f.token(fields[len(fields)-1].TokEnd() + 1)
+	if len(close.Leading) > 0 {
+		return true
+	}
 	for _, field := range fields {
 		if f.blankBefore(field) >= 1 {
 			return true
@@ -254,4 +298,20 @@ func (f *formatter) fieldsForcedBroken(fields []*syntax.Field) bool {
 		}
 	}
 	return false
+}
+
+// blankLines returns count hard-line docs for the blank lines before a
+// node's first token.
+func (f *formatter) blankLines(n syntax.Node, line doc.Doc) []doc.Doc {
+	return f.blankLineDocs(f.blankBefore(n), line)
+}
+
+// blankLineDocs returns count copies of line, for blank lines that must be
+// preserved exactly.
+func (f *formatter) blankLineDocs(count int, line doc.Doc) []doc.Doc {
+	parts := make([]doc.Doc, 0, count)
+	for i := 0; i < count; i++ {
+		parts = append(parts, line)
+	}
+	return parts
 }

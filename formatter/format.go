@@ -228,9 +228,7 @@ func (f *formatter) document() doc.Doc {
 	for i, n := range f.doc.Nodes {
 		if i > 0 {
 			parts = append(parts, doc.HardLine)
-			if f.blankBefore(n) >= 1 {
-				parts = append(parts, doc.HardLine)
-			}
+			parts = append(parts, f.blankLines(n, doc.HardLine)...)
 		}
 		parts = append(parts, f.node(n))
 	}
@@ -240,9 +238,7 @@ func (f *formatter) document() doc.Doc {
 	if len(eof.Leading) > 0 {
 		if len(f.doc.Nodes) > 0 {
 			parts = append(parts, doc.HardLine)
-			if eof.BlankLinesBefore >= 1 {
-				parts = append(parts, doc.HardLine)
-			}
+			parts = append(parts, f.blankLineDocs(eof.BlankLinesBefore, doc.HardLine)...)
 		}
 		for i, c := range eof.Leading {
 			parts = append(parts, doc.Text(c.Text))

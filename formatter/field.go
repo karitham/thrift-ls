@@ -18,9 +18,7 @@ func (f *formatter) fieldList(fields []*syntax.Field, bodyID int) doc.Doc {
 	for i, field := range fields {
 		if i > 0 {
 			parts = append(parts, fieldSep(fields[i-1].Sep, f.opts.FieldSeparator))
-			if f.blankBefore(field) >= 1 {
-				parts = append(parts, doc.HardLine)
-			}
+			parts = append(parts, f.blankLines(field, doc.HardLine)...)
 		}
 		parts = append(parts, f.field(field, f.alignmentFor(fields, i), bodyID))
 	}
@@ -62,9 +60,7 @@ func (f *formatter) enumValueList(values []*syntax.EnumValue, bodyID int) doc.Do
 	for i, value := range values {
 		if i > 0 {
 			parts = append(parts, fieldSep(values[i-1].Sep, f.opts.FieldSeparator))
-			if f.blankBefore(value) >= 1 {
-				parts = append(parts, doc.HardLine)
-			}
+			parts = append(parts, f.blankLines(value, doc.HardLine)...)
 		}
 		parts = append(parts, f.enumValue(value, f.alignmentForEnum(values, i), bodyID))
 	}
@@ -86,7 +82,32 @@ func (f *formatter) alignmentFor(fields []*syntax.Field, i int) *columnAlign {
 	for end+1 < len(fields) && f.blankBefore(fields[end+1]) < 1 {
 		end++
 	}
-	return computeFieldAlign(fields[start : end+1])
+	group := fields[start : end+1]
+	a := computeFieldAlign(group)
+	if !f.alignmentFits(group, a) {
+		return nil
+	}
+	return a
+}
+
+// alignmentFits reports whether column alignment keeps the group within
+// printWidth: the padded columns plus the longest field name must fit one
+// indent level under the limit. Default values and annotations are ignored;
+// a line that long overflows regardless of alignment.
+func (f *formatter) alignmentFits(fields []*syntax.Field, a *columnAlign) bool {
+	limit := f.opts.PrintWidth - f.opts.TabWidth
+	columns := a.idWidth + 1
+	if a.hasReq {
+		columns += a.reqWidth + 1
+	}
+	if f.opts.Align == AlignField {
+		columns += a.typeWidth + 1
+	}
+	longestName := 0
+	for _, field := range fields {
+		longestName = maxInt(longestName, len(field.Name.Text))
+	}
+	return columns+longestName <= limit
 }
 
 func (f *formatter) alignmentForEnum(values []*syntax.EnumValue, i int) *columnAlign {

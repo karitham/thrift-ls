@@ -753,3 +753,103 @@ func TestFormatAlwaysBreak(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatBodyComments(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "comment before closing brace",
+			src:  "union U {\n  1: i32 a\n  // keep me\n}",
+			want: "union U {\n  1: i32 a\n  // keep me\n}\n",
+		},
+		{
+			name: "comment after opening brace forces break",
+			src:  "struct S { // keep me\n  1: i32 a\n}",
+			want: "struct S { // keep me\n  1: i32 a\n}\n",
+		},
+		{
+			name: "comment after enum opening brace",
+			src:  "enum E { // keep me\n  A,\n  B\n}",
+			want: "enum E { // keep me\n  A,\n  B\n}\n",
+		},
+		{
+			name: "comment after arg opening paren",
+			src:  "service F {\n  void go( // keep me\n    1: i32 a\n  )\n}",
+			want: "service F {\n  void go( // keep me\n    1: i32 a\n  )\n}\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCase(t, tt.src, testOpts(80), tt.want)
+		})
+	}
+}
+
+func TestFormatBlankLines(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "multiple blank lines between declarations",
+			src:  "struct A {\n  1: i32 a\n}\n\n\nstruct B {\n  1: i32 b\n}",
+			want: "struct A { 1: i32 a }\n\n\nstruct B { 1: i32 b }\n",
+		},
+		{
+			name: "multiple blank lines between fields",
+			src:  "struct S {\n  1: i32 a\n\n\n  2: string b\n}",
+			want: "struct S {\n  1: i32 a\n\n\n  2: string b\n}\n",
+		},
+		{
+			name: "multiple blank lines between enum values",
+			src:  "enum E {\n  A,\n\n\n  B\n}",
+			want: "enum E {\n  A,\n\n\n  B\n}\n",
+		},
+		{
+			name: "multiple blank lines between service functions",
+			src:  "service F {\n  void a()\n\n\n  void b()\n}",
+			want: "service F {\n  void a()\n\n\n  void b()\n}\n",
+		},
+		{
+			name: "multiple blank lines before trailing comment",
+			src:  "struct A {\n  1: i32 a\n}\n\n\n// tail",
+			want: "struct A { 1: i32 a }\n\n\n// tail\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCase(t, tt.src, testOpts(80), tt.want)
+		})
+	}
+}
+
+func TestFormatAlignmentWidth(t *testing.T) {
+	tests := []struct {
+		name  string
+		width int
+		src   string
+		want  string
+	}{
+		{
+			name:  "alignment dropped when the group exceeds printWidth",
+			width: 40,
+			src:   "struct S {\n  1: i32 a\n  2: some_very_long_namespace.SomeVeryLongTypeName b\n}",
+			want:  "struct S {\n  1: i32 a\n  2: some_very_long_namespace.SomeVeryLongTypeName b\n}\n",
+		},
+		{
+			name:  "alignment kept when the group fits",
+			width: 40,
+			src:   "struct S {\n  1: i32 a\n  2: string longer_name\n}",
+			want:  "struct S {\n  1: i32    a\n  2: string longer_name\n}\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCase(t, tt.src, testOpts(tt.width), tt.want)
+		})
+	}
+}
