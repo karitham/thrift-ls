@@ -34,6 +34,9 @@ Run `thriftls --help` or `thriftls format --help` for the full flag list.
 
 ### As a language server
 
+`thriftls` is a plain LSP server speaking JSON-RPC over stdio. No editor
+extension is required: any LSP client can attach to the binary directly.
+
 ```bash
 thriftls
 ```
@@ -44,6 +47,36 @@ or, explicitly:
 thriftls lsp
 ```
 
+#### helix
+
+Helix ships a thrift language definition, so only the server and the
+attachment are needed in `~/.config/helix/languages.toml`:
+
+```toml
+[language-server.thriftls]
+command = "thriftls"
+
+[[language]]
+name = "thrift"
+language-servers = ["thriftls"]
+# optional: format on save via the LSP
+auto-format = true
+```
+
+`thriftls` must be on `PATH`, or use an absolute path as `command`. The
+server logs to `$TMPDIR/thriftls.log`; raise verbosity with `-logLevel`.
+
+#### neovim
+
+Install `thriftls` with [mason](https://github.com/williamboman/mason.nvim)
+(`MasonInstall thriftls`), then enable it via
+[nvim-lspconfig](https://github.com/neovim/nvim-lspconfig), which ships a
+`thriftls` config:
+
+```lua
+vim.lsp.enable("thriftls")
+```
+
 #### vim
 
 Use `thriftls` as the LSP provider for thrift files:
@@ -51,6 +84,12 @@ Use `thriftls` as the LSP provider for thrift files:
 ```vim
 let g:lsp_settings = { 'thrift': { 'cmd': ['thriftls'] } }
 ```
+
+#### vscode
+
+There is no first-party extension. Use any LSP client that accepts a raw
+server command, or a generic thrift language extension that lets you point
+at your own binary.
 
 ### As a formatter
 
@@ -70,19 +109,19 @@ find . -name "*.thrift" | xargs -n 1 thriftls format -w
 
 Formatting flags:
 
-| Flag                  | Meaning                                                                                            |
-| --------------------- | -------------------------------------------------------------------------------------------------- |
-| `-w`                  | Overwrite the file with the formatted result                                                       |
-| `-d`                  | Print a diff instead of the formatted result                                                       |
-| `--printWidth`        | Target line width (default 80)                                                                     |
-| `--indent`            | Indentation: a literal like `"  "` or `"\t"`, a number like `8`, or a legacy spec like `"2spaces"` |
-| `--align`             | `field`, `assign`, or `disable`                                                                    |
-| `--field-separator`   | Struct/enum field separators: `add`, `remove`, `semicolon`, or `disable` (keep as written)         |
-| `--function-separator`| Service arg/throws separators: `add`, `remove`, `semicolon`, or `disable` (keep as written)        |
-| `--break-structs`     | Always break struct/union/exception bodies onto multiple lines                                      |
-| `--break-enums`       | Always break enum bodies onto multiple lines                                                        |
-| `--config`            | Path to a `thriftls.json` config file                                                              |
-| `-I`                  | Additional include path, like the thrift compiler's `-I` (repeatable)                              |
+| Flag                   | Meaning                                                                                            |
+| ---------------------- | -------------------------------------------------------------------------------------------------- |
+| `-w`                   | Overwrite the file with the formatted result                                                       |
+| `-d`                   | Print a diff instead of the formatted result                                                       |
+| `--printWidth`         | Target line width (default 80)                                                                     |
+| `--indent`             | Indentation: a literal like `"  "` or `"\t"`, a number like `8`, or a legacy spec like `"2spaces"` |
+| `--align`              | `field`, `assign`, or `disable`                                                                    |
+| `--field-separator`    | Struct/enum field separators: `add`, `remove`, `semicolon`, or `disable` (keep as written)         |
+| `--function-separator` | Service arg/throws separators: `add`, `remove`, `semicolon`, or `disable` (keep as written)        |
+| `--break-structs`      | Always break struct/union/exception bodies onto multiple lines                                     |
+| `--break-enums`        | Always break enum bodies onto multiple lines                                                       |
+| `--config`             | Path to a `thriftls.json` config file                                                              |
+| `-I`                   | Additional include path, like the thrift compiler's `-I` (repeatable)                              |
 
 Flags override the config file.
 
