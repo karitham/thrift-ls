@@ -148,6 +148,26 @@ func ResolveContext(doc *syntax.Document, pos syntax.Position) Context {
 			c.Kind = CtxType
 
 			return c
+		case syntax.TokenIdentifier:
+			// "user.|" — the lexer drops a trailing dot, so the
+			// identifier token ends one byte before the cursor and the
+			// byte between them is the dot. The slot of the identifier
+			// decides: a type position keeps the type kind with the
+			// dotted prefix (the type provider scopes to the include),
+			// anything else is a qualified value.
+			if prev.Offset+len(prev.Text) == c.Offset-1 {
+				if typeSlotAfterIdent(doc, prevIdx) {
+					c.Kind = CtxType
+					c.Prefix = prev.Text
+				} else {
+					c.Kind = CtxFieldValue
+					c.Prefix = ""
+				}
+
+				c.EditStart = c.Offset
+
+				return c
+			}
 		}
 	}
 
@@ -163,6 +183,15 @@ func ResolveContext(doc *syntax.Document, pos syntax.Position) Context {
 
 			return c
 		case syntax.TokenIdentifier:
+			// "songs.A" — a dotted identifier in a type slot: the type
+			// provider scopes to the include and the edit replaces the
+			// whole qualified prefix.
+			if strings.Contains(at.Text, ".") && typeSlotAfterIdent(doc, prevReal(doc.Tokens, atIdx-1)) {
+				c.Kind = CtxType
+
+				return c
+			}
+
 			// "ZeonForces.|" — an identifier ending in a dot is a
 			// qualified value position; the lexer may split the dot off
 			// the token, so the cursor lands right at its end.
@@ -293,6 +322,29 @@ func isThrowsGroup(doc *syntax.Document, opener int) bool {
 	prevIdx := prevReal(doc.Tokens, opener-1)
 
 	return prevIdx >= 0 && doc.Tokens[prevIdx].Kind == syntax.TokenThrows
+}
+
+// typeSlotAfterIdent reports whether the identifier at idx (ending in a
+// dropped dot) sits in a type position, decided by the token before it:
+// after a field modifier or id colon, a const or typedef keyword, a
+// map/list/set opener, or a service function return.
+func typeSlotAfterIdent(doc *syntax.Document, idx int) bool {
+	prev := prevReal(doc.Tokens, idx-1)
+	if prev < 0 {
+		return false
+	}
+
+	switch doc.Tokens[prev].Kind {
+	case syntax.TokenRequired, syntax.TokenOptional, syntax.TokenColon,
+		syntax.TokenConst, syntax.TokenTypedef, syntax.TokenLt:
+		return true
+	case syntax.TokenLBrace:
+		kw, ok := braceBodyKind(doc, prev)
+
+		return ok && kw == syntax.TokenService
+	}
+
+	return false
 }
 
 // memberKind maps a container keyword to its member slot.

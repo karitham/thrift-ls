@@ -75,19 +75,28 @@ func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cm
 
 	cc := ResolveContext(parsedFile.AST(), pos)
 
-	// A trailing dot (enum-qualified value position, e.g. "ZeonForces.|")
-	// means the user is about to type the member: filter on everything
-	// after the dots, insert after them, and strip the qualifier from
-	// inserted names so the result is "ZeonForces.ZAKU_I", not
-	// "ZeonForces.ZeonForces.ZAKU_I". The lexer drops a trailing dot, so
-	// detect it from the raw content, not the token stream.
+	// A trailing dot (qualified position, e.g. "ZeonForces.|" for a value
+	// or "songs.|" for a type) means the user is about to type the member:
+	// filter on everything after the dots, insert after them, and strip
+	// the qualifier from inserted names so the result is "ZeonForces.ZAKU_I"
+	// or "songs.Album", not a doubled qualifier. The lexer drops a trailing
+	// dot, so detect it from the raw content, not the token stream. In a
+	// type slot the dot keeps its slot — the type provider scopes to the
+	// include — while any other slot becomes a qualified value position.
 	qualified := strings.HasSuffix(cc.Prefix, ".")
 
 	if !qualified && cc.Offset > 0 {
 		if content, err := cmp.Fh.Content(); err == nil && cc.Offset <= len(content) && content[cc.Offset-1] == '.' {
 			qualified = true
-			cc.Kind = CtxFieldValue
-			cc.Prefix = ""
+
+			if cc.Kind == CtxType {
+				// Keep the dotted prefix so the type provider resolves
+				// the include name and suggests its types.
+				cc.Prefix += "."
+			} else {
+				cc.Kind = CtxFieldValue
+				cc.Prefix = ""
+			}
 		}
 	}
 
