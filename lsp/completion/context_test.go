@@ -53,6 +53,9 @@ func TestResolveContext(t *testing.T) {
 		// Function args and throws.
 		{"function args after paren", `service Federation { void f(|`, CtxFieldName},
 		{"function args after comma", `service Federation { void f(1: i32 id, |`, CtxFieldName},
+		{"function args after a comment line", "service Federation { void f(1: i32 id, // c\n|", CtxFieldName},
+		{"function args after a same-line comment", `service Federation { void f(1: i32 id /* c */, |`, CtxFieldName},
+		{"cursor in a comment is not a slot", "service Federation { void f(1: i32 id, // |c", CtxNone},
 		{"throws after paren", `service Federation { void f() throws (|`, CtxFieldName},
 		{"throws after comma", `service Federation { void f() throws (1: string m, |`, CtxFieldName},
 		{"function annotations after args", `service Federation { void f() (|`, CtxAnnotationKey},

@@ -104,6 +104,7 @@ type printer struct {
 	groupMode       map[int]mode
 	lineSuffix      []command
 	shouldRemeasure bool
+	lastLineComment bool // the last newline written ended a line comment's line
 
 	// fits scratch: the width check is called for every line candidate
 	// and would otherwise allocate a builder and a command stack per call.
@@ -168,6 +169,11 @@ func (p *printer) run(d Doc) (string, error) {
 				if len(commands) > 0 {
 					p.position += stringWidth(s)
 				}
+
+				// Content on the line invalidates the comment-ended mark;
+				// a line comment's own CommentLine re-sets it after the
+				// comment text.
+				p.lastLineComment = false
 			}
 
 		case Concat:
@@ -258,17 +264,20 @@ func (p *printer) run(d Doc) (string, error) {
 				if v.Literal {
 					p.write(newLine)
 					p.position = 0
+					p.lastLineComment = false
 				} else {
 					// A structural soft line right after a line that
-					// already ended (a line comment owns its line end)
-					// must not emit another newline — that would be a
-					// blank line — but it must re-apply the structural
-					// indentation: the comment's hard line carried the
-					// inner indent, and the following content belongs at
-					// the structural indent (e.g. a closing bracket after
-					// a comment inside a list). Hard lines always render
-					// (consecutive hard lines are blank lines).
-					if !v.Hard && p.lineEnded() {
+					// already ended must not emit another newline — that
+					// would be a blank line. After a CommentLine (a line
+					// comment owns its line end) the structural
+					// indentation is re-applied so the following content
+					// lands at the right level (e.g. a closing bracket
+					// after a comment inside a list). An AfterComment
+					// line collapses only after a CommentLine: a real
+					// blank line before it still renders. Hard lines
+					// always render (consecutive hard lines are blank
+					// lines).
+					if !v.Hard && p.lineEnded() && (!v.AfterComment || p.lastLineComment) {
 						p.trim()
 						p.write(cmd.indentation.value)
 						p.position = cmd.indentation.length
@@ -279,6 +288,15 @@ func (p *printer) run(d Doc) (string, error) {
 					p.trim()
 					p.write(newLine + cmd.indentation.value)
 					p.position = cmd.indentation.length
+					// A comment's hard line marks the line as comment
+					// ended; blank hard lines do not end a content line,
+					// so the mark survives them; a rendered structural
+					// line starts a fresh content line.
+					if v.Comment {
+						p.lastLineComment = true
+					} else if !v.Hard {
+						p.lastLineComment = false
+					}
 				}
 			}
 

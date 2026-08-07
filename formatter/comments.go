@@ -50,7 +50,7 @@ func (f *formatter) ownLineComment(c, prev int, first bool) []doc.Doc {
 	}
 
 	parts = append(parts, f.blankLineDocs(ct.BlankLinesBefore, doc.HardLine)...)
-	parts = append(parts, doc.Text(trimComment(ct.Text)), doc.HardLine)
+	parts = append(parts, doc.Text(trimComment(ct.Text)), doc.CommentLine)
 
 	return parts
 }
@@ -62,7 +62,7 @@ func (f *formatter) ownLineComment(c, prev int, first bool) []doc.Doc {
 func sameLineComment(ct syntax.Token) ([]doc.Doc, bool) {
 	parts := []doc.Doc{doc.Text(" "), doc.Text(trimComment(ct.Text))}
 	if lineComment(ct.Kind) {
-		return append(parts, doc.HardLine), true
+		return append(parts, doc.CommentLine), true
 	}
 
 	return parts, false

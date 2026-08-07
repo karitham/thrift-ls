@@ -50,26 +50,39 @@ func Join(sep Doc, parts []Doc) Doc {
 // LineDoc is a line separator. In flat mode a plain line prints a space, a
 // soft line prints nothing, and a hard line prints a newline regardless of
 // mode. In break mode every line prints a newline followed by the current
-// indentation.
+// indentation. Comment marks a hard line that ends a line comment's line:
+// the printer remembers that the line was comment-ended, so a following
+// AfterComment line can collapse instead of leaving a blank. AfterComment
+// marks a soft structural line that renders a newline unless the output
+// already ended with a Comment line (a blank line before it still renders).
 type LineDoc struct {
-	Soft    bool
-	Hard    bool
-	Literal bool // like Hard, but the newline is followed by no indentation
+	Soft         bool
+	Hard         bool
+	Literal      bool // like Hard, but the newline is followed by no indentation
+	Comment      bool // hard line ending a line comment's line
+	AfterComment bool // soft structural line collapsing after a Comment line
 }
 
 func (LineDoc) isDoc() {}
 
 // Lines, matching Prettier's builders:
 //
-//	Line        - a space in flat mode, a newline in break mode
-//	SoftLine    - nothing in flat mode, a newline in break mode
-//	HardLine    - always a newline; breaks enclosing groups
-//	LiteralLine - always a newline with no indentation; breaks enclosing groups
+//	Line          - a space in flat mode, a newline in break mode
+//	SoftLine      - nothing in flat mode, a newline in break mode
+//	HardLine      - always a newline; breaks enclosing groups
+//	LiteralLine   - always a newline with no indentation; breaks enclosing groups
+//	CommentLine   - a hard line owning a line comment's line end; breaks
+//	                enclosing groups; the printer remembers the line was
+//	                comment-ended
+//	AfterCommentLine - a soft structural line that renders a newline unless
+//	                the output already ended with a CommentLine
 var (
 	Line               Doc = LineDoc{}
 	SoftLine           Doc = LineDoc{Soft: true}
 	HardLine           Doc = Concat{LineDoc{Hard: true}, BreakParent}
 	LiteralLine        Doc = Concat{LineDoc{Hard: true, Literal: true}, BreakParent}
+	CommentLine        Doc = Concat{LineDoc{Hard: true, Comment: true}, BreakParent}
+	AfterCommentLine   Doc = LineDoc{Soft: true, AfterComment: true}
 	HardLineNoBreak    Doc = LineDoc{Hard: true}
 	LiteralLineNoBreak Doc = LineDoc{Hard: true, Literal: true}
 )

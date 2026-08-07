@@ -56,11 +56,19 @@ func ResolveContext(doc *syntax.Document, pos syntax.Position) Context {
 
 	atIdx, at := tokenAt(doc, pos.Offset)
 
+	// A cursor in a comment is not a completion slot.
+	if at != nil && syntax.IsComment(at.Kind) {
+		c.Kind = CtxNone
+
+		return c
+	}
+
 	// The token before the cursor: the token containing the cursor when the
-	// cursor sits at its end, the previous token when mid-token.
-	prevIdx := atIdx
+	// cursor sits at its end, the previous token when mid-token. Comments
+	// are skipped — the grammar slot is determined by the real tokens.
+	prevIdx := prevReal(doc.Tokens, atIdx)
 	if at != nil && pos.Offset < at.Offset+len(at.Text) {
-		prevIdx = atIdx - 1
+		prevIdx = prevReal(doc.Tokens, atIdx-1)
 	}
 
 	c.Prefix, c.EditStart = prefixRange(doc, pos, atIdx, at)
@@ -94,10 +102,12 @@ func ResolveContext(doc *syntax.Document, pos syntax.Position) Context {
 	// 2. Field id slot: cursor on an int immediately followed by ':' —
 	// before the struct member rule, so "{ |1:" is CtxFieldID, not a
 	// member name position.
-	if at != nil && at.Kind == syntax.TokenIntConstant && atIdx+1 < len(doc.Tokens) && doc.Tokens[atIdx+1].Kind == syntax.TokenColon {
-		c.Kind = CtxFieldID
+	if at != nil && at.Kind == syntax.TokenIntConstant {
+		if n := nextReal(doc.Tokens, atIdx+1); n < len(doc.Tokens) && doc.Tokens[n].Kind == syntax.TokenColon {
+			c.Kind = CtxFieldID
 
-		return c
+			return c
+		}
 	}
 
 	// 3. Token adjacency before the cursor.
@@ -228,7 +238,12 @@ func identifierKind(path []syntax.Node, n *syntax.Identifier) ContextKind {
 
 // afterParenKind classifies the cursor right after '(' (prev is the opener).
 func afterParenKind(doc *syntax.Document, opener int) ContextKind {
-	switch prev := doc.Tokens[opener-1]; prev.Kind {
+	prevIdx := prevReal(doc.Tokens, opener-1)
+	if prevIdx < 0 {
+		return CtxAnnotationKey
+	}
+
+	switch prev := doc.Tokens[prevIdx]; prev.Kind {
 	case syntax.TokenRParen:
 		// Function annotations after a closed args list.
 		return CtxAnnotationKey
@@ -237,7 +252,7 @@ func afterParenKind(doc *syntax.Document, opener int) ContextKind {
 	case syntax.TokenIdentifier:
 		// A function name opens the args list; a member name opens its
 		// annotations. The enclosing brace body disambiguates.
-		if kw, ok := braceBodyKind(doc, opener-1); ok && kw == syntax.TokenService {
+		if kw, ok := braceBodyKind(doc, prevIdx); ok && kw == syntax.TokenService {
 			return CtxFieldName
 		}
 
@@ -251,13 +266,18 @@ func afterParenKind(doc *syntax.Document, opener int) ContextKind {
 // insideParenKind classifies the cursor after ','/';' inside the group
 // opened at opener.
 func insideParenKind(doc *syntax.Document, opener int) ContextKind {
-	switch prev := doc.Tokens[opener-1]; prev.Kind {
+	prevIdx := prevReal(doc.Tokens, opener-1)
+	if prevIdx < 0 {
+		return CtxAnnotationKey
+	}
+
+	switch prev := doc.Tokens[prevIdx]; prev.Kind {
 	case syntax.TokenRParen:
 		return CtxAnnotationKey
 	case syntax.TokenThrows:
 		return CtxFieldName
 	case syntax.TokenIdentifier:
-		if kw, ok := braceBodyKind(doc, opener-1); ok && kw == syntax.TokenService {
+		if kw, ok := braceBodyKind(doc, prevIdx); ok && kw == syntax.TokenService {
 			return CtxFieldName
 		}
 
@@ -270,7 +290,9 @@ func insideParenKind(doc *syntax.Document, opener int) ContextKind {
 // isThrowsGroup reports whether the group opened at opener is a throws
 // clause (which contains fields, not annotations).
 func isThrowsGroup(doc *syntax.Document, opener int) bool {
-	return opener > 0 && doc.Tokens[opener-1].Kind == syntax.TokenThrows
+	prevIdx := prevReal(doc.Tokens, opener-1)
+
+	return prevIdx >= 0 && doc.Tokens[prevIdx].Kind == syntax.TokenThrows
 }
 
 // memberKind maps a container keyword to its member slot.
@@ -479,11 +501,17 @@ func containerKeywordBefore(doc *syntax.Document, brace int) (syntax.TokenKind, 
 	pastParens:
 	}
 
+	j = prevReal(doc.Tokens, j)
 	if j < 1 || doc.Tokens[j].Kind != syntax.TokenIdentifier {
 		return 0, false
 	}
 
-	switch kw := doc.Tokens[j-1].Kind; kw {
+	k := prevReal(doc.Tokens, j-1)
+	if k < 0 {
+		return 0, false
+	}
+
+	switch kw := doc.Tokens[k].Kind; kw {
 	case syntax.TokenStruct, syntax.TokenUnion, syntax.TokenException,
 		syntax.TokenEnum, syntax.TokenService:
 		return kw, true
@@ -499,6 +527,26 @@ func deepestNode(path []syntax.Node) syntax.Node {
 	}
 
 	return path[len(path)-1]
+}
+
+// prevReal returns the index of the previous non-comment token strictly
+// before idx, or -1. Comments are stream tokens but never participate in
+// the grammar, so every adjacency lookup skips them.
+func prevReal(toks []syntax.Token, idx int) int {
+	for idx >= 0 && syntax.IsComment(toks[idx].Kind) {
+		idx--
+	}
+
+	return idx
+}
+
+// nextReal returns the index of the next non-comment token at or after idx.
+func nextReal(toks []syntax.Token, idx int) int {
+	for idx < len(toks) && syntax.IsComment(toks[idx].Kind) {
+		idx++
+	}
+
+	return idx
 }
 
 // tokenOffset returns the byte offset of the first token of n.

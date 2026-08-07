@@ -157,7 +157,7 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 		inner = doc.Concat{doc.Line, doc.Concat(parts), doc.Concat(f.ownLineComments(close))}
 	} else if !f.hasOwnLineComments(close) && f.token(close).BlankLinesBefore > 0 {
 		// Empty body with blank lines before the close and no comments:
-		// ownLineComments emits nothing, so preserve the blanks here.
+		// the blanks round-trip through the close's own line.
 		inner = doc.Concat{doc.Concat(f.blankLineDocs(f.token(close).BlankLinesBefore, doc.HardLine)), inner}
 	}
 
@@ -167,23 +167,13 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 		openDoc = append(openDoc, doc.BreakParent)
 	}
 
-	// The line before the close collapses when the body already ended with
-	// a line comment (which owns its line end); it stays hard otherwise, so
-	// a blank line before the close still renders.
-	lastFn := -1
-	if len(v.Functions) > 0 {
-		lastFn = v.Functions[len(v.Functions)-1].TokEnd()
-	}
-
-	preClose := doc.HardLine
-	if f.endsWithLineComment(open, close, lastFn) {
-		preClose = doc.Line
-	}
-
+	// The line before the close collapses when the body ended with a line
+	// comment (which owns its line end) and renders after a real blank
+	// line, so the close always lands on its own line.
 	body := doc.Concat{
 		doc.Concat(openDoc),
 		doc.Indent(inner),
-		preClose,
+		doc.AfterCommentLine,
 		f.emitTokens(close, close, emitOpts{trailing: close != v.TokEnd()}),
 	}
 
@@ -194,33 +184,6 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 	out = append(out, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
 
 	return doc.Concat(out)
-}
-
-// endsWithLineComment reports whether the emission before the closing token
-// ends with a line comment, which owns its line end: the last function's
-// same-line comments, the open brace's same-line comments (empty body), or
-// the final comment in the gap before the close. The closing line must then
-// collapse instead of leaving a blank.
-func (f *formatter) endsWithLineComment(open, close, lastIdx int) bool {
-	if lastIdx >= 0 && f.sameLineEndsLine(lastIdx) {
-		return true
-	}
-
-	if lastIdx < 0 && f.sameLineEndsLine(open) {
-		return true
-	}
-
-	prev := f.prevReal(close - 1)
-	if c := close - 1; c > prev {
-		ct := f.token(c)
-		if ct.Line == f.token(prev).Line {
-			return lineComment(ct.Kind)
-		}
-
-		return true // own-line comment: always ends with a hard line
-	}
-
-	return false
 }
 
 // function formats a service method. The signature escalates via nested
