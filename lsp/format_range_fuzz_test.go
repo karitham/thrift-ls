@@ -62,18 +62,19 @@ func FuzzFormatRangeText(f *testing.F) {
 		}
 
 		// Edits are ordered, non-overlapping, line-aligned, and in bounds.
+		// A zero-length edit is a valid insertion.
 		prev := 0
 
 		for _, e := range edits {
-			if e.start < prev || e.end > len(content) || e.start >= e.end {
+			if e.start < prev || e.end > len(content) || e.start > e.end {
 				t.Fatalf("invalid edit [%d, %d) in %q", e.start, e.end, content)
 			}
 
-			if e.start != 0 && content[e.start-1] != '\n' {
+			if !atLineBoundary(content, e.start) {
 				t.Fatalf("edit starts mid-line at %d in %q", e.start, content)
 			}
 
-			if e.end != len(content) && content[e.end] != '\n' {
+			if !atLineBoundary(content, e.end) {
 				t.Fatalf("edit ends mid-line at %d in %q", e.end, content)
 			}
 
@@ -96,4 +97,15 @@ func FuzzFormatRangeText(f *testing.F) {
 			t.Fatalf("applying all edits != whole-document format\ncontent: %q\nformatted: %q\nedits: %+v", content, formatted, edits)
 		}
 	})
+}
+
+// atLineBoundary reports whether offset is at a line boundary: the file
+// edges, right after a newline (line start), or right before one (line
+// end).
+func atLineBoundary(content []byte, offset int) bool {
+	if offset == 0 || offset == len(content) {
+		return true
+	}
+
+	return content[offset-1] == '\n' || content[offset] == '\n'
 }

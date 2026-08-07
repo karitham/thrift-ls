@@ -55,26 +55,22 @@ func TestBlockDiff(t *testing.T) {
 			old:  "struct A {}\n\n\n",
 			new:  "struct A {}\n",
 			want: []blockEdit{{
-				start: len("struct A {}"),
+				start: len("struct A {}\n"),
 				end:   len("struct A {}\n\n\n"),
 				text:  "",
 			}},
 		},
 		{
-			name: "crlf line endings are preserved",
+			name: "crlf input falls back to a whole-document edit",
 			old:  "struct A {}\r\n\r\nstruct B {\r\n2: i32 b\r\n}\r\n",
 			new:  "struct A {}\r\n\r\nstruct B { 2: i32 b }\r\n",
-			want: []blockEdit{{
-				start: strings.Index("struct A {}\r\n\r\nstruct B {\r\n2: i32 b\r\n}\r\n", "struct B"),
-				end:   len("struct A {}\r\n\r\nstruct B {\r\n2: i32 b\r\n}\r\n"),
-				text:  "struct B { 2: i32 b }\r\n",
-			}},
+			want: []blockEdit{{0, len("struct A {}\r\n\r\nstruct B {\r\n2: i32 b\r\n}\r\n"), "struct A {}\r\n\r\nstruct B { 2: i32 b }\r\n"}},
 		},
 		{
-			name: "block structure change falls back to one edit",
+			name: "unaligned block structure falls back to one edit",
 			old:  "struct A {}\n\n\nstruct B {}\n",
-			new:  "struct A {}\n\nstruct B {}\n",
-			want: []blockEdit{{0, len("struct A {}\n\n\nstruct B {}\n"), "struct A {}\n\nstruct B {}\n"}},
+			new:  "struct A {}\n\nstruct B {}\n\nstruct C {}\n",
+			want: []blockEdit{{0, len("struct A {}\n\n\nstruct B {}\n"), "struct A {}\n\nstruct B {}\n\nstruct C {}\n"}},
 		},
 	}
 

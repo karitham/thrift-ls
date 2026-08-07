@@ -188,41 +188,66 @@ type blockEdit struct {
 // of non-blank lines, plus the leading and trailing blank regions when
 // they differ. Blank lines are preserved exactly by the formatter, so old
 // and new split into the same number of aligned blocks.
+// blockDiff returns the edits turning old into new, one per changed
+// segment: the blank-line runs and the blocks of non-blank lines between
+// them. Blank lines are preserved structurally by the formatter (their
+// whitespace may be trimmed), so old and new split into the same number of
+// aligned blocks; every edit is bounded by blank lines or file edges, so
+// any subset splices safely.
 func blockDiff(old, new []byte) []blockEdit {
+	// CRLF input normalizes to LF everywhere, blank lines included: the
+	// block alignment no longer holds, so a single whole-document edit is
+	// the only safe splice.
+	if bytes.Contains(old, []byte("\r\n")) {
+		if string(old) == string(new) {
+			return nil
+		}
+
+		return []blockEdit{{0, len(old), string(new)}}
+	}
+
 	oldBlocks := blocks(old)
 	newBlocks := blocks(new)
 
-	if len(oldBlocks) != len(newBlocks) {
-		// Should not happen: the formatter preserves the blank-line
-		// structure. Fall back to a single whole-document edit.
+	// No non-blank lines at all, or an unaligned block structure: fall
+	// back to a single whole-document edit.
+	if len(oldBlocks) == 0 || len(oldBlocks) != len(newBlocks) {
+		if string(old) == string(new) {
+			return nil
+		}
+
 		return []blockEdit{{0, len(old), string(new)}}
 	}
 
 	var edits []blockEdit
 
-	// Leading blank region.
-	oldLead := old[:oldBlocks[0].start]
-	newLead := new[:newBlocks[0].start]
-	if string(oldLead) != string(newLead) {
-		edits = append(edits, blockEdit{0, oldBlocks[0].start, string(newLead)})
-	}
-
+	prevOld, prevNew := 0, 0
 	for i := range oldBlocks {
-		if oldBlocks[i].text != newBlocks[i].text {
+		// The segment before the block: leading blanks, or the blank run
+		// between two blocks.
+		if !bytes.Equal(old[prevOld:oldBlocks[i].start], new[prevNew:newBlocks[i].start]) {
+			edits = append(edits, blockEdit{
+				start: prevOld,
+				end:   oldBlocks[i].start,
+				text:  string(new[prevNew:newBlocks[i].start]),
+			})
+		}
+
+		// The block itself.
+		if !bytes.Equal(old[oldBlocks[i].start:oldBlocks[i].end], new[newBlocks[i].start:newBlocks[i].end]) {
 			edits = append(edits, blockEdit{
 				start: oldBlocks[i].start,
 				end:   oldBlocks[i].end,
-				text:  newBlocks[i].text,
+				text:  string(new[newBlocks[i].start:newBlocks[i].end]),
 			})
 		}
+
+		prevOld, prevNew = oldBlocks[i].end, newBlocks[i].end
 	}
 
-	// Trailing blank region.
-	oldTail := old[oldBlocks[len(oldBlocks)-1].end:]
-	newTail := new[newBlocks[len(newBlocks)-1].end:]
-	if string(oldTail) != string(newTail) {
-		last := oldBlocks[len(oldBlocks)-1]
-		edits = append(edits, blockEdit{last.end, len(old), string(newTail)})
+	// The trailing segment.
+	if !bytes.Equal(old[prevOld:], new[prevNew:]) {
+		edits = append(edits, blockEdit{prevOld, len(old), string(new[prevNew:])})
 	}
 
 	return edits
