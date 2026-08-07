@@ -271,7 +271,11 @@ func TestPatchSeparatorModes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.value, func(t *testing.T) {
-			p := Patch{Separators: &Separators{Structs: &tt.value, Unions: &tt.value, Exceptions: &tt.value, Enums: &tt.value, Arguments: &tt.value, Throws: &tt.value}}
+			p := Patch{Separators: &Separators{
+				Structs: &tt.value, Unions: &tt.value, Exceptions: &tt.value,
+				Enums: &tt.value, Arguments: &tt.value, Throws: &tt.value,
+				Lists: &tt.value, Maps: &tt.value,
+			}}
 
 			o, err := p.Formatter()
 			if err != nil {

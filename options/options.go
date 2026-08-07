@@ -25,98 +25,14 @@ import (
 const ConfigFileName = "thriftls.json"
 
 // Separators configures trailing separators per construct. A nil value is
-// unset.
-type Separators struct {
-	Structs    *string `json:"structs"`
-	Unions     *string `json:"unions"`
-	Exceptions *string `json:"exceptions"`
-	Enums      *string `json:"enums"`
-	Arguments  *string `json:"arguments"`
-	Throws     *string `json:"throws"`
-}
-
-// Get returns the value for the construct.
-func (s Separators) Get(c formatter.Construct) *string {
-	switch c {
-	case formatter.ConstructUnion:
-		return s.Unions
-	case formatter.ConstructException:
-		return s.Exceptions
-	case formatter.ConstructEnum:
-		return s.Enums
-	case formatter.ConstructArguments:
-		return s.Arguments
-	case formatter.ConstructThrows:
-		return s.Throws
-	}
-
-	return s.Structs
-}
-
-// Set assigns the value for the construct.
-func (s *Separators) Set(c formatter.Construct, v *string) {
-	switch c {
-	case formatter.ConstructUnion:
-		s.Unions = v
-	case formatter.ConstructException:
-		s.Exceptions = v
-	case formatter.ConstructEnum:
-		s.Enums = v
-	case formatter.ConstructArguments:
-		s.Arguments = v
-	case formatter.ConstructThrows:
-		s.Throws = v
-	default:
-		s.Structs = v
-	}
-}
+// unset. It is an alias of the formatter's per-construct container, so
+// adding a construct adds the config key, CLI flags, and validation in one
+// place.
+type Separators = formatter.PerConstruct[*string]
 
 // Break configures layouts that are forced multiline per construct. A nil
 // value is unset.
-type Break struct {
-	Structs    *bool `json:"structs"`
-	Unions     *bool `json:"unions"`
-	Exceptions *bool `json:"exceptions"`
-	Enums      *bool `json:"enums"`
-	Arguments  *bool `json:"arguments"`
-	Throws     *bool `json:"throws"`
-}
-
-// Get returns the value for the construct.
-func (b Break) Get(c formatter.Construct) *bool {
-	switch c {
-	case formatter.ConstructUnion:
-		return b.Unions
-	case formatter.ConstructException:
-		return b.Exceptions
-	case formatter.ConstructEnum:
-		return b.Enums
-	case formatter.ConstructArguments:
-		return b.Arguments
-	case formatter.ConstructThrows:
-		return b.Throws
-	}
-
-	return b.Structs
-}
-
-// Set assigns the value for the construct.
-func (b *Break) Set(c formatter.Construct, v *bool) {
-	switch c {
-	case formatter.ConstructUnion:
-		b.Unions = v
-	case formatter.ConstructException:
-		b.Exceptions = v
-	case formatter.ConstructEnum:
-		b.Enums = v
-	case formatter.ConstructArguments:
-		b.Arguments = v
-	case formatter.ConstructThrows:
-		b.Throws = v
-	default:
-		b.Structs = v
-	}
-}
+type Break = formatter.PerConstruct[*bool]
 
 // Patch is a partial set of options; nil fields are unset.
 type Patch struct {

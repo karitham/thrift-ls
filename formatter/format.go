@@ -56,16 +56,22 @@ const (
 	ConstructEnum
 	ConstructArguments
 	ConstructThrows
+	ConstructList
+	ConstructMap
 )
 
-// PerConstruct holds one option value per construct.
+// PerConstruct holds one option value per construct. The JSON tags make the
+// per-construct option maps config-compatible ("structs", "arguments", ...),
+// so the options layer and the CLI share this single source of truth.
 type PerConstruct[T any] struct {
-	Structs    T
-	Unions     T
-	Exceptions T
-	Enums      T
-	Arguments  T
-	Throws     T
+	Structs    T `json:"structs"`
+	Unions     T `json:"unions"`
+	Exceptions T `json:"exceptions"`
+	Enums      T `json:"enums"`
+	Arguments  T `json:"arguments"`
+	Throws     T `json:"throws"`
+	Lists      T `json:"lists"`
+	Maps       T `json:"maps"`
 }
 
 // Get returns the value for the construct.
@@ -81,6 +87,10 @@ func (p PerConstruct[T]) Get(c Construct) T {
 		return p.Arguments
 	case ConstructThrows:
 		return p.Throws
+	case ConstructList:
+		return p.Lists
+	case ConstructMap:
+		return p.Maps
 	}
 
 	return p.Structs
@@ -99,6 +109,10 @@ func (p *PerConstruct[T]) Set(c Construct, v T) {
 		p.Arguments = v
 	case ConstructThrows:
 		p.Throws = v
+	case ConstructList:
+		p.Lists = v
+	case ConstructMap:
+		p.Maps = v
 	default:
 		p.Structs = v
 	}
@@ -108,6 +122,7 @@ func (p *PerConstruct[T]) Set(c Construct, v T) {
 var AllConstructs = []Construct{
 	ConstructStruct, ConstructUnion, ConstructException,
 	ConstructEnum, ConstructArguments, ConstructThrows,
+	ConstructList, ConstructMap,
 }
 
 // String returns the config key of the construct.
@@ -123,6 +138,10 @@ func (c Construct) String() string {
 		return "arguments"
 	case ConstructThrows:
 		return "throws"
+	case ConstructList:
+		return "lists"
+	case ConstructMap:
+		return "maps"
 	}
 
 	return "structs"
@@ -267,14 +286,13 @@ func (f *formatter) token(i int) syntax.Token {
 
 // emitOpts controls token emission.
 type emitOpts struct {
-	leading       bool  // emit the first token's leading trivia
-	trailing      bool  // emit the last token's trailing trivia
-	breakTrailing bool  // line-comment trailing forces groups to break
-	skipText      []int // token indexes whose text and gap are suppressed
-	breakSkip     bool  // hard line before a skipped token whose text
-	// the caller emits (separators)
-	pads   []padEntry // spaces inserted after a token, before its gap
-	prefix string     // spaces emitted before the first token
+	leading  bool // emit the own-line comments before the first token
+	trailing bool // emit the same-line comments after the last token
+
+	skipText []int      // token indexes whose text is suppressed
+	text     string     // text emitted in place of a skipped token's text
+	pads     []padEntry // spaces inserted after a token, before its gap
+	prefix   string     // spaces emitted before the first token
 }
 
 // padEntry is one alignment pad at a token index.
@@ -308,54 +326,90 @@ func padAt(pads []padEntry, idx int) string {
 	return out
 }
 
-// emitTokens renders the tokens in [start, end] with their trivia, joined
-// with canonical spacing. The first token's leading and last token's
-// trailing trivia belong to the caller's comment helpers unless the
+// isComment reports whether the token kind is a comment trivia token.
+func isComment(k syntax.TokenKind) bool {
+	return syntax.IsComment(k)
+}
+
+// lineComment reports whether the token kind is a line comment or
+// annotation, which consumes the rest of its source line: whatever follows
+// always starts a fresh line.
+func lineComment(k syntax.TokenKind) bool {
+	return k == syntax.TokenLineComment || k == syntax.TokenAnnotation
+}
+
+// prevReal returns the index of the previous real (non-comment) token
+// strictly before idx, or -1.
+func (f *formatter) prevReal(idx int) int {
+	for idx >= 0 && isComment(f.token(idx).Kind) {
+		idx--
+	}
+
+	return idx
+}
+
+// nextReal returns the index of the next real (non-comment) token at or
+// after idx.
+func (f *formatter) nextReal(idx int) int {
+	for idx < len(f.toks) && isComment(f.token(idx).Kind) {
+		idx++
+	}
+
+	return idx
+}
+
+// emitTokens renders the tokens in [start, end] with the comments
+// interleaved between them, joined with canonical spacing. Comments render
+// by one uniform rule: a comment on the same source line as the previous
+// real token renders inline after it (a line comment owns its line end and
+// emits a hard line), a comment on its own line renders on its own line
+// and always ends with a hard line. The first token's own-line comments
+// and the last token's same-line comments belong to the caller unless the
 // corresponding flag is set. skipText suppresses separator tokens that the
-// structural layout emits itself; pads widen alignment columns.
+// structural layout emits itself (text replaces the suppressed text when
+// set); pads widen alignment columns.
 func (f *formatter) emitTokens(start, end int, o emitOpts) doc.Doc {
 	parts := make([]doc.Doc, 0, 8)
 	if o.prefix != "" {
 		parts = append(parts, doc.Text(o.prefix))
 	}
 
-	for i := start; i <= end; i++ {
-		tok := f.token(i)
+	if o.leading {
+		parts = append(parts, f.ownLineComments(start)...)
+	}
 
-		skipped := containsInt(o.skipText, i)
-		if i > start {
-			if skipped {
-				// Leading trivia always forces a hard line; a trailing
-				// line comment only when the caller emits the skipped
-				// token's text after it (separators), which would
-				// otherwise be swallowed.
-				if len(tok.Leading) > 0 || o.breakSkip && f.lineAfter(i-1) {
-					parts = append(parts, doc.HardLine)
-				}
-			} else {
-				parts = append(parts, f.tokenGap(f.token(i-1), tok))
-			}
+	prev := start
+	first := true
+
+	for i := start; i <= end; i++ {
+		if isComment(f.token(i).Kind) {
+			continue
 		}
 
-		if i > start || o.leading {
-			for j, c := range tok.Leading {
-				parts = append(parts, doc.Text(trimComment(c.Text)))
-				// The last comment's line end comes from the caller's
-				// structure for suppressed tokens, unless the caller
-				// emits the token's text after it.
-				if j < len(tok.Leading)-1 || !skipped || o.breakSkip {
-					parts = append(parts, doc.HardLine)
-				}
+		skipped := containsInt(o.skipText, i)
+
+		if !first {
+			// Comments between the previous real token and this one
+			// render in place; the canonical gap follows only when the
+			// run left the line open. A skipped token whose text the
+			// caller emits itself (braces, field separators) gets no
+			// canonical gap — the caller's own spacing provides it.
+			comments, lineEnded := f.commentsRun(prev, i)
+			parts = append(parts, comments...)
+			if !lineEnded && (!skipped || o.text != "") {
+				parts = append(parts, f.tokenGap(prev, i))
 			}
 		}
 
 		if !skipped {
-			text := tok.Text
-			if tok.Kind == syntax.TokenAsync {
+			text := f.token(i).Text
+			if f.token(i).Kind == syntax.TokenAsync {
 				text = "oneway"
 			}
 
 			parts = append(parts, doc.Text(text))
+		} else if o.text != "" {
+			parts = append(parts, doc.Text(o.text))
 		}
 
 		if !skipped && o.pads != nil {
@@ -364,43 +418,203 @@ func (f *formatter) emitTokens(start, end int, o emitOpts) doc.Doc {
 			}
 		}
 
-		if i < end || o.trailing {
-			for _, c := range tok.Trailing {
-				parts = append(parts, doc.Text(" "+trimComment(c.Text)))
-				if o.breakTrailing && (c.Kind == syntax.TriviaLineComment || c.Kind == syntax.TriviaAnnotation) {
-					// A line comment must end its line: force the
-					// enclosing groups to break so nothing follows it.
-					parts = append(parts, doc.BreakParent)
-				}
+		prev = i
+		first = false
+	}
+
+	if o.trailing {
+		// Same-line comments after the last real token. When the token's
+		// text is suppressed (the separator mode drops it), its same-line
+		// comments render inline only when they also share the previous
+		// content's line; otherwise they start their own line, so the
+		// output round-trips — the next emission would skip them as
+		// same-line with the suppressed token.
+		if containsInt(o.skipText, prev) && o.text == "" {
+			prevTok := f.prevReal(prev - 1)
+			if prevTok >= 0 && f.token(prevTok).Line == f.token(prev).Line {
+				parts = append(parts, f.sameLineComments(prev)...)
+			} else {
+				parts = append(parts, f.suppressedSepComments(prev)...)
 			}
+		} else {
+			parts = append(parts, f.sameLineComments(prev)...)
 		}
 	}
 
 	return doc.Concat(parts)
 }
 
-// tokenGap returns the doc between two adjacent tokens: a line break when
-// the source separated them with a line comment (which would swallow the
-// next token on the same line), a canonical space otherwise.
-func (f *formatter) tokenGap(prev, cur syntax.Token) doc.Doc {
-	for _, c := range prev.Trailing {
-		if c.Kind == syntax.TriviaLineComment || c.Kind == syntax.TriviaAnnotation {
-			return doc.HardLine
+// suppressedSepComments renders the same-line comments of a suppressed
+// separator (the mode drops its text) that cannot share the previous
+// content's line: each starts its own line, so the output round-trips.
+func (f *formatter) suppressedSepComments(idx int) []doc.Doc {
+	parts := make([]doc.Doc, 0, 4)
+
+	for c := idx + 1; c < len(f.toks); c++ {
+		ct := f.token(c)
+		if !isComment(ct.Kind) || ct.Line != f.token(idx).Line {
+			break
+		}
+
+		parts = append(parts, doc.SoftLine)
+		parts = append(parts, f.blankLineDocs(ct.BlankLinesBefore, doc.HardLine)...)
+		parts = append(parts, doc.Text(trimComment(ct.Text)), doc.HardLine)
+	}
+
+	return parts
+}
+
+// commentsRun renders the comments strictly between the real tokens at
+// prev and cur (all stream entries in between are comments): a comment on
+// the previous token's line renders inline after it, a comment on its own
+// line renders on its own line and owns its line end. It reports whether
+// the run ended the line, in which case the caller must not emit the
+// canonical gap.
+func (f *formatter) commentsRun(prev, cur int) ([]doc.Doc, bool) {
+	parts := make([]doc.Doc, 0, 4)
+	lineEnded := false
+
+	for c := prev + 1; c < cur; c++ {
+		ct := f.token(c)
+		if ct.Line == f.token(prev).Line {
+			// Same-line: inline after the previous token. A line comment
+			// owns its line end.
+			parts = append(parts, doc.Text(" "), doc.Text(trimComment(ct.Text)))
+			if lineComment(ct.Kind) {
+				parts = append(parts, doc.HardLine)
+				lineEnded = true
+			} else {
+				lineEnded = false
+			}
+
+			continue
+		}
+
+		// Own-line: the comment starts its own line. The soft line
+		// collapses when the output already ended the line (the comment
+		// before it owns its line end) and provides the break otherwise.
+		parts = append(parts, doc.SoftLine)
+		parts = append(parts, f.blankLineDocs(ct.BlankLinesBefore, doc.HardLine)...)
+		parts = append(parts, doc.Text(trimComment(ct.Text)), doc.HardLine)
+		lineEnded = true
+	}
+
+	return parts, lineEnded
+}
+
+// ownLineComments renders the own-line comments in the gap before the real
+// token at idx: the comments between the previous real token and idx that
+// start their own source line, each preceded by its blank lines and
+// followed by a hard line, plus the blank lines between the last comment
+// and idx itself. Same-line comments in the gap belong to the previous
+// token's trailing and are emitted by the caller's trailing phase or the
+// next commentsRun.
+func (f *formatter) ownLineComments(idx int) []doc.Doc {
+	prev := f.prevReal(idx - 1)
+
+	parts := make([]doc.Doc, 0, 4)
+	first := true
+
+	for c := prev + 1; c < idx; c++ {
+		ct := f.token(c)
+		if prev >= 0 && ct.Line == f.token(prev).Line {
+			continue
+		}
+
+		if prev >= 0 {
+			// The soft line collapses when the output already ended the
+			// line and provides the break otherwise.
+			parts = append(parts, doc.SoftLine)
+		} else if first && ct.BlankLinesBefore > 0 {
+			// At file start there is no separator line before the first
+			// comment: N blank lines round-trip as N+1 newlines.
+			parts = append(parts, doc.HardLine)
+		}
+
+		first = false
+
+		parts = append(parts, f.blankLineDocs(ct.BlankLinesBefore, doc.HardLine)...)
+		parts = append(parts, doc.Text(trimComment(ct.Text)), doc.HardLine)
+	}
+
+	if len(parts) > 0 && f.token(idx).BlankLinesBefore > 0 {
+		parts = append(parts, f.blankLineDocs(f.token(idx).BlankLinesBefore, doc.HardLine)...)
+	}
+
+	return parts
+}
+
+// sameLineComments renders the same-line comments after the real token at
+// idx: comments sharing its source line, each preceded by a space and —
+// for line comments — ending with a hard line.
+func (f *formatter) sameLineComments(idx int) []doc.Doc {
+	parts := make([]doc.Doc, 0, 4)
+
+	for c := idx + 1; c < len(f.toks); c++ {
+		ct := f.token(c)
+		if !isComment(ct.Kind) || ct.Line != f.token(idx).Line {
+			break
+		}
+
+		parts = append(parts, doc.Text(" "), doc.Text(trimComment(ct.Text)))
+		if lineComment(ct.Kind) {
+			parts = append(parts, doc.HardLine)
 		}
 	}
 
-	if len(cur.Leading) > 0 {
-		return doc.HardLine
-	}
-
-	return doc.Text(rawTokenGap(prev, cur))
+	return parts
 }
 
-// lineAfter reports whether the token ends its line with a line comment or
-// annotation, which forces the next doc onto a new line.
-func (f *formatter) lineAfter(i int) bool {
-	for _, c := range f.token(i).Trailing {
-		if c.Kind == syntax.TriviaLineComment || c.Kind == syntax.TriviaAnnotation {
+// hasOwnLineComments reports whether the gap before the real token at idx
+// contains an own-line comment.
+func (f *formatter) hasOwnLineComments(idx int) bool {
+	prev := f.prevReal(idx - 1)
+	for c := prev + 1; c < idx; c++ {
+		if prev < 0 || f.token(c).Line != f.token(prev).Line {
+			return true
+		}
+	}
+
+	return false
+}
+
+// hasSameLineComments reports whether the real token at idx has same-line
+// comments after it.
+func (f *formatter) hasSameLineComments(idx int) bool {
+	c := idx + 1
+	if c >= len(f.toks) {
+		return false
+	}
+
+	ct := f.token(c)
+	if !isComment(ct.Kind) || ct.Line != f.token(idx).Line {
+		return false
+	}
+
+	return true
+}
+
+// tokenGap returns the canonical gap between two adjacent real tokens:
+// nothing when the previous token's same-line comments already ended the
+// line, the canonical spacing otherwise.
+func (f *formatter) tokenGap(prev, cur int) doc.Doc {
+	if f.sameLineEndsLine(prev) {
+		return doc.Concat{}
+	}
+
+	return doc.Text(rawTokenGap(f.token(prev), f.token(cur)))
+}
+
+// sameLineEndsLine reports whether the token's same-line comments end with
+// a line comment, which owns its line end.
+func (f *formatter) sameLineEndsLine(idx int) bool {
+	for c := idx + 1; c < len(f.toks); c++ {
+		ct := f.token(c)
+		if !isComment(ct.Kind) || ct.Line != f.token(idx).Line {
+			break
+		}
+
+		if lineComment(ct.Kind) {
 			return true
 		}
 	}
@@ -409,29 +623,18 @@ func (f *formatter) lineAfter(i int) bool {
 }
 
 // foldBreak is the foldable gap after an opening token or separating
-// comma: a line in the broken layout, a space (or nothing) flat. A
-// trailing line comment forces a hard line.
+// comma: a line in the broken layout, a space (or nothing) flat.
 func (f *formatter) foldBreak(i int, flat string) doc.Doc {
-	if f.lineAfter(i) {
-		return doc.HardLine
-	}
-
 	return doc.IfBreak(doc.Line, doc.Text(flat))
 }
 
-// commaSep renders a separating comma with its trivia: a hard line when
-// the previous item ends its line with a comment (which would swallow the
-// comma), then the comma and the foldable gap after it.
+// commaSep renders a separating comma with its trivia, then the foldable
+// gap after it.
 func (f *formatter) commaSep(comma int) []doc.Doc {
-	parts := []doc.Doc{}
-	if f.lineAfter(comma-1) || len(f.token(comma).Leading) > 0 {
-		parts = append(parts, doc.HardLine)
+	return []doc.Doc{
+		f.emitTokens(comma, comma, emitOpts{leading: true, trailing: true}),
+		f.foldBreak(comma, " "),
 	}
-
-	parts = append(parts, f.emitTokens(comma, comma, emitOpts{leading: true, trailing: true}))
-	parts = append(parts, f.foldBreak(comma, " "))
-
-	return parts
 }
 
 // rawTokenGap returns the canonical text between two adjacent tokens:
@@ -468,81 +671,11 @@ func (f *formatter) blankBefore(n syntax.Node) int {
 	return f.token(n.TokStart()).BlankLinesBefore
 }
 
-// leadingComments returns the comments attached before the node's first
-// token, each ending with a hard line, with the blank lines from the source
-// gap distributed exactly as written: before the run, between comments, and
-// between the last comment and the node itself. blankLines deliberately
-// emits nothing when leading comments exist.
-func (f *formatter) leadingComments(n syntax.Node) []doc.Doc {
-	tok := f.token(n.TokStart())
-	if len(tok.Leading) == 0 {
-		return nil
-	}
-
-	parts := make([]doc.Doc, 0, 8)
-
-	prevBlank := 0
-	for _, c := range tok.Leading {
-		parts = append(parts, f.blankLineDocs(c.BlankLinesBefore-prevBlank, doc.HardLine)...)
-		prevBlank = c.BlankLinesBefore
-		parts = append(parts, doc.Text(trimComment(c.Text)), doc.HardLine)
-	}
-
-	parts = append(parts, f.blankLineDocs(tok.BlankLinesBefore-prevBlank, doc.HardLine)...)
-
-	return parts
-}
-
-// trailingComments returns the comments attached after the node's last token
-// on the same line. Block comments render as line-suffix docs; line comments
-// and annotations render inline with a break parent, since a line suffix
-// after them would merge into the comment's text. When the content before
-// the separator already ends with a line comment, these comments cannot
-// share the line and get their own lines instead.
-func (f *formatter) trailingComments(n syntax.Node, sepEmitted bool) []doc.Doc {
-	parts := make([]doc.Doc, 0, 8)
-	// Comments attached to a separator share the separator's own line,
-	// unless the separator is not emitted (the mode drops it): then a line
-	// comment before it would swallow them, and they need their own lines.
-	last := f.token(n.TokEnd())
-
-	ownLine := !sepEmitted && (last.Kind == syntax.TokenComma || last.Kind == syntax.TokenSemicolon) &&
-		(f.lineAfter(n.TokEnd()-1) || leadingLineComment(last))
-	for _, c := range last.Trailing {
-		line := c.Kind == syntax.TriviaLineComment || c.Kind == syntax.TriviaAnnotation
-		if ownLine {
-			parts = append(parts, doc.HardLine, doc.Text(trimComment(c.Text)), doc.BreakParent)
-
-			continue
-		}
-
-		if line {
-			parts = append(parts, doc.Text(" "+trimComment(c.Text)), doc.BreakParent)
-		} else {
-			parts = append(parts, doc.LineSuffix(doc.Text(" "+trimComment(c.Text))), doc.BreakParent)
-		}
-	}
-
-	return parts
-}
-
-// leadingLineComment reports whether the token's leading trivia contains a
-// line comment or annotation, which ends the previous line.
-func leadingLineComment(tok syntax.Token) bool {
-	for _, c := range tok.Leading {
-		if c.Kind == syntax.TriviaLineComment || c.Kind == syntax.TriviaAnnotation {
-			return true
-		}
-	}
-
-	return false
-}
-
-// node assembles a top-level node: its leading comments, its formatted
-// body, and its trailing comments.
+// node assembles a top-level node: its own-line comments, its formatted
+// body, and its same-line comments.
 func (f *formatter) node(n syntax.Node) doc.Doc {
-	parts := append(f.leadingComments(n), f.nodeBody(n))
-	parts = append(parts, f.trailingComments(n, true)...)
+	parts := append(f.ownLineComments(n.TokStart()), f.nodeBody(n))
+	parts = append(parts, f.sameLineComments(n.TokEnd())...)
 
 	return doc.Concat(parts)
 }
@@ -571,49 +704,29 @@ func (f *formatter) nodeBody(n syntax.Node) doc.Doc {
 	}
 }
 
-// document assembles the whole file: top-level nodes separated by hard
-// lines, blank lines preserved, and trailing comments.
+// document assembles the whole file: top-level nodes separated by
+// collapsible lines, blank lines preserved, and trailing comments.
 func (f *formatter) document() doc.Doc {
 	parts := make([]doc.Doc, 0, 8)
 
 	for i, n := range f.doc.Nodes {
 		if i > 0 {
-			parts = append(parts, doc.HardLine)
+			// The separator line collapses when the previous node ended
+			// with a line comment (which owns its line end).
+			parts = append(parts, doc.Line)
 			parts = append(parts, f.blankLines(n, doc.HardLine)...)
-		} else if lead := f.token(n.TokStart()).Leading; len(lead) > 0 && lead[0].BlankLinesBefore > 0 {
-			// At file start the leading comments carry their blanks without
-			// a separator line, so N blanks would round-trip as N-1. The
-			// extra line keeps the count canonical: N blanks are N+1
-			// newlines.
-			parts = append(parts, doc.HardLine)
 		}
 
 		parts = append(parts, f.node(n))
 	}
 
-	// Comments at the end of the file attach to the EOF token. Like the
-	// first node's leading comments, a comment run at file start (no nodes)
-	// needs a separator line before its blanks to round-trip the count.
-	eof := f.toks[len(f.toks)-1]
-	if len(eof.Leading) > 0 {
-		if len(f.doc.Nodes) > 0 || eof.Leading[0].BlankLinesBefore > 0 {
-			parts = append(parts, doc.HardLine)
-		}
-
-		prevBlank := 0
-		for i, c := range eof.Leading {
-			parts = append(parts, f.blankLineDocs(c.BlankLinesBefore-prevBlank, doc.HardLine)...)
-			prevBlank = c.BlankLinesBefore
-
-			parts = append(parts, doc.Text(trimComment(c.Text)))
-			if i < len(eof.Leading)-1 {
-				parts = append(parts, doc.HardLine)
-			}
-		}
-	}
+	// Comments at the end of the file precede the EOF token.
+	parts = append(parts, f.ownLineComments(len(f.toks)-1)...)
 
 	if !f.opts.NoTrailingNewline {
-		parts = append(parts, doc.HardLine)
+		// The final newline collapses when the file ends with a line
+		// comment (which owns its line end).
+		parts = append(parts, doc.Line)
 	}
 
 	return doc.Concat(parts)
@@ -641,10 +754,6 @@ func (f *formatter) namespace(v *syntax.Namespace) doc.Doc {
 	}
 
 	parts := []doc.Doc{f.emitTokens(v.TokStart(), end, o)}
-	if v.Annotations != nil {
-		parts = append(parts, f.breakBeforeAnnotations(end))
-	}
-
 	parts = append(parts, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
 	parts = append(parts, f.afterAnnotations(v.Annotations, v.TokEnd()))
 
@@ -663,10 +772,6 @@ func (f *formatter) typedef(v *syntax.Typedef) doc.Doc {
 	}
 
 	parts := []doc.Doc{f.emitTokens(v.TokStart(), end, o)}
-	if v.Annotations != nil {
-		parts = append(parts, f.breakBeforeAnnotations(end))
-	}
-
 	parts = append(parts, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
 	parts = append(parts, f.afterAnnotations(v.Annotations, v.TokEnd()))
 
@@ -679,23 +784,22 @@ func (f *formatter) constant(v *syntax.Const) doc.Doc {
 		return f.emitTokens(v.TokStart(), v.TokEnd(), emitOpts{})
 	}
 
-	eq := value.TokStart() - 1
-	gap := f.tokenGap(f.token(eq), f.token(value.TokStart()))
+	eq := f.prevReal(value.TokStart() - 1)
 
 	parts := []doc.Doc{
 		f.emitTokens(v.TokStart(), eq, emitOpts{trailing: true}),
-		gap,
-		f.constValue(value, value.TokEnd() == v.TokEnd()),
+		f.tokenGap(eq, value.TokStart()),
 	}
+	// Own-line comments before the value render at the value boundary,
+	// outside the value's own group.
+	parts = append(parts, f.ownLineComments(value.TokStart())...)
+	parts = append(parts, f.constValue(value, value.TokEnd() == v.TokEnd()))
 	if value.TokEnd() < v.TokEnd() {
-		// Stray tokens after the value (lenient sources): preserve them
-		// and their trivia, with a line break after the value's close.
-		stray := f.emitTokens(value.TokEnd()+1, v.TokEnd(), emitOpts{leading: true})
-		if f.lineAfter(value.TokEnd()) || len(f.token(value.TokEnd()+1).Leading) > 0 {
-			stray = doc.Concat{doc.HardLine, stray}
-		}
-
-		parts = append(parts, stray)
+		// Same-line comments after the value render at the value
+		// boundary, outside the value's own group, before the stray
+		// tokens (the const's trailing separator).
+		parts = append(parts, f.sameLineComments(value.TokEnd())...)
+		parts = append(parts, f.emitTokens(f.nextReal(value.TokEnd()+1), v.TokEnd(), emitOpts{leading: true}))
 	}
 
 	return doc.Concat(parts)
@@ -703,39 +807,20 @@ func (f *formatter) constant(v *syntax.Const) doc.Doc {
 
 // --- annotations -----------------------------------------------------------
 
-// breakBeforeAnnotations returns a hard line when the token at idx ends
-// its line with a comment, or the annotations' first token carries leading
-// trivia, so neither gets swallowed by the other.
-func (f *formatter) breakBeforeAnnotations(idx int) doc.Doc {
-	if f.lineAfter(idx) || len(f.token(idx+1).Leading) > 0 {
-		return doc.HardLine
-	}
-
-	return doc.Concat{}
-}
-
 // afterAnnotations renders any tokens between the annotations and the
 // node's end — stray separators lenient sources may leave — preserving
-// their leading trivia and forcing a line break after the annotations'
-// close when it ends its line with a comment.
+// their comments.
 func (f *formatter) afterAnnotations(a *syntax.Annotations, end int) doc.Doc {
 	if a == nil || a.TokEnd() >= end {
 		return doc.Concat{}
 	}
 
-	parts := []doc.Doc{}
-	if f.lineAfter(a.TokEnd()) || len(f.token(a.TokEnd()+1).Leading) > 0 {
-		parts = append(parts, doc.HardLine)
-	}
-
-	parts = append(parts, f.emitTokens(a.TokEnd()+1, end, emitOpts{leading: true}))
-
-	return doc.Concat(parts)
+	return f.emitTokens(f.nextReal(a.TokEnd()+1), end, emitOpts{leading: true})
 }
 
 // annotationsDoc returns an annotation group, or an empty doc when absent.
 // The group folds when it does not fit; the items and their separating
-// commas render as token runs, so trivia inside the parens is preserved.
+// commas render as token runs, so comments inside the parens are preserved.
 func (f *formatter) annotationsDoc(a *syntax.Annotations, isLast bool) doc.Doc {
 	if a == nil {
 		return doc.Concat{}
@@ -743,16 +828,18 @@ func (f *formatter) annotationsDoc(a *syntax.Annotations, isLast bool) doc.Doc {
 
 	open, close := a.TokStart(), a.TokEnd()
 	if len(a.Items) == 0 {
-		closeDoc := f.emitTokens(close, close, emitOpts{leading: true, trailing: !isLast})
-		if f.lineAfter(open) || len(f.token(close).Leading) > 0 {
-			closeDoc = doc.Concat{doc.HardLine, closeDoc}
-		}
-
-		return doc.Concat{
+		out := doc.Concat{
 			doc.Text(" "),
 			f.emitTokens(open, open, emitOpts{leading: true, trailing: true}),
-			closeDoc,
+			f.emitTokens(close, close, emitOpts{leading: true}),
 		}
+		if !isLast {
+			// Same-line comments after the close render at the group
+			// boundary, outside it.
+			out = doc.Concat{out, doc.Concat(f.sameLineComments(close))}
+		}
+
+		return out
 	}
 
 	all := emitOpts{leading: true, trailing: true}
@@ -790,10 +877,17 @@ func (f *formatter) annotationsDoc(a *syntax.Annotations, isLast bool) doc.Doc {
 		f.emitTokens(open, open, all),
 		doc.Indent(doc.Concat{f.foldBreak(open, ""), doc.Concat(middle)}),
 		f.foldBreak(last, ""),
-		f.emitTokens(close, close, emitOpts{leading: true, trailing: !isLast}),
+		f.emitTokens(close, close, emitOpts{leading: true}),
 	})
 
-	return doc.Concat{doc.Text(" "), group}
+	out := doc.Concat{doc.Text(" "), group}
+	if !isLast {
+		// Same-line comments after the close render at the group boundary,
+		// outside the group, so the group folds independently.
+		out = doc.Concat{out, doc.Concat(f.sameLineComments(close))}
+	}
+
+	return out
 }
 
 // trimComment returns the comment text without trailing whitespace, which

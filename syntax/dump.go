@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-// Dump renders a parsed document as a debug tree: every token with its
-// kind, position, blank-line count, and attached trivia, followed by the
+// Dump renders a parsed document as a debug tree: every token (comments
+// included) with its kind, position, and blank-line count, followed by the
 // node spans. Deterministic and stable for a given input, so dumps can be
 // diffed across versions.
 func Dump(d *Document) string {
@@ -14,14 +14,6 @@ func Dump(d *Document) string {
 	for i, tok := range d.Tokens {
 		fmt.Fprintf(&b, "tok %3d %-16s line=%-3d col=%-3d blb=%d %q\n",
 			i, tok.Kind, tok.Line, tok.Col, tok.BlankLinesBefore, tok.Text)
-
-		for _, tr := range tok.Leading {
-			fmt.Fprintf(&b, "      leading  %-18s %q\n", tr.Kind, tr.Text)
-		}
-
-		for _, tr := range tok.Trailing {
-			fmt.Fprintf(&b, "      trailing %-18s %q\n", tr.Kind, tr.Text)
-		}
 	}
 
 	for i, n := range d.Nodes {

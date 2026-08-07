@@ -28,40 +28,70 @@ func (f *formatter) constValue(v *syntax.ConstValue, isLast bool) doc.Doc {
 	case syntax.ValueMap:
 		return f.constMap(v, isLast)
 	default:
-		o := emitOpts{leading: true}
-		if !isLast {
-			o.trailing = true
-		}
-
-		return f.emitTokens(v.TokStart(), v.TokEnd(), o)
+		// Comments before and after the value belong to the enclosing
+		// structure (constant's or constItems' boundaries).
+		return f.emitTokens(v.TokStart(), v.TokEnd(), emitOpts{})
 	}
 }
 
-// constList formats "[ items ]" as a foldable group.
+// constList formats "[ items ]" as a foldable group honoring the lists
+// separator and break options.
 func (f *formatter) constList(v *syntax.ConstValue, isLast bool) doc.Doc {
-	open, close := v.TokStart(), v.TokEnd()
+	items := make([]constItem, len(v.List))
+	for i, item := range v.List {
+		items[i] = constItem{start: item.TokStart(), end: item.TokEnd(), doc: f.constValue(item, false)}
+	}
 
-	all := emitOpts{leading: true, trailing: true}
-	if len(v.List) == 0 {
-		closeDoc := f.emitTokens(close, close, emitOpts{leading: true, trailing: !isLast})
-		if f.lineAfter(open) || len(f.token(close).Leading) > 0 {
-			closeDoc = doc.Concat{doc.HardLine, closeDoc}
-		}
+	return f.constItems(items, v.TokStart(), v.TokEnd(), ConstructList, isLast)
+}
 
-		return doc.Concat{
-			f.emitTokens(open, open, all),
-			closeDoc,
+// constMap formats "{ key: value, ... }" as a foldable group honoring the
+// maps separator and break options.
+func (f *formatter) constMap(v *syntax.ConstValue, isLast bool) doc.Doc {
+	items := make([]constItem, len(v.Map))
+	for i, entry := range v.Map {
+		items[i] = constItem{
+			start: entry.Key.TokStart(),
+			end:   entry.Value.TokEnd(),
+			doc:   f.emitTokens(entry.Key.TokStart(), entry.Value.TokEnd(), emitOpts{}),
 		}
 	}
 
-	middle := make([]doc.Doc, 0, len(v.List)*2)
-	last := open
+	return f.constItems(items, v.TokStart(), v.TokEnd(), ConstructMap, isLast)
+}
 
-	for i, item := range v.List {
+// constItem is one list/map entry: its formatted doc and the token span of
+// its last token (the separator, if any, follows it).
+type constItem struct {
+	doc   doc.Doc
+	start int
+	end   int
+}
+
+// constItems is the shared list/map body: a foldable group with one entry
+// per line when broken, honoring the construct's separator and break
+// options. The separator between entries and the trailing separator follow
+// the mode; the closing bracket gets exactly one break, so a trailing
+// separator never leaves a blank line before it.
+func (f *formatter) constItems(items []constItem, open, close int, c Construct, isLast bool) doc.Doc {
+	sepMode := f.opts.Separator.Get(c)
+	openOpts := emitOpts{trailing: true}
+
+	if len(items) == 0 {
+		return doc.Concat{
+			f.emitTokens(open, open, openOpts),
+			f.emitTokens(close, close, emitOpts{leading: true}),
+		}
+	}
+
+	middle := make([]doc.Doc, 0, len(items)*2)
+
+	for i, item := range items {
 		if i > 0 {
-			prevEnd := v.List[i-1].TokEnd()
-			if isListSep(f.token(prevEnd + 1).Kind) {
-				middle = append(middle, f.commaSep(prevEnd+1)...)
+			prevEnd := items[i-1].end
+			sepIdx := f.nextReal(prevEnd + 1)
+			if isListSep(f.token(sepIdx).Kind) {
+				middle = append(middle, f.itemSep(sepIdx, sepMode)...)
 			} else {
 				// Lenient sources may omit separators; keep the items
 				// apart so their tokens cannot merge.
@@ -69,77 +99,160 @@ func (f *formatter) constList(v *syntax.ConstValue, isLast bool) doc.Doc {
 			}
 		}
 
-		middle = append(middle, f.constValue(item, false))
-		last = item.TokEnd()
+		// Comments before and after the item render at the item boundary,
+		// outside the item's own group, so a nested container stays flat.
+		middle = append(middle, f.ownLineComments(item.start)...)
+		middle = append(middle, item.doc)
+		middle = append(middle, f.sameLineComments(item.end)...)
 	}
-	// A trailing comma after the last item (which may carry comments) is
-	// not between two items, so it is emitted here.
-	if isListSep(f.token(last + 1).Kind) {
-		middle = append(middle, f.commaSep(last+1)...)
-		last++
-	}
+
+	// The trailing separator: the mode's text (or nothing), with the
+	// source separator token's comments preserved. Its gap is flat: the
+	// close break below is the only line before the closing bracket.
+	trailing := f.trailingItemSep(items[len(items)-1].end, sepMode)
 
 	closeOpts := emitOpts{leading: true}
-	if !isLast {
-		closeOpts.trailing = true
+
+	// The single break before the close. A line comment owns its line end
+	// (HardLine); the printer collapses a following structural line, so
+	// the SoftLine never leaves a blank line.
+	closeBreak := doc.IfBreak(doc.SoftLine, doc.Text(""))
+
+	inner := doc.Concat{
+		f.emitTokens(open, open, openOpts),
+		doc.Indent(doc.Concat{f.foldBreak(open, ""), doc.Concat(middle)}),
+		trailing,
+		closeBreak,
+		f.emitTokens(close, close, closeOpts),
+	}
+	if f.opts.Break.Get(c) || sepForcesBreakList(f.sepsOf(items), sepMode) {
+		// BreakParent inside the group forces it to the broken layout.
+		inner = doc.Concat{doc.BreakParent, inner}
 	}
 
-	return doc.Group(doc.Concat{
-		f.emitTokens(open, open, all),
-		doc.Indent(doc.Concat{f.foldBreak(open, ""), doc.Concat(middle)}),
-		f.foldBreak(last, ""),
-		f.emitTokens(close, close, closeOpts),
-	})
+	return doc.Group(inner)
 }
 
-// constMap formats "{ key: value, ... }" as a foldable group.
-func (f *formatter) constMap(v *syntax.ConstValue, isLast bool) doc.Doc {
-	open, close := v.TokStart(), v.TokEnd()
+// sepForcesBreakList reports whether a preserved separator mix forces the
+// broken layout: items separated and unseparated inconsistently look broken
+// on a flat line. Unlike fields, list separators sit between items only, so
+// a single separator never forces a break.
+func sepForcesBreakList(seps []syntax.TokenKind, mode SeparatorMode) bool {
+	if mode != SeparatorPreserve || len(seps) < 2 {
+		return false
+	}
 
-	all := emitOpts{leading: true, trailing: true}
-	if len(v.Map) == 0 {
-		closeDoc := f.emitTokens(close, close, emitOpts{leading: true, trailing: !isLast})
-		if f.lineAfter(open) || len(f.token(close).Leading) > 0 {
-			closeDoc = doc.Concat{doc.HardLine, closeDoc}
+	want := seps[0] != 0
+	for _, sep := range seps[1:] {
+		if (sep != 0) != want {
+			return true
+		}
+	}
+
+	return false
+}
+
+// itemSep renders the separator between two list/map items: the source
+// separator token (with comments) when the mode preserves its text, the
+// forced text with the source token's comments otherwise, and the foldable
+// gap after it that lines up the next item. A line comment owns its line
+// end (HardLine), so the separator lands on the next line by construction.
+func (f *formatter) itemSep(sep int, mode SeparatorMode) []doc.Doc {
+	text := f.token(sep).Text
+	switch mode {
+	case SeparatorComma:
+		text = ","
+	case SeparatorSemicolon:
+		text = ";"
+	case SeparatorNone:
+		text = ""
+	}
+
+	if text == f.token(sep).Text {
+		return []doc.Doc{f.emitTokens(sep, sep, emitOpts{leading: true, trailing: true}), f.foldBreak(sep, " ")}
+	}
+
+	// Forced separator differing from the source: the forced text replaces
+	// the suppressed text inside the run, so the source token's comments
+	// stay ordered around it — own-line comments before it, same-line
+	// comments after.
+	return []doc.Doc{
+		f.emitTokens(sep, sep, emitOpts{leading: true, trailing: true, skipText: []int{sep}, text: text}),
+		f.foldBreak(sep, " "),
+	}
+}
+
+// trailingItemSep is the trailing separator of a list/map: the source
+// separator token (with comments) when present and the mode preserves its
+// text, the forced text otherwise, nothing under SeparatorNone. Its gap is
+// a flat space — the close break provides the line before the bracket. A
+// line comment owns its line end, so the separator lands on the next line
+// by construction.
+func (f *formatter) trailingItemSep(last int, mode SeparatorMode) doc.Doc {
+	sep := f.nextReal(last + 1)
+	hasSep := isListSep(f.token(sep).Kind)
+
+	text := ""
+	if hasSep {
+		text = f.token(sep).Text
+	}
+	switch mode {
+	case SeparatorComma:
+		text = ","
+	case SeparatorSemicolon:
+		text = ";"
+	case SeparatorNone:
+		text = ""
+	}
+
+	if !hasSep && text == "" {
+		return doc.Concat{}
+	}
+
+	if hasSep && text == f.token(sep).Text {
+		// Preserve the source separator with its comments; the flat gap
+		// before the closing bracket. A trailing line comment owns its
+		// line end instead.
+		sepDoc := f.emitTokens(sep, sep, emitOpts{leading: true, trailing: true})
+		if !f.sameLineEndsLine(sep) {
+			sepDoc = doc.Concat{sepDoc, doc.Text(" ")}
 		}
 
-		return doc.Concat{
-			f.emitTokens(open, open, all),
-			closeDoc,
+		return sepDoc
+	}
+
+	if !hasSep {
+		// No source separator: the forced text and the flat gap before
+		// the closing bracket.
+		return doc.Concat{doc.Text(text), doc.Text(" ")}
+	}
+
+	// Forced text (or dropping the source separator under SeparatorNone):
+	// the forced text replaces the suppressed text inside the run, so the
+	// source token's comments stay ordered around it. The flat gap belongs
+	// to the forced text; a dropped separator leaves no gap, so the output
+	// is stable across a reparse.
+	sepDoc := f.emitTokens(sep, sep, emitOpts{leading: true, trailing: true, skipText: []int{sep}, text: text})
+	if text != "" && !f.sameLineEndsLine(sep) {
+		sepDoc = doc.Concat{sepDoc, doc.Text(" ")}
+	}
+
+	return sepDoc
+}
+
+// sepsOf returns the separator kinds between the items, in order (0 when
+// an item boundary has no separator token).
+func (f *formatter) sepsOf(items []constItem) []syntax.TokenKind {
+	seps := make([]syntax.TokenKind, 0, len(items)-1)
+
+	for i := 1; i < len(items); i++ {
+		prevEnd := items[i-1].end
+		if isListSep(f.token(prevEnd + 1).Kind) {
+			seps = append(seps, f.token(prevEnd+1).Kind)
+		} else {
+			seps = append(seps, 0)
 		}
 	}
 
-	middle := make([]doc.Doc, 0, len(v.Map)*2)
-	last := open
-
-	for i, entry := range v.Map {
-		if i > 0 {
-			prevEnd := v.Map[i-1].Value.TokEnd()
-			if isListSep(f.token(prevEnd + 1).Kind) {
-				middle = append(middle, f.commaSep(prevEnd+1)...)
-			} else {
-				middle = append(middle, f.foldBreak(prevEnd, " "))
-			}
-		}
-
-		middle = append(middle, f.emitTokens(entry.Key.TokStart(), entry.Value.TokEnd(), all))
-		last = entry.Value.TokEnd()
-	}
-
-	if isListSep(f.token(last + 1).Kind) {
-		middle = append(middle, f.commaSep(last+1)...)
-		last++
-	}
-
-	closeOpts := emitOpts{leading: true}
-	if !isLast {
-		closeOpts.trailing = true
-	}
-
-	return doc.Group(doc.Concat{
-		f.emitTokens(open, open, all),
-		doc.Indent(doc.Concat{f.foldBreak(open, ""), doc.Concat(middle)}),
-		f.foldBreak(last, ""),
-		f.emitTokens(close, close, closeOpts),
-	})
+	return seps
 }

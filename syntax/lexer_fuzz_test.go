@@ -11,9 +11,9 @@ import (
 //   - lexing always terminates with an EOF token (no infinite loops)
 //   - lexing never panics, even on truncated, binary, or invalid UTF-8 input
 //   - lexing is deterministic
-//   - token and trivia texts are exact slices of the source
+//   - stream entries (tokens and comments) are exact, non-overlapping
+//     slices of the source, in source order
 //   - reported line/col positions match the source bytes
-//   - trailing trivia always starts on its token's line
 func FuzzLex(f *testing.F) {
 	for _, seed := range [][]byte{
 		[]byte(""),
@@ -64,7 +64,8 @@ func FuzzLex(f *testing.F) {
 			checkPos(t, srcStr, err.Offset, err.Line, err.Col, "error")
 		}
 
-		// Token and trivia invariants.
+		// Stream invariants: every entry is an exact slice of the source,
+		// and entries are in source order, non-overlapping.
 		prevEnd := 0
 
 		for i, tok := range toks {
@@ -72,8 +73,8 @@ func FuzzLex(f *testing.F) {
 				t.Fatalf("token %d has invalid kind", i)
 			}
 
-			if tok.Offset < 0 || tok.Offset+len(tok.Text) > len(src) {
-				t.Fatalf("token %d (%s) spans outside the source", i, tok.Kind)
+			if tok.Offset < prevEnd || tok.Offset+len(tok.Text) > len(src) {
+				t.Fatalf("token %d (%s) outside the source or overlapping the previous entry", i, tok.Kind)
 			}
 
 			if got := src[tok.Offset : tok.Offset+len(tok.Text)]; string(got) != tok.Text {
@@ -86,34 +87,7 @@ func FuzzLex(f *testing.F) {
 				t.Fatalf("token %d has negative BlankLinesBefore", i)
 			}
 
-			// Leading trivia lies between the previous token and this one.
-			for _, tr := range tok.Leading {
-				if tr.Offset < prevEnd || tr.Offset+len(tr.Text) > tok.Offset || tr.Offset+len(tr.Text) > len(src) {
-					t.Fatalf("leading trivia %q of token %d outside the gap [%d, %d)", tr.Text, i, prevEnd, tok.Offset)
-				}
-
-				checkPos(t, srcStr, tr.Offset, tr.Line, tr.Col, "leading trivia")
-			}
-
-			for _, tr := range tok.Trailing {
-				if tr.Offset < tok.Offset || tr.Offset+len(tr.Text) > len(src) {
-					t.Fatalf("trailing trivia %q of token %d outside the source", tr.Text, i)
-				}
-
-				checkPos(t, srcStr, tr.Offset, tr.Line, tr.Col, "trailing trivia")
-
-				if tr.Line != tok.Line {
-					t.Fatalf("trailing trivia %q of token %d starts on line %d, token is on line %d",
-						tr.Text, i, tr.Line, tok.Line)
-				}
-			}
-
-			if tok.Kind != TokenEOF {
-				prevEnd = tok.Offset + len(tok.Text)
-				for _, tr := range tok.Trailing {
-					prevEnd += len(tr.Text)
-				}
-			}
+			prevEnd = tok.Offset + len(tok.Text)
 		}
 	})
 }

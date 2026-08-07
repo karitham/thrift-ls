@@ -206,7 +206,7 @@ func TestLexPositions(t *testing.T) {
 		{
 			"columns count runes",
 			"// é\nstruct S {}",
-			[]posSpec{{2, 1, 6}, {2, 8, 13}, {2, 10, 15}, {2, 11, 16}, {2, 12, 17}},
+			[]posSpec{{1, 1, 0}, {2, 1, 6}, {2, 8, 13}, {2, 10, 15}, {2, 11, 16}, {2, 12, 17}},
 		},
 		{
 			"crlf line endings",
@@ -245,8 +245,9 @@ func TestLexPositions(t *testing.T) {
 
 type triviaCheck struct {
 	idx              int
-	leading          []string // comment texts, in order
-	trailing         []string
+	text             string // expected text of the stream entry
+	kind             TokenKind
+	sameLine         bool // comments only: shares the previous token's line
 	blankLinesBefore int
 }
 
@@ -257,122 +258,123 @@ func TestLexTrivia(t *testing.T) {
 		checks []triviaCheck
 	}{
 		{
-			"same-line comment is trailing",
+			"same-line comment is a stream token on the token's line",
 			"i32 x // c\ni32 y",
 			[]triviaCheck{
-				{idx: 1, trailing: []string{"// c"}},
+				{idx: 2, text: "// c", kind: TokenLineComment, sameLine: true},
 			},
 		},
 		{
-			"own-line comment is leading",
+			"own-line comment is a stream token on its own line",
 			"// c\ni32 x",
 			[]triviaCheck{
-				{idx: 0, leading: []string{"// c"}},
+				{idx: 0, text: "// c", kind: TokenLineComment, sameLine: false},
 			},
 		},
 		{
-			"comment between tokens on own line is leading of next",
+			"comment between tokens on own line",
 			"i32 x\n// c\ni32 y",
 			[]triviaCheck{
-				{idx: 2, leading: []string{"// c"}},
+				{idx: 2, text: "// c", kind: TokenLineComment, sameLine: false},
 			},
 		},
 		{
-			"block comment on token line is trailing",
+			"block comment on token line",
 			"i32 x /* c */ i32 y",
 			[]triviaCheck{
-				{idx: 1, trailing: []string{"/* c */"}},
+				{idx: 2, text: "/* c */", kind: TokenBlockComment, sameLine: true},
 			},
 		},
 		{
 			"hash comment is a line comment",
 			"i32 x # c\ni32 y",
 			[]triviaCheck{
-				{idx: 1, trailing: []string{"# c"}},
+				{idx: 2, text: "# c", kind: TokenLineComment, sameLine: true},
 			},
 		},
 		{
-			"multiple trailing comments keep order",
+			"multiple same-line comments keep order",
 			"i32 x /* a */ // b\ni32 y",
 			[]triviaCheck{
-				{idx: 1, trailing: []string{"/* a */", "// b"}},
+				{idx: 2, text: "/* a */", kind: TokenBlockComment, sameLine: true},
+				{idx: 3, text: "// b", kind: TokenLineComment, sameLine: true},
 			},
 		},
 		{
-			"annotation is leading trivia of the next declaration",
+			"annotation is a stream token before the declaration",
 			"@naming.PreviouslyKnownAs{'namespace_': 'x'}\nservice Foo {}",
 			[]triviaCheck{
-				{idx: 0, leading: []string{"@naming.PreviouslyKnownAs{'namespace_': 'x'}"}},
+				{idx: 0, text: "@naming.PreviouslyKnownAs{'namespace_': 'x'}", kind: TokenAnnotation, sameLine: false},
 			},
 		},
 		{
-			"annotation inside a struct body attaches to the closing brace",
+			"annotation inside a struct body precedes the closing brace",
 			"struct S {\n  1: string x\n  @weird\n}",
 			[]triviaCheck{
-				{idx: 7, leading: []string{"@weird"}},
+				{idx: 7, text: "@weird", kind: TokenAnnotation, sameLine: false},
 			},
 		},
 		{
 			"doc comment kind",
 			"/** doc */\nstruct S {}",
 			[]triviaCheck{
-				{idx: 0, leading: []string{"/** doc */"}},
+				{idx: 0, text: "/** doc */", kind: TokenDocComment, sameLine: false},
 			},
 		},
 		{
 			"empty doc comment",
 			"/**/\nstruct S {}",
 			[]triviaCheck{
-				{idx: 0, leading: []string{"/**/"}},
+				{idx: 0, text: "/**/", kind: TokenDocComment, sameLine: false},
 			},
 		},
 		{
-			"comments at end of file attach to eof",
+			"comments at end of file precede eof",
 			"i32 x\n// tail",
 			[]triviaCheck{
-				{idx: 2, leading: []string{"// tail"}},
+				{idx: 2, text: "// tail", kind: TokenLineComment, sameLine: false},
 			},
 		},
 		{
-			"trailing comment at end of file attaches to token",
+			"trailing comment at end of file",
 			"i32 x // tail",
 			[]triviaCheck{
-				{idx: 1, trailing: []string{"// tail"}},
+				{idx: 2, text: "// tail", kind: TokenLineComment, sameLine: true},
 			},
 		},
 		{
 			"blank lines counted",
 			"i32 x\n\n\ni32 y",
 			[]triviaCheck{
-				{idx: 2, blankLinesBefore: 2},
+				{idx: 2, text: "i32", kind: TokenI32, blankLinesBefore: 2},
 			},
 		},
 		{
 			"blank line before comment counts",
 			"i32 x\n\n// c\ni32 y",
 			[]triviaCheck{
-				{idx: 2, leading: []string{"// c"}, blankLinesBefore: 1},
+				{idx: 2, text: "// c", kind: TokenLineComment, blankLinesBefore: 1},
 			},
 		},
 		{
-			"blank line after trailing comment counts",
+			"blank line after same-line comment counts",
 			"i32 x // c\n\ni32 y",
 			[]triviaCheck{
-				{idx: 2, blankLinesBefore: 1},
+				{idx: 3, text: "i32", kind: TokenI32, blankLinesBefore: 1},
 			},
 		},
 		{
 			"no blank lines",
 			"i32 x\ni32 y",
 			[]triviaCheck{
-				{idx: 2, blankLinesBefore: 0},
+				{idx: 3, text: "y", kind: TokenIdentifier, blankLinesBefore: 0},
 			},
 		},
 		{
 			"multiline block comment spanning tokens",
 			"i32 x /*\n c\n*/ i32 y",
 			[]triviaCheck{
-				{idx: 1, trailing: []string{"/*\n c\n*/"}},
+				{idx: 2, text: "/*\n c\n*/", kind: TokenBlockComment, sameLine: true},
 			},
 		},
 	}
@@ -390,12 +392,24 @@ func TestLexTrivia(t *testing.T) {
 				}
 
 				tok := toks[check.idx]
-				if got := triviaTexts(tok.Leading); !reflect.DeepEqual(got, check.leading) {
-					t.Errorf("token %d leading: got %v, want %v", check.idx, got, check.leading)
+				if tok.Text != check.text {
+					t.Errorf("token %d text: got %q, want %q", check.idx, tok.Text, check.text)
 				}
 
-				if got := triviaTexts(tok.Trailing); !reflect.DeepEqual(got, check.trailing) {
-					t.Errorf("token %d trailing: got %v, want %v", check.idx, got, check.trailing)
+				if tok.Kind != check.kind {
+					t.Errorf("token %d kind: got %v, want %v", check.idx, tok.Kind, check.kind)
+				}
+
+				if IsComment(tok.Kind) && check.sameLine {
+					prev := check.idx - 1
+					for prev >= 0 && IsComment(toks[prev].Kind) {
+						prev--
+					}
+
+					if prev < 0 || toks[prev].Line != tok.Line {
+						t.Errorf("token %d %q: want same line as token %d, got lines %d and %d",
+							check.idx, tok.Text, prev, tok.Line, lineOf(toks, prev))
+					}
 				}
 
 				if tok.BlankLinesBefore != check.blankLinesBefore {
@@ -406,30 +420,25 @@ func TestLexTrivia(t *testing.T) {
 	}
 }
 
-func triviaTexts(trivia []Trivia) []string {
-	if len(trivia) == 0 {
-		return nil
+func lineOf(toks []Token, idx int) int {
+	if idx < 0 {
+		return -1
 	}
 
-	texts := make([]string, 0, len(trivia))
-	for _, t := range trivia {
-		texts = append(texts, t.Text)
-	}
-
-	return texts
+	return toks[idx].Line
 }
 
 func TestLexTriviaKinds(t *testing.T) {
 	tests := []struct {
 		name string
 		src  string
-		want []TriviaKind
+		want []TokenKind
 	}{
-		{"line", "// a\n# b\n", []TriviaKind{TriviaLineComment, TriviaLineComment}},
-		{"block and doc", "/** d */\n/* b */\n", []TriviaKind{TriviaDocComment, TriviaBlockComment}},
-		{"silly comment is doc", "/***/\n", []TriviaKind{TriviaDocComment}},
-		{"annotation", "@naming.PreviouslyKnownAs{'x': 'y'}\n", []TriviaKind{TriviaAnnotation}},
-		{"annotation with comment", "@deprecation.Deprecated{}\n// note\n", []TriviaKind{TriviaAnnotation, TriviaLineComment}},
+		{"line", "// a\n# b\n", []TokenKind{TokenLineComment, TokenLineComment}},
+		{"block and doc", "/** d */\n/* b */\n", []TokenKind{TokenDocComment, TokenBlockComment}},
+		{"silly comment is doc", "/***/\n", []TokenKind{TokenDocComment}},
+		{"annotation", "@naming.PreviouslyKnownAs{'x': 'y'}\n", []TokenKind{TokenAnnotation}},
+		{"annotation with comment", "@deprecation.Deprecated{}\n// note\n", []TokenKind{TokenAnnotation, TokenLineComment}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -438,14 +447,9 @@ func TestLexTriviaKinds(t *testing.T) {
 				t.Fatalf("unexpected errors: %v", errs)
 			}
 
-			eof := toks[len(toks)-1]
-			if eof.Kind != TokenEOF {
-				t.Fatalf("last token is %v, want eof", eof.Kind)
-			}
-
-			var got []TriviaKind
-			for _, trivia := range eof.Leading {
-				got = append(got, trivia.Kind)
+			var got []TokenKind
+			for _, tok := range toks[:len(toks)-1] {
+				got = append(got, tok.Kind)
 			}
 
 			if !reflect.DeepEqual(got, tt.want) {
@@ -520,13 +524,13 @@ func TestLexErrors(t *testing.T) {
 			name:      "unterminated comment",
 			src:       "/* x",
 			wantErrs:  []string{"unterminated comment"},
-			wantKinds: []TokenKind{TokenEOF},
+			wantKinds: []TokenKind{TokenBlockComment, TokenEOF},
 		},
 		{
 			name:      "unterminated doc comment",
 			src:       "/** x",
 			wantErrs:  []string{"unterminated comment"},
-			wantKinds: []TokenKind{TokenEOF},
+			wantKinds: []TokenKind{TokenBlockComment, TokenEOF},
 		},
 	}
 

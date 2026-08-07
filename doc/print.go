@@ -115,6 +115,23 @@ func (p *printer) write(s string) {
 	p.out = append(p.out, s...)
 }
 
+// lineEnded reports whether the output already ends with a newline
+// (ignoring trailing spaces and tabs, i.e. indentation).
+func (p *printer) lineEnded() bool {
+	for i := len(p.out) - 1; i >= 0; i-- {
+		switch p.out[i] {
+		case ' ', '\t':
+			continue
+		case '\n':
+			return true
+		default:
+			return false
+		}
+	}
+
+	return false
+}
+
 // trim removes trailing spaces and tabs from the output and returns how many
 // columns were removed.
 func (p *printer) trim() int {
@@ -242,6 +259,23 @@ func (p *printer) run(d Doc) (string, error) {
 					p.write(newLine)
 					p.position = 0
 				} else {
+					// A structural soft line right after a line that
+					// already ended (a line comment owns its line end)
+					// must not emit another newline — that would be a
+					// blank line — but it must re-apply the structural
+					// indentation: the comment's hard line carried the
+					// inner indent, and the following content belongs at
+					// the structural indent (e.g. a closing bracket after
+					// a comment inside a list). Hard lines always render
+					// (consecutive hard lines are blank lines).
+					if !v.Hard && p.lineEnded() {
+						p.trim()
+						p.write(cmd.indentation.value)
+						p.position = cmd.indentation.length
+
+						break
+					}
+
 					p.trim()
 					p.write(newLine + cmd.indentation.value)
 					p.position = cmd.indentation.length

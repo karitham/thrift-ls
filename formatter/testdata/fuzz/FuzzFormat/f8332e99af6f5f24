@@ -1,0 +1,2 @@
+go test fuzz v1
+string("const A0 A=[000#\n,]")

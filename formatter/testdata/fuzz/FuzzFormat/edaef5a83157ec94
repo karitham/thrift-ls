@@ -1,0 +1,2 @@
+go test fuzz v1
+string("const list<A>A=[00\n,#\n0]")

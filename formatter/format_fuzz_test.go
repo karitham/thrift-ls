@@ -164,13 +164,11 @@ func commentTexts(src string) []string {
 	var texts []string
 
 	for _, tok := range toks {
-		for _, tr := range tok.Leading {
-			texts = append(texts, strings.TrimRight(tr.Text, " \t"))
+		if !syntax.IsComment(tok.Kind) {
+			continue
 		}
 
-		for _, tr := range tok.Trailing {
-			texts = append(texts, strings.TrimRight(tr.Text, " \t"))
-		}
+		texts = append(texts, strings.TrimRight(tok.Text, " \t"))
 	}
 
 	return texts

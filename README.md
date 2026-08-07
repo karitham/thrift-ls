@@ -117,7 +117,7 @@ Formatting flags:
 | `--printWidth`         | Target line width (default 80)                                                                     |
 | `--indent`             | Indentation: a literal like `"  "` or `"\t"` |
 | `--align`              | `field`, `assign`, or `disable`                                                                    |
-| `--<construct>-separator` | Separators per construct (`struct`, `union`, `exception`, `enum`, `argument`, `throws`): `comma`, `semicolon`, `none`, or `preserve` (keep as written) |
+| `--<construct>-separator` | Separators per construct (`struct`, `union`, `exception`, `enum`, `argument`, `throws`, `list`, `map`): `comma`, `semicolon`, `none`, or `preserve` (keep as written) |
 | `--break-<construct>`  | Always break the construct's bodies onto multiple lines (same constructs)                          |
 | `--config`             | Path to a `thriftls.json` config file                                                              |
 | `-I`                   | Additional include path, like the thrift compiler's `-I` (repeatable)                              |
@@ -230,13 +230,17 @@ the file being formatted or the workspace root (like Biome). Set the
     "exceptions": "semicolon",
     "enums": "comma",
     "arguments": "comma",
-    "throws": "comma"
+    "throws": "comma",
+    "lists": "comma",
+    "maps": "comma"
   },
   "break": {
     "structs": true,
     "unions": true,
     "exceptions": true,
-    "enums": true
+    "enums": true,
+    "lists": true,
+    "maps": true
   },
   "includePaths": ["/path/to/base"],
   "logLevel": 3
@@ -274,14 +278,17 @@ width, comments, and blank lines.
 
 Controls trailing separators per construct, independently. The
 `separators` object has one key per construct: `structs`, `unions`,
-`exceptions`, `enums`, `arguments` (function arguments), and `throws`
-(throws entries). Each accepts:
+`exceptions`, `enums`, `arguments` (function arguments), `throws`
+(throws entries), `lists` and `maps` (const list and map values). Each
+accepts:
 
 - `comma`: Always add trailing commas
 - `semicolon`: Always add trailing semicolons
 - `none`: Remove trailing separators
 - `preserve`: Keep as written (default)
 
+For `lists` and `maps`, the separator appears between the items and after
+the last item; `none` removes them entirely (`[1, 2]` becomes `[1 2]`).
 For example, semicolons in structs and commas in enums:
 
 ```json
@@ -309,7 +316,7 @@ whose separators are inconsistently present looks broken.
 Forces layouts that would otherwise collapse to one line to stay
 multiline, regardless of the source's trailing delimiters. Like
 `separators`, the `break` object has one key per construct: `structs`,
-`unions`, `exceptions`, `enums`, `arguments`, `throws`.
+`unions`, `exceptions`, `enums`, `arguments`, `throws`, `lists`, `maps`.
 
 All default to `false`.
 

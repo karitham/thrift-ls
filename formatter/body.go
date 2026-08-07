@@ -13,13 +13,9 @@ func (f *formatter) structLike(v *syntax.Struct) doc.Doc {
 	close := f.scanKind(open+1, v.TokEnd(), syntax.TokenRBrace)
 
 	parts := []doc.Doc{
-		f.emitTokens(v.TokStart(), open, emitOpts{skipText: []int{open}, breakSkip: true}),
+		f.emitTokens(v.TokStart(), open, emitOpts{skipText: []int{open}}),
 		f.bracedBody(v.Fields, open, close, close != v.TokEnd(), f.constructOf(v.Kind)),
 	}
-	if v.Annotations != nil {
-		parts = append(parts, f.breakBeforeAnnotations(close))
-	}
-
 	parts = append(parts, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
 	parts = append(parts, f.afterAnnotations(v.Annotations, v.TokEnd()))
 
@@ -32,13 +28,9 @@ func (f *formatter) enum(v *syntax.Enum) doc.Doc {
 	close := f.scanKind(open+1, v.TokEnd(), syntax.TokenRBrace)
 
 	parts := []doc.Doc{
-		f.emitTokens(v.TokStart(), open, emitOpts{skipText: []int{open}, breakSkip: true}),
+		f.emitTokens(v.TokStart(), open, emitOpts{skipText: []int{open}}),
 		f.bracedEnumBody(v.Values, open, close, close != v.TokEnd()),
 	}
-	if v.Annotations != nil {
-		parts = append(parts, f.breakBeforeAnnotations(close))
-	}
-
 	parts = append(parts, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
 	parts = append(parts, f.afterAnnotations(v.Annotations, v.TokEnd()))
 
@@ -78,15 +70,19 @@ func (f *formatter) constructOf(kind syntax.StructKind) Construct {
 func (f *formatter) bracedBody(fields []*syntax.Field, open, close int, closeTrailing bool, c Construct) doc.Doc {
 	bodyID := f.id()
 	sepMode := f.opts.Separator.Get(c)
-	inner := append([]doc.Doc{doc.Line, f.fieldList(fields, bodyID, sepMode)}, f.closingTriviaAt(close)...)
+	inner := append([]doc.Doc{doc.Line, f.fieldList(fields, bodyID, sepMode)}, f.ownLineComments(close)...)
 	closeBreak := doc.IfBreak(doc.SoftLine, doc.Text(" "))
 
 	if len(fields) == 0 {
-		inner = append([]doc.Doc{}, f.closingTriviaAt(close)...)
+		inner = append([]doc.Doc{}, f.ownLineComments(close)...)
 		closeBreak = doc.IfBreak(doc.SoftLine, doc.Concat{})
 	}
 
-	openDoc := append([]doc.Doc{doc.Text(" {")}, f.openTriviaAt(open)...)
+	openComments := f.sameLineComments(open)
+	openDoc := append([]doc.Doc{doc.Text(" {")}, openComments...)
+	if len(openComments) > 0 {
+		openDoc = append(openDoc, doc.BreakParent)
+	}
 
 	content := doc.Concat{
 		doc.Concat(openDoc),
@@ -105,15 +101,19 @@ func (f *formatter) bracedBody(fields []*syntax.Field, open, close int, closeTra
 // bracedEnumBody is bracedBody for enum values.
 func (f *formatter) bracedEnumBody(values []*syntax.EnumValue, open, close int, closeTrailing bool) doc.Doc {
 	bodyID := f.id()
-	inner := append([]doc.Doc{doc.Line, f.enumValueList(values, bodyID)}, f.closingTriviaAt(close)...)
+	inner := append([]doc.Doc{doc.Line, f.enumValueList(values, bodyID)}, f.ownLineComments(close)...)
 	closeBreak := doc.IfBreak(doc.SoftLine, doc.Text(" "))
 
 	if len(values) == 0 {
-		inner = append([]doc.Doc{}, f.closingTriviaAt(close)...)
+		inner = append([]doc.Doc{}, f.ownLineComments(close)...)
 		closeBreak = doc.IfBreak(doc.SoftLine, doc.Concat{})
 	}
 
-	openDoc := append([]doc.Doc{doc.Text(" {")}, f.openTriviaAt(open)...)
+	openComments := f.sameLineComments(open)
+	openDoc := append([]doc.Doc{doc.Text(" {")}, openComments...)
+	if len(openComments) > 0 {
+		openDoc = append(openDoc, doc.BreakParent)
+	}
 
 	content := doc.Concat{
 		doc.Concat(openDoc),
@@ -128,51 +128,6 @@ func (f *formatter) bracedEnumBody(values []*syntax.EnumValue, open, close int, 
 	return doc.GroupID(bodyID, content)
 }
 
-// closingTriviaAt returns the comments attached before the closing token,
-// as docs each ending with a hard line. The leading hard line forces the
-// body to break so the comments stay inside; the caller's closing line
-// provides the newline after the last one.
-func (f *formatter) closingTriviaAt(close int) []doc.Doc {
-	tok := f.token(close)
-
-	parts := make([]doc.Doc, 0, 8)
-	if len(tok.Leading) > 0 {
-		parts = append(parts, doc.HardLine)
-
-		prevBlank := 0
-		for i, c := range tok.Leading {
-			parts = append(parts, f.blankLineDocs(c.BlankLinesBefore-prevBlank, doc.HardLine)...)
-			prevBlank = c.BlankLinesBefore
-
-			parts = append(parts, doc.Text(trimComment(c.Text)))
-			if i < len(tok.Leading)-1 {
-				parts = append(parts, doc.HardLine)
-			}
-		}
-	}
-
-	return parts
-}
-
-// openTriviaAt returns the trailing comments of the opening token as
-// line-suffix docs, plus a break parent so the body goes multiline. Empty
-// when there are none.
-func (f *formatter) openTriviaAt(open int) []doc.Doc {
-	tok := f.token(open)
-
-	parts := make([]doc.Doc, 0, 8)
-
-	if len(tok.Trailing) > 0 {
-		for _, c := range tok.Trailing {
-			parts = append(parts, doc.LineSuffix(doc.Text(" "+trimComment(c.Text))))
-		}
-
-		parts = append(parts, doc.BreakParent)
-	}
-
-	return parts
-}
-
 // service formats a service declaration. The body is always multiline:
 // functions are too complex to flatten.
 func (f *formatter) service(v *syntax.Service) doc.Doc {
@@ -183,47 +138,89 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 
 	for i, fn := range v.Functions {
 		if i > 0 {
-			parts = append(parts, doc.HardLineNoBreak)
-			parts = append(parts, f.blankLines(fn, doc.HardLineNoBreak)...)
+			// The separator line collapses when the previous function
+			// ended with a line comment (which owns its line end).
+			parts = append(parts, doc.Line)
+			parts = append(parts, f.blankLines(fn, doc.HardLine)...)
 		} else {
-			parts = append(parts, f.blankLines(fn, doc.HardLineNoBreak)...)
+			parts = append(parts, f.blankLines(fn, doc.HardLine)...)
 		}
 
 		parts = append(parts, f.function(fn))
 	}
 
-	inner := doc.Concat{doc.Concat(parts), doc.Concat(f.closingTriviaAt(close))}
+	inner := doc.Concat{doc.Concat(parts), doc.Concat(f.ownLineComments(close))}
 	if len(v.Functions) > 0 {
 		// The first function starts its own line; the closing trivia
 		// provides the break before it for empty bodies, so the blank
 		// count does not double.
-		inner = doc.Concat{doc.HardLineNoBreak, doc.Concat(parts), doc.Concat(f.closingTriviaAt(close))}
-	} else if len(f.token(close).Leading) == 0 && f.token(close).BlankLinesBefore > 0 {
+		inner = doc.Concat{doc.Line, doc.Concat(parts), doc.Concat(f.ownLineComments(close))}
+	} else if !f.hasOwnLineComments(close) && f.token(close).BlankLinesBefore > 0 {
 		// Empty body with blank lines before the close and no comments:
-		// closingTriviaAt emits nothing, so preserve the blanks here.
-		inner = doc.Concat{doc.Concat(f.blankLineDocs(f.token(close).BlankLinesBefore, doc.HardLineNoBreak)), inner}
+		// ownLineComments emits nothing, so preserve the blanks here.
+		inner = doc.Concat{doc.Concat(f.blankLineDocs(f.token(close).BlankLinesBefore, doc.HardLine)), inner}
 	}
 
-	openDoc := append([]doc.Doc{doc.Text(" {")}, f.openTriviaAt(open)...)
+	openComments := f.sameLineComments(open)
+	openDoc := append([]doc.Doc{doc.Text(" {")}, openComments...)
+	if len(openComments) > 0 {
+		openDoc = append(openDoc, doc.BreakParent)
+	}
+
+	// The line before the close collapses when the body already ended with
+	// a line comment (which owns its line end); it stays hard otherwise, so
+	// a blank line before the close still renders.
+	lastFn := -1
+	if len(v.Functions) > 0 {
+		lastFn = v.Functions[len(v.Functions)-1].TokEnd()
+	}
+
+	preClose := doc.HardLine
+	if f.endsWithLineComment(open, close, lastFn) {
+		preClose = doc.Line
+	}
+
 	body := doc.Concat{
 		doc.Concat(openDoc),
 		doc.Indent(inner),
-		doc.HardLineNoBreak,
+		preClose,
 		f.emitTokens(close, close, emitOpts{trailing: close != v.TokEnd()}),
 	}
 
 	out := []doc.Doc{
-		f.emitTokens(v.TokStart(), open, emitOpts{skipText: []int{open}, breakSkip: true}),
+		f.emitTokens(v.TokStart(), open, emitOpts{skipText: []int{open}}),
 		body,
 	}
-	if v.Annotations != nil {
-		out = append(out, f.breakBeforeAnnotations(close))
-	}
-
 	out = append(out, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
-	out = append(out, f.afterAnnotations(v.Annotations, v.TokEnd()))
 
 	return doc.Concat(out)
+}
+
+// endsWithLineComment reports whether the emission before the closing token
+// ends with a line comment, which owns its line end: the last function's
+// same-line comments, the open brace's same-line comments (empty body), or
+// the final comment in the gap before the close. The closing line must then
+// collapse instead of leaving a blank.
+func (f *formatter) endsWithLineComment(open, close, lastIdx int) bool {
+	if lastIdx >= 0 && f.sameLineEndsLine(lastIdx) {
+		return true
+	}
+
+	if lastIdx < 0 && f.sameLineEndsLine(open) {
+		return true
+	}
+
+	prev := f.prevReal(close - 1)
+	if c := close - 1; c > prev {
+		ct := f.token(c)
+		if ct.Line == f.token(prev).Line {
+			return lineComment(ct.Kind)
+		}
+
+		return true // own-line comment: always ends with a hard line
+	}
+
+	return false
 }
 
 // function formats a service method. The signature escalates via nested
@@ -233,8 +230,8 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 // trailing delimiter in throws never break the arguments, because the
 // throws clause is a sibling group, not an ancestor.
 func (f *formatter) function(v *syntax.Function) doc.Doc {
-	parts := append(f.leadingComments(v), f.functionBody(v))
-	parts = append(parts, f.trailingComments(v, true)...)
+	parts := append(f.ownLineComments(v.TokStart()), f.functionBody(v))
+	parts = append(parts, f.sameLineComments(v.TokEnd())...)
 
 	return doc.Concat(parts)
 }
@@ -242,10 +239,10 @@ func (f *formatter) function(v *syntax.Function) doc.Doc {
 func (f *formatter) functionBody(v *syntax.Function) doc.Doc {
 	// The header (up to the args open paren) renders as a token run, so
 	// comments between the header tokens are preserved by construction.
-	// The open paren's text is emitted by the args group; its trailing
-	// trivia belongs to openTrivia.
+	// The open paren's text is emitted by the args group; its same-line
+	// comments belong to that group too.
 	open := f.scanKind(v.TokStart(), v.TokEnd(), syntax.TokenLParen)
-	header := f.emitTokens(v.TokStart(), open, emitOpts{skipText: []int{open}, breakSkip: true})
+	header := f.emitTokens(v.TokStart(), open, emitOpts{skipText: []int{open}})
 
 	// Comments or blank lines in the arguments force the multiline layout:
 	// the flat argument group would drop them.
@@ -256,7 +253,7 @@ func (f *formatter) functionBody(v *syntax.Function) doc.Doc {
 
 	// The argument group folds to "(a, b)" when it fits and unfolds to one
 	// field per line otherwise, like the throws clause.
-	args := f.parenGroup(v.Args, open, parenClose(v.Args, open), false, argsMode)
+	args := f.parenGroup(v.Args, open, f.parenClose(v.Args, open), false, argsMode)
 
 	if v.Throws == nil {
 		return doc.Group(doc.Concat{
@@ -276,17 +273,20 @@ func (f *formatter) functionBody(v *syntax.Function) doc.Doc {
 
 // parenGroup renders "(fields)" as its own group, folding independently:
 // flat when it fits, one field per line otherwise. open and close are the
-// paren token indices, whose trivia is preserved. forced requires the
-// broken layout (comments, blank lines, or a trailing delimiter inside).
+// paren token indices. forced requires the broken layout (comments, blank
+// lines, or a trailing delimiter inside).
 func (f *formatter) parenGroup(fields []*syntax.Field, open, close int, forced bool, sepMode SeparatorMode) doc.Doc {
 	broken := f.brokenParens(fields, open, close, sepMode)
 	if forced {
 		broken = doc.Concat{broken, doc.BreakParent}
 	}
 
+	flat := append([]doc.Doc{doc.Text("(")}, f.sameLineComments(open)...)
+	flat = append(flat, f.flatFieldsJoin(fields, sepMode), doc.Text(")"))
+
 	return doc.Group(doc.IfBreak(
 		broken,
-		doc.Concat{doc.Text("("), f.flatFieldsJoin(fields, sepMode), doc.Text(")")},
+		doc.Concat(flat),
 	))
 }
 
@@ -300,12 +300,12 @@ func (f *formatter) throwsGroup(v *syntax.Function) doc.Doc {
 
 // parenClose returns the close paren index matching the open paren at
 // open, given the field list it encloses.
-func parenClose(fields []*syntax.Field, open int) int {
+func (f *formatter) parenClose(fields []*syntax.Field, open int) int {
 	if len(fields) == 0 {
-		return open + 1
+		return f.nextReal(open + 1)
 	}
 
-	return fields[len(fields)-1].TokEnd() + 1
+	return f.nextReal(fields[len(fields)-1].TokEnd() + 1)
 }
 
 // sepForcesBreak reports whether the source's separators force the broken
@@ -375,7 +375,7 @@ func (f *formatter) functionBrokenArgs(v *syntax.Function, header doc.Doc) doc.D
 
 	parts := []doc.Doc{
 		header,
-		f.parenGroup(v.Args, open, parenClose(v.Args, open), true, f.opts.Separator.Get(ConstructArguments)),
+		f.parenGroup(v.Args, open, f.parenClose(v.Args, open), true, f.opts.Separator.Get(ConstructArguments)),
 	}
 	if v.Throws != nil {
 		parts = append(parts, f.throwsGroup(v))
@@ -387,15 +387,15 @@ func (f *formatter) functionBrokenArgs(v *syntax.Function, header doc.Doc) doc.D
 }
 
 // functionTail renders the tokens of the function after its args and
-// throws clauses: the trailing trivia of the close parens, the
+// throws clauses: the same-line comments of the close parens, the
 // annotations, and any stray tokens lenient sources leave — everything the
 // structural layout does not emit itself. open is the args open paren.
 func (f *formatter) functionTail(v *syntax.Function, open int) doc.Doc {
 	parts := make([]doc.Doc, 0, 8)
 
-	argsClose := parenClose(v.Args, open)
+	argsClose := f.parenClose(v.Args, open)
 	if argsClose < v.TokEnd() {
-		parts = append(parts, f.tailAfter(argsClose)...)
+		parts = append(parts, f.sameLineComments(argsClose)...)
 	}
 
 	idx := argsClose + 1
@@ -403,7 +403,7 @@ func (f *formatter) functionTail(v *syntax.Function, open int) doc.Doc {
 	if v.Throws != nil {
 		throwsClose := v.Throws.TokEnd()
 		if throwsClose < v.TokEnd() {
-			parts = append(parts, f.tailAfter(throwsClose)...)
+			parts = append(parts, f.sameLineComments(throwsClose)...)
 		}
 
 		idx = throwsClose + 1
@@ -411,7 +411,7 @@ func (f *formatter) functionTail(v *syntax.Function, open int) doc.Doc {
 
 	if v.Annotations != nil {
 		if idx < v.Annotations.TokStart() {
-			parts = append(parts, f.emitTokens(idx, v.Annotations.TokStart()-1, emitOpts{leading: true}))
+			parts = append(parts, f.emitTokens(idx, f.prevReal(v.Annotations.TokStart()-1), emitOpts{leading: true}))
 		}
 
 		parts = append(parts, f.annotationsDoc(v.Annotations, v.Annotations.TokEnd() == v.TokEnd()))
@@ -419,32 +419,10 @@ func (f *formatter) functionTail(v *syntax.Function, open int) doc.Doc {
 	}
 
 	if idx <= v.TokEnd() {
-		// A line comment on the previous token (e.g. the annotations'
-		// close paren) would swallow the stray tokens.
-		if f.lineAfter(idx-1) || len(f.token(idx).Leading) > 0 {
-			parts = append(parts, doc.HardLine)
-		}
-
-		parts = append(parts, f.emitTokens(idx, v.TokEnd(), emitOpts{leading: true}))
+		parts = append(parts, f.emitTokens(f.nextReal(idx), v.TokEnd(), emitOpts{leading: true}))
 	}
 
 	return doc.Concat(parts)
-}
-
-// tailAfter renders the trailing trivia of a close paren followed by more
-// tokens: the comments inline, with a hard line after line comments so
-// nothing is swallowed.
-func (f *formatter) tailAfter(idx int) []doc.Doc {
-	parts := []doc.Doc{}
-	for _, c := range f.token(idx).Trailing {
-		parts = append(parts, doc.Text(" "+trimComment(c.Text)))
-	}
-
-	if f.lineAfter(idx) || len(f.token(idx+1).Leading) > 0 {
-		parts = append(parts, doc.HardLine)
-	}
-
-	return parts
 }
 
 // brokenFields renders fields one per line, each with its trailing
@@ -455,19 +433,15 @@ func (f *formatter) brokenFields(fields []*syntax.Field, sepMode SeparatorMode) 
 
 	for i, field := range fields {
 		if i > 0 {
-			parts = append(parts, doc.HardLineNoBreak)
-			parts = append(parts, f.blankLines(field, doc.HardLineNoBreak)...)
+			// The separator line collapses when the previous field ended
+			// with a line comment (which owns its line end).
+			parts = append(parts, doc.Line)
+			parts = append(parts, f.blankLines(field, doc.HardLine)...)
 		} else {
-			parts = append(parts, f.blankLines(field, doc.HardLineNoBreak)...)
+			parts = append(parts, f.blankLines(field, doc.HardLine)...)
 		}
 
-		content := doc.Concat{
-			f.fieldContent(field, f.alignmentFor(fields, i, sepMode), true, sepMode),
-			trailingSep(field.Sep, sepMode),
-		}
-		fieldDoc := append(f.leadingComments(field), content)
-		fieldDoc = append(fieldDoc, f.trailingComments(field, sepEmits(field.Sep, sepMode))...)
-		parts = append(parts, doc.Concat(fieldDoc))
+		parts = append(parts, f.fieldDoc(field, f.alignmentFor(fields, i, sepMode), 0, sepMode))
 	}
 
 	return doc.Concat(parts)
@@ -475,24 +449,19 @@ func (f *formatter) brokenFields(fields []*syntax.Field, sepMode SeparatorMode) 
 
 // brokenParens renders "open, fields, close" one field per line, or just
 // "openclose" when there are no fields. open and close are the paren token
-// indices; their trivia is preserved even with no fields.
+// indices; their comments are preserved even with no fields.
 func (f *formatter) brokenParens(fields []*syntax.Field, open, close int, sepMode SeparatorMode) doc.Doc {
 	if len(fields) == 0 {
-		closeDoc := f.emitTokens(close, close, emitOpts{leading: true})
-		if f.lineAfter(open) || len(f.token(close).Leading) > 0 {
-			closeDoc = doc.Concat{doc.HardLine, closeDoc}
-		}
-
 		return doc.Concat{
 			doc.Text("("),
-			doc.Concat(f.openTriviaAt(open)),
-			closeDoc,
+			doc.Concat(f.sameLineComments(open)),
+			f.emitTokens(close, close, emitOpts{leading: true}),
 		}
 	}
 
-	inner := append([]doc.Doc{doc.HardLineNoBreak, f.brokenFields(fields, sepMode)}, f.closingTriviaAt(close)...)
-	parts := append([]doc.Doc{doc.Text("(")}, f.openTriviaAt(open)...)
-	parts = append(parts, doc.Indent(doc.Concat(inner)), doc.HardLineNoBreak, doc.Text(")"))
+	inner := append([]doc.Doc{doc.Line, f.brokenFields(fields, sepMode)}, f.ownLineComments(close)...)
+	parts := append([]doc.Doc{doc.Text("(")}, f.sameLineComments(open)...)
+	parts = append(parts, doc.Indent(doc.Concat(inner)), doc.Line, doc.Text(")"))
 
 	return doc.Concat(parts)
 }
@@ -505,12 +474,12 @@ func (f *formatter) fieldsForcedBroken(fields []*syntax.Field) bool {
 	}
 	// Comments on the opening or closing paren would be lost in the flat
 	// layout.
-	if len(f.token(fields[0].TokStart()-1).Trailing) > 0 {
+	if f.hasSameLineComments(f.prevReal(fields[0].TokStart() - 1)) {
 		return true
 	}
 
-	close := f.token(fields[len(fields)-1].TokEnd() + 1)
-	if len(close.Leading) > 0 {
+	close := f.nextReal(fields[len(fields)-1].TokEnd() + 1)
+	if f.hasOwnLineComments(close) {
 		return true
 	}
 
@@ -519,7 +488,7 @@ func (f *formatter) fieldsForcedBroken(fields []*syntax.Field) bool {
 			return true
 		}
 
-		if len(f.token(field.TokStart()).Leading) > 0 || len(f.token(field.TokEnd()).Trailing) > 0 {
+		if f.hasOwnLineComments(field.TokStart()) || f.hasSameLineComments(field.TokEnd()) {
 			return true
 		}
 	}
@@ -528,11 +497,11 @@ func (f *formatter) fieldsForcedBroken(fields []*syntax.Field) bool {
 }
 
 // blankLines returns count hard-line docs for the blank lines before a
-// node's first token. When the node carries leading comments the blank
-// lines belong to that run and leadingComments emits them; returning nil
+// node's first token. When the node carries own-line comments the blank
+// lines belong to that run and ownLineComments emits them; returning nil
 // here keeps them from being printed twice.
 func (f *formatter) blankLines(n syntax.Node, line doc.Doc) []doc.Doc {
-	if len(f.token(n.TokStart()).Leading) > 0 {
+	if f.hasOwnLineComments(n.TokStart()) {
 		return nil
 	}
 

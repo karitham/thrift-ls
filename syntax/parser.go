@@ -34,15 +34,30 @@ type parser struct {
 
 // --- token helpers ---------------------------------------------------------
 
-func (p *parser) cur() Token { return p.toks[p.pos] }
+// nextReal returns the index of the next non-comment token at or after i.
+func (p *parser) nextReal(i int) int {
+	for i < len(p.toks) && IsComment(p.toks[i].Kind) {
+		i++
+	}
+
+	return i
+}
+
+func (p *parser) cur() Token { return p.toks[p.nextReal(p.pos)] }
 
 func (p *parser) at(k TokenKind) bool { return p.cur().Kind == k }
 
 func (p *parser) advance() *Token {
-	t := &p.toks[p.pos]
-	p.pos++
+	i := p.nextReal(p.pos)
+	t := &p.toks[i]
+	p.pos = i + 1
 
 	return t
+}
+
+// peekAfter returns the kind of the real token after the token at index i.
+func (p *parser) peekAfter(i int) TokenKind {
+	return p.toks[p.nextReal(i+1)].Kind
 }
 
 // accept consumes and returns the current token when its kind matches.
@@ -152,7 +167,7 @@ func (p *parser) parseDocument() *Document {
 // --- headers ---------------------------------------------------------------
 
 func (p *parser) parseInclude() *Include {
-	n := &Include{nodeBase: nodeBase{first: p.pos}}
+	n := &Include{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
 	p.advance() // include
 
 	if !p.at(TokenStringLiteral) {
@@ -172,7 +187,7 @@ func (p *parser) parseInclude() *Include {
 }
 
 func (p *parser) parseCPPInclude() *CPPInclude {
-	n := &CPPInclude{nodeBase: nodeBase{first: p.pos}}
+	n := &CPPInclude{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
 	p.advance() // cpp_include
 
 	if !p.at(TokenStringLiteral) {
@@ -192,7 +207,7 @@ func (p *parser) parseCPPInclude() *CPPInclude {
 }
 
 func (p *parser) parseNamespace() *Namespace {
-	n := &Namespace{nodeBase: nodeBase{first: p.pos}}
+	n := &Namespace{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
 	p.advance() // namespace
 
 	switch {
@@ -221,7 +236,7 @@ func (p *parser) parseNamespace() *Namespace {
 // --- definitions -----------------------------------------------------------
 
 func (p *parser) parseConst() *Const {
-	n := &Const{nodeBase: nodeBase{first: p.pos}}
+	n := &Const{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
 	p.advance() // const
 
 	n.Type = p.parseFieldType()
@@ -261,7 +276,7 @@ func (p *parser) parseConst() *Const {
 }
 
 func (p *parser) parseTypedef() *Typedef {
-	n := &Typedef{nodeBase: nodeBase{first: p.pos}}
+	n := &Typedef{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
 	p.advance() // typedef
 
 	n.Type = p.parseFieldType()
@@ -289,7 +304,7 @@ func (p *parser) parseTypedef() *Typedef {
 }
 
 func (p *parser) parseEnum() *Enum {
-	n := &Enum{nodeBase: nodeBase{first: p.pos}}
+	n := &Enum{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
 	p.advance() // enum
 
 	n.Name = p.expectIdentifier("enum name")
@@ -333,7 +348,7 @@ func (p *parser) parseEnumValue() *EnumValue {
 		return nil
 	}
 
-	v := &EnumValue{nodeBase: nodeBase{first: p.pos}}
+	v := &EnumValue{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
 
 	v.Name = p.identifier()
 	if p.at(TokenEqual) {
@@ -357,7 +372,7 @@ func (p *parser) parseEnumValue() *EnumValue {
 }
 
 func (p *parser) parseStruct() *Struct {
-	n := &Struct{nodeBase: nodeBase{first: p.pos}, Kind: StructKind(p.cur().Kind)}
+	n := &Struct{nodeBase: nodeBase{first: p.nextReal(p.pos)}, Kind: StructKind(p.cur().Kind)}
 	p.advance() // struct | union | exception
 
 	n.Name = p.expectIdentifier("struct name")
@@ -385,7 +400,7 @@ func (p *parser) parseStruct() *Struct {
 }
 
 func (p *parser) parseService() *Service {
-	n := &Service{nodeBase: nodeBase{first: p.pos}}
+	n := &Service{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
 	p.advance() // service
 
 	n.Name = p.expectIdentifier("service name")
@@ -436,7 +451,7 @@ func (p *parser) parseService() *Service {
 }
 
 func (p *parser) parseFunction() *Function {
-	f := &Function{nodeBase: nodeBase{first: p.pos}}
+	f := &Function{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
 
 	switch p.cur().Kind {
 	case TokenOneway:
@@ -534,9 +549,9 @@ func (p *parser) parseFieldList(term TokenKind) []*Field {
 }
 
 func (p *parser) parseField() (*Field, bool) {
-	f := &Field{nodeBase: nodeBase{first: p.pos}}
+	f := &Field{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
 
-	if p.at(TokenIntConstant) && p.toks[p.pos+1].Kind == TokenColon {
+	if p.at(TokenIntConstant) && p.peekAfter(p.nextReal(p.pos)) == TokenColon {
 		f.FieldID = p.advance()
 		if !p.expect(TokenColon, "':' after field id") {
 			p.synchronizeTo(TokenComma, TokenSemicolon, TokenRBrace, TokenRParen)
@@ -598,7 +613,7 @@ func (p *parser) parseField() (*Field, bool) {
 // --- types -----------------------------------------------------------------
 
 func (p *parser) parseFieldType() *FieldType {
-	t := &FieldType{nodeBase: nodeBase{first: p.pos}}
+	t := &FieldType{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
 
 	switch p.cur().Kind {
 	case TokenMap, TokenList, TokenSet:
@@ -709,7 +724,7 @@ func isBaseType(k TokenKind) bool {
 // --- constant values -------------------------------------------------------
 
 func (p *parser) parseConstValue() *ConstValue {
-	v := &ConstValue{nodeBase: nodeBase{first: p.pos}}
+	v := &ConstValue{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
 
 	switch p.cur().Kind {
 	case TokenIntConstant, TokenTrue, TokenFalse:
@@ -831,7 +846,7 @@ func (p *parser) parseAnnotationsIfPresent() *Annotations {
 // literal (a bare name means an implicit value of "1"), and each may end
 // with an optional ',' or ';'.
 func (p *parser) parseAnnotations() *Annotations {
-	a := &Annotations{nodeBase: nodeBase{first: p.pos}}
+	a := &Annotations{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
 	p.advance() // (
 
 	for !p.at(TokenRParen) && !p.at(TokenEOF) {
@@ -846,7 +861,7 @@ func (p *parser) parseAnnotations() *Annotations {
 			continue
 		}
 
-		item := &Annotation{nodeBase: nodeBase{first: p.pos}}
+		item := &Annotation{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
 
 		item.Name = p.identifier()
 		if p.at(TokenEqual) {
@@ -894,7 +909,7 @@ func (p *parser) acceptSeparator() TokenKind {
 }
 
 func (p *parser) identifier() *Identifier {
-	i := p.pos
+	i := p.nextReal(p.pos)
 	t := p.advance()
 
 	return &Identifier{nodeBase: nodeBase{first: i, last: i}, Text: t.Text}

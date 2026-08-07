@@ -80,23 +80,51 @@ func (f *formatter) enumValueList(values []*syntax.EnumValue, bodyID int) doc.Do
 }
 
 // groupedWith reports whether the node joins the alignment group of the
-// item before it: no blank line and no comment sits between them. A
-// comment in the gap is a visual break, like whitespace. A comment
-// trailing the previous item's separator only breaks the group when the
-// separator is suppressed: the comment then moves to its own line and
-// re-attaches, so the group must not depend on it.
+// item before it: no blank line and no own-line comment sits between them.
+// A comment renders on its own line when its line differs from the
+// previous content's line — a visual break, like whitespace. Same-line
+// comments stay on the item's line and do not break the group.
 func (f *formatter) groupedWith(prev, cur syntax.Node, sepMode SeparatorMode) bool {
-	// A comment trailing the previous item's separator only breaks the
-	// group when the separator is suppressed and the comment moves to its
-	// own line (re-attaching): the group must not depend on it. Comments
-	// that stay on the separator's line do not break the group.
-	prevTok := f.token(prev.TokEnd())
-	sepBreak := isListSep(prevTok.Kind) && !sepEmits(prevTok.Kind, sepMode) &&
-		(leadingLineComment(prevTok) || len(prevTok.Trailing) > 0 && f.lineAfter(prev.TokEnd()-1))
+	prevEnd := prev.TokEnd()
+	sep := syntax.TokenKind(0)
+	if isListSep(f.token(prevEnd).Kind) {
+		// The previous item's separator: comments before it belong to
+		// the item's own span, so the scan starts at the content end.
+		sep = f.token(prevEnd).Kind
+		prevEnd = f.prevReal(prevEnd - 1)
+	}
 
 	return f.blankBefore(cur) < 1 &&
-		len(f.token(cur.TokStart()).Leading) == 0 &&
-		!sepBreak
+		!f.commentBreaksGroup(prevEnd, cur.TokStart(), sep, sepMode)
+}
+
+// commentBreaksGroup reports whether a comment between the real tokens at
+// prevEnd and curStart renders on its own line — a visual break between
+// the items. A comment renders inline when it shares the previous
+// content's line, or when it follows the previous item's separator on the
+// separator's line and the separator text is emitted; everything else
+// starts its own line.
+func (f *formatter) commentBreaksGroup(prevEnd, curStart int, sep syntax.TokenKind, sepMode SeparatorMode) bool {
+	line := f.token(prevEnd).Line
+
+	for c := prevEnd + 1; c < curStart; c++ {
+		ct := f.token(c)
+		if !isComment(ct.Kind) {
+			continue
+		}
+
+		if ct.Line == line {
+			continue // inline with the content
+		}
+
+		if sep != 0 && sepEmits(sep, sepMode) && ct.Line == f.token(f.nextReal(prevEnd+1)).Line {
+			continue // inline after the emitted separator
+		}
+
+		return true
+	}
+
+	return false
 }
 
 // alignmentFor returns the column alignment for field i, or nil when
@@ -298,10 +326,46 @@ func computeEnumAlign(values []*syntax.EnumValue) *columnAlign {
 	return a
 }
 
-// field assembles a struct-like body field: leading comments, content, and
-// trailing comments. When the body breaks (referenced by bodyID), the
-// content switches to its column-aligned form with the trailing separator.
-func (f *formatter) field(v *syntax.Field, align *columnAlign, bodyID int, sepMode SeparatorMode) doc.Doc {
+// nameOnlyComment reports whether a comment follows the name of a
+// name-only value (no content tokens) on the same source line, directly
+// or after the separator: with the separator text dropped it renders
+// against the name pad.
+func (f *formatter) nameOnlyComment(name int) bool {
+	for c := name + 1; c < len(f.toks); c++ {
+		ct := f.token(c)
+		if isComment(ct.Kind) {
+			return ct.Line == f.token(name).Line
+		}
+
+		if ct.Line != f.token(name).Line {
+			return false
+		}
+	}
+
+	return false
+}
+
+// nodeTrailingInline reports whether the same-line comments after the
+// node's last token (its separator, when present) render inline after it:
+// the token's text was emitted, or — for a dropped separator — the
+// comments share the previous content's line. Otherwise the comments start
+// their own line and are emitted by the next item's leading comments.
+func (f *formatter) nodeTrailingInline(end int, sep syntax.TokenKind, sepMode SeparatorMode) bool {
+	if sep == 0 || sepEmits(sep, sepMode) {
+		return true
+	}
+
+	prev := f.prevReal(end - 1)
+
+	return prev >= 0 && f.token(prev).Line == f.token(end).Line
+}
+
+// fieldDoc assembles a field with its comments: own-line comments, the
+// content, and the same-line comments at the item boundary. With a
+// non-zero bodyID the content switches between the flat and column-aligned
+// forms on the body group's break state; with bodyID zero the broken form
+// renders directly (paren bodies are always broken).
+func (f *formatter) fieldDoc(v *syntax.Field, align *columnAlign, bodyID int, sepMode SeparatorMode) doc.Doc {
 	content := f.fieldContent(v, align, false, sepMode)
 	if bodyID != 0 {
 		content = doc.IfBreakFor(
@@ -309,12 +373,24 @@ func (f *formatter) field(v *syntax.Field, align *columnAlign, bodyID int, sepMo
 			content,
 			bodyID,
 		)
+	} else {
+		content = doc.Concat{f.fieldContent(v, align, true, sepMode), trailingSep(v.Sep, sepMode)}
 	}
 
-	parts := append(f.leadingComments(v), content)
-	parts = append(parts, f.trailingComments(v, sepEmits(v.Sep, sepMode))...)
+	parts := append(f.ownLineComments(v.TokStart()), content)
+	if f.nodeTrailingInline(v.TokEnd(), v.Sep, sepMode) {
+		parts = append(parts, f.sameLineComments(v.TokEnd())...)
+	} else {
+		parts = append(parts, f.suppressedSepComments(v.TokEnd())...)
+	}
 
 	return doc.Concat(parts)
+}
+
+// field assembles a struct-like body field, switching on the body group's
+// break state.
+func (f *formatter) field(v *syntax.Field, align *columnAlign, bodyID int, sepMode SeparatorMode) doc.Doc {
+	return f.fieldDoc(v, align, bodyID, sepMode)
 }
 
 // emitWithAnnotations renders a token run split at the node's annotations,
@@ -323,19 +399,15 @@ func (f *formatter) emitWithAnnotations(start, end int, ann *syntax.Annotations,
 	if ann == nil {
 		return f.emitTokens(start, end, o)
 	}
-	// The segment before the annotations owns its last token's trailing
-	// trivia (the annotations' close owns the node's trailing instead).
+	// The segment before the annotations owns its last token's same-line
+	// comments (the annotations' close owns the node's trailing instead).
 	first := o
 	first.trailing = true
 
 	parts := []doc.Doc{f.emitTokens(start, ann.TokStart()-1, first)}
-	if f.lineAfter(ann.TokStart()-1) || len(f.token(ann.TokStart()).Leading) > 0 {
-		parts = append(parts, doc.HardLine)
-	}
-
 	parts = append(parts, f.annotationsDoc(ann, ann.TokEnd() == end))
 	if ann.TokEnd() < end {
-		parts = append(parts, f.emitTokens(ann.TokEnd()+1, end, o))
+		parts = append(parts, f.emitTokens(f.nextReal(ann.TokEnd()+1), end, emitOpts{leading: true, skipText: o.skipText}))
 	}
 
 	return doc.Concat(parts)
@@ -344,14 +416,13 @@ func (f *formatter) emitWithAnnotations(start, end int, ann *syntax.Annotations,
 // fieldContent renders the field as a token run. padded selects the
 // column-aligned form used when the enclosing body breaks; it has no
 // effect when align is nil. The separator token's text is suppressed (the
-// caller emits it), but its trivia is preserved.
+// caller emits it), but its comments are preserved.
 func (f *formatter) fieldContent(v *syntax.Field, align *columnAlign, padded bool, sepMode SeparatorMode) doc.Doc {
 	padded = padded && align != nil
 
-	o := emitOpts{breakTrailing: true}
+	o := emitOpts{}
 	if v.Sep != 0 {
 		o.skipText = []int{v.TokEnd()}
-		o.breakSkip = sepEmits(v.Sep, sepMode)
 	}
 
 	if padded {
@@ -371,14 +442,13 @@ func (f *formatter) fieldPads(v *syntax.Field, a *columnAlign) ([]padEntry, stri
 		end--
 	}
 
-	for i := start + 1; i <= end; i++ {
-		if len(f.token(i).Leading) > 0 {
-			return nil, ""
-		}
-	}
-
-	for i := start; i < end; i++ {
-		if len(f.token(i).Trailing) > 0 {
+	// A comment inside the field — a comment token in the span, or a
+	// same-line comment after any token before the last — makes the padded
+	// widths unknowable. The last content token's same-line comments render
+	// after the pads and are fine.
+	contentEnd := f.prevReal(end)
+	for i := start; i < contentEnd; i++ {
+		if isComment(f.token(i).Kind) || f.hasSameLineComments(i) {
 			return nil, ""
 		}
 	}
@@ -429,8 +499,12 @@ func (f *formatter) enumValue(v *syntax.EnumValue, align *columnAlign, bodyID in
 		)
 	}
 
-	parts := append(f.leadingComments(v), content)
-	parts = append(parts, f.trailingComments(v, sepEmits(v.Sep, f.opts.Separator.Get(ConstructEnum)))...)
+	parts := append(f.ownLineComments(v.TokStart()), content)
+	if f.nodeTrailingInline(v.TokEnd(), v.Sep, f.opts.Separator.Get(ConstructEnum)) {
+		parts = append(parts, f.sameLineComments(v.TokEnd())...)
+	} else {
+		parts = append(parts, f.suppressedSepComments(v.TokEnd())...)
+	}
 
 	return doc.Concat(parts)
 }
@@ -438,14 +512,40 @@ func (f *formatter) enumValue(v *syntax.EnumValue, align *columnAlign, bodyID in
 func (f *formatter) enumValueContent(v *syntax.EnumValue, align *columnAlign, padded bool, sepMode SeparatorMode) doc.Doc {
 	padded = padded && align != nil
 
-	o := emitOpts{breakTrailing: true}
+	o := emitOpts{}
 	if v.Sep != 0 {
 		o.skipText = []int{v.TokEnd()}
-		o.breakSkip = sepEmits(v.Sep, sepMode)
 	}
 
 	if padded && align.enumAssign && align.nameWidth > 0 {
-		o.pads = []padEntry{{v.Name.TokStart(), padRight("", align.nameWidth-len(v.Name.Text))}}
+		// A comment after the name (or anywhere before the value's end)
+		// makes the pad ambiguous; the value's own same-line comments
+		// render after the pads and are fine.
+		contentEnd := v.TokEnd()
+		if v.Sep != 0 {
+			contentEnd = f.prevReal(v.TokEnd() - 1)
+		}
+
+		clean := true
+
+		// A comment between the name and the value's end renders against
+		// the pad.
+		for i := v.TokStart() + 1; i <= contentEnd && clean; i++ {
+			if isComment(f.token(i).Kind) {
+				clean = false
+			}
+		}
+
+		// A name-only value renders a same-line comment (directly or
+		// after its separator) against the pad when no separator text
+		// separates them.
+		if clean && contentEnd == v.TokStart() && !sepEmits(v.Sep, sepMode) && f.nameOnlyComment(v.TokStart()) {
+			clean = false
+		}
+
+		if clean {
+			o.pads = []padEntry{{v.Name.TokStart(), padRight("", align.nameWidth-len(v.Name.Text))}}
+		}
 	}
 
 	return f.emitWithAnnotations(v.TokStart(), v.TokEnd(), v.Annotations, o)

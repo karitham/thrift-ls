@@ -1314,3 +1314,96 @@ func TestFormatPreserveSeparators(t *testing.T) {
 		})
 	}
 }
+
+// TestFormatConstsOptions exercises the per-construct separator and break
+// options for list and map constants.
+func TestFormatConstsOptions(t *testing.T) {
+	opts := func(mut func(*Options)) Options {
+		o := testOpts(80)
+		mut(&o)
+
+		return o
+	}
+
+	tests := []struct {
+		name string
+		src  string
+		opts Options
+		want string
+	}{
+		{
+			name: "lists forced comma with break",
+			src:  "const list<A> a = [1, 2]",
+			opts: opts(func(o *Options) {
+				o.Separator.Set(ConstructList, SeparatorComma)
+				o.Break.Set(ConstructList, true)
+			}),
+			want: "const list<A> a = [\n  1,\n  2,\n]\n",
+		},
+		{
+			name: "lists forced semicolon flat",
+			src:  "const list<A> a = [1, 2]",
+			opts: opts(func(o *Options) {
+				o.Separator.Set(ConstructList, SeparatorSemicolon)
+			}),
+			want: "const list<A> a = [1; 2; ]\n",
+		},
+		{
+			name: "lists none drops separators",
+			src:  "const list<A> a = [1, 2]",
+			opts: opts(func(o *Options) {
+				o.Separator.Set(ConstructList, SeparatorNone)
+			}),
+			want: "const list<A> a = [1 2]\n",
+		},
+		{
+			name: "maps forced comma with break",
+			src:  "const map<string, A> m = {\"a\": 1, \"b\": 2}",
+			opts: opts(func(o *Options) {
+				o.Separator.Set(ConstructMap, SeparatorComma)
+				o.Break.Set(ConstructMap, true)
+			}),
+			want: "const map<string, A> m = {\n  \"a\": 1,\n  \"b\": 2,\n}\n",
+		},
+		{
+			name: "trailing separator never leaves a blank before the close",
+			src:  "const list<A> a = [\n  1,\n  2,\n]",
+			opts: opts(func(o *Options) {
+				o.Separator.Set(ConstructList, SeparatorComma)
+				o.Break.Set(ConstructList, true)
+			}),
+			want: "const list<A> a = [\n  1,\n  2,\n]\n",
+		},
+		{
+			name: "line comment after trailing separator owns its line end",
+			src:  "const list<A> a = [1; #0\n]",
+			opts: opts(func(o *Options) {
+				o.Separator.Set(ConstructList, SeparatorPreserve)
+				o.Break.Set(ConstructList, true)
+			}),
+			want: "const list<A> a = [\n  1; #0\n]\n",
+		},
+		{
+			name: "suppressed separator keeps the comment inline",
+			src:  "const list<A> a = [1, // c\n2]",
+			opts: opts(func(o *Options) {
+				o.Separator.Set(ConstructList, SeparatorNone)
+			}),
+			want: "const list<A> a = [\n  1 // c\n  2\n]\n",
+		},
+		{
+			name: "nested containers stay flat with a comment at the item boundary",
+			src:  "const list<A> a = [[0]#\n]",
+			opts: opts(func(o *Options) {
+				o.Separator.Set(ConstructList, SeparatorNone)
+			}),
+			want: "const list<A> a = [\n  [0] #\n]\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCase(t, tt.src, tt.opts, tt.want)
+		})
+	}
+}

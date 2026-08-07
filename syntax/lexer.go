@@ -4,10 +4,10 @@
 // Grammar reference: the Apache Thrift compiler
 // (compiler/cpp/src/thrift/thriftl.ll and thrifty.yy).
 //
-// Losslessness: comments are preserved as trivia attached to tokens in
+// Losslessness: comments are first-class tokens in the token stream, in
 // source order. Whitespace itself is not preserved; instead each token
-// records how many blank lines preceded it, which is the only layout
-// information a formatter is allowed to act on.
+// (comments included) records how many blank lines preceded it, which is
+// the only layout information a formatter is allowed to act on.
 package syntax
 
 import (
@@ -78,6 +78,13 @@ const (
 	TokenEqual
 	TokenStar
 	TokenAmp
+
+	// Comment trivia. A line comment or annotation consumes the rest of
+	// its source line, so whatever follows always starts a fresh line.
+	TokenLineComment
+	TokenBlockComment
+	TokenDocComment
+	TokenAnnotation
 )
 
 var keywordKinds = map[string]TokenKind{
@@ -141,6 +148,8 @@ var tokenKindNames = map[TokenKind]string{
 	TokenLBracket: "[", TokenRBracket: "]", TokenLt: "<", TokenGt: ">",
 	TokenComma: ",", TokenSemicolon: ";", TokenColon: ":", TokenEqual: "=",
 	TokenStar: "*", TokenAmp: "&",
+	TokenLineComment: "line comment", TokenBlockComment: "block comment",
+	TokenDocComment: "doc comment", TokenAnnotation: "annotation",
 }
 
 func (k TokenKind) String() string {
@@ -155,47 +164,7 @@ func (k TokenKind) String() string {
 	return fmt.Sprintf("TokenKind(%d)", uint8(k))
 }
 
-// TriviaKind identifies the kind of a comment trivia.
-type TriviaKind uint8
-
-const (
-	TriviaLineComment  TriviaKind = iota // // or #
-	TriviaBlockComment                   // /* */
-	TriviaDocComment                     // /** */
-	TriviaAnnotation                     // @name{...} to end of line
-)
-
-func (k TriviaKind) String() string {
-	switch k {
-	case TriviaLineComment:
-		return "line comment"
-	case TriviaBlockComment:
-		return "block comment"
-	case TriviaDocComment:
-		return "doc comment"
-	case TriviaAnnotation:
-		return "annotation"
-	}
-
-	return fmt.Sprintf("TriviaKind(%d)", uint8(k))
-}
-
-// Trivia is a comment preserved in source order. It is attached to a Token
-// either as leading (before the token) or trailing (after the previous token
-// on the same line).
-type Trivia struct {
-	Kind   TriviaKind
-	Text   string // exact source text, including comment delimiters
-	Offset int    // byte offset of the first character
-	Line   int    // 1-based line of the first character
-	Col    int    // 1-based rune column of the first character
-
-	// BlankLinesBefore is the number of empty lines between the previous
-	// token (or trivia) and this one, within the enclosing gap.
-	BlankLinesBefore int
-}
-
-// Token is a single lexical token with its attached comment trivia.
+// Token is a single lexical token, comments included.
 type Token struct {
 	Kind TokenKind
 	Text string // exact source text
@@ -204,15 +173,21 @@ type Token struct {
 	Line   int // 1-based line of the first character
 	Col    int // 1-based rune column of the first character
 
-	// Leading holds comments that appear between the previous token and
-	// this one, on their own lines.
-	Leading []Trivia
-	// Trailing holds comments that appear after this token on the same
-	// line.
-	Trailing []Trivia
 	// BlankLinesBefore is the number of empty lines between the previous
-	// token and this one (0 means no blank line).
+	// stream entry (token or comment) and this one.
 	BlankLinesBefore int
+}
+
+// IsComment reports whether the token kind is a comment trivia token. The
+// parser skips comment tokens when matching the grammar, so they only
+// appear between real tokens in the stream.
+func IsComment(k TokenKind) bool {
+	switch k {
+	case TokenLineComment, TokenBlockComment, TokenDocComment, TokenAnnotation:
+		return true
+	}
+
+	return false
 }
 
 // Severity classifies a syntax error or warning.
@@ -266,21 +241,12 @@ func (l *lexer) run() ([]Token, []Error) {
 	tokens := make([]Token, 0, len(l.src)/6+8)
 
 	for {
-		prevLine := -1
-		if n := len(tokens); n > 0 {
-			prevLine = tokens[n-1].Line
-		}
-
-		leading, trailing, blankLines := l.scanTrivia(prevLine)
+		blankLines, comments := l.scanTrivia()
+		tokens = append(tokens, comments...)
 
 		tok := l.scanToken()
-		tok.Leading = leading
 		tok.BlankLinesBefore = blankLines
 		tokens = append(tokens, tok)
-
-		if len(tokens) > 1 {
-			tokens[len(tokens)-2].Trailing = trailing
-		}
 
 		if tok.Kind == TokenEOF {
 			return tokens, l.errs
@@ -288,41 +254,44 @@ func (l *lexer) run() ([]Token, []Error) {
 	}
 }
 
-// scanTrivia consumes whitespace and comments between the previous token and
-// the next one. Comments starting on the previous token's line become its
-// trailing trivia; everything else becomes leading trivia of the next token.
-// The returned blankLines count empty lines in the gap.
-func (l *lexer) scanTrivia(prevLine int) (leading, trailing []Trivia, blankLines int) {
+// scanTrivia consumes whitespace and comments between the previous stream
+// entry and the next real token. Comments are returned as tokens in source
+// order with their own blank-line counts; the returned blankLines count the
+// empty lines immediately before the next real token.
+func (l *lexer) scanTrivia() (blankLines int, comments []Token) {
 	for l.off < len(l.src) {
 		switch c := l.src[l.off]; {
 		case isWhitespace(c):
 			blankLines += l.scanWhitespace()
 		case c == '/' && l.peekByte(1) == '/':
-			leading, trailing = l.appendComment(leading, trailing, prevLine, blankLines, l.scanLineComment())
+			t := l.scanLineComment()
+			t.BlankLinesBefore = blankLines
+			blankLines = 0
+			comments = append(comments, t)
 		case c == '/' && l.peekByte(1) == '*':
-			leading, trailing = l.appendComment(leading, trailing, prevLine, blankLines, l.scanBlockComment())
+			t := l.scanBlockComment()
+			t.BlankLinesBefore = blankLines
+			blankLines = 0
+			comments = append(comments, t)
 		case c == '#':
-			leading, trailing = l.appendComment(leading, trailing, prevLine, blankLines, l.scanLineComment())
+			t := l.scanLineComment()
+			t.BlankLinesBefore = blankLines
+			blankLines = 0
+			comments = append(comments, t)
 		case c == '@':
 			// Java-style annotations (@name{...}) are preserved as trivia,
 			// like comments, so they round-trip without being part of the
 			// grammar.
-			leading, trailing = l.appendComment(leading, trailing, prevLine, blankLines, l.scanLineAnnotation())
+			t := l.scanLineAnnotation()
+			t.BlankLinesBefore = blankLines
+			blankLines = 0
+			comments = append(comments, t)
 		default:
-			return leading, trailing, blankLines
+			return blankLines, comments
 		}
 	}
 
-	return leading, trailing, blankLines
-}
-
-func (l *lexer) appendComment(leading, trailing []Trivia, prevLine, blankLines int, t Trivia) ([]Trivia, []Trivia) {
-	t.BlankLinesBefore = blankLines
-	if t.Line == prevLine {
-		return leading, append(trailing, t)
-	}
-
-	return append(leading, t), trailing
+	return blankLines, comments
 }
 
 // scanWhitespace consumes a whitespace run and returns the number of empty
@@ -362,31 +331,31 @@ func (l *lexer) scanWhitespace() int {
 	return 0
 }
 
-func (l *lexer) scanLineComment() Trivia {
+func (l *lexer) scanLineComment() Token {
 	start := l.pos()
 	for l.off < len(l.src) && l.src[l.off] != '\n' && l.src[l.off] != '\r' {
 		l.advanceRune()
 	}
 
-	return l.finishTrivia(TriviaLineComment, start)
+	return l.finishTrivia(TokenLineComment, start)
 }
 
 // scanLineAnnotation scans an @annotation line: from '@' to the end of the
 // line, verbatim. Like line comments, the newline itself is left for the
 // whitespace scanner.
-func (l *lexer) scanLineAnnotation() Trivia {
+func (l *lexer) scanLineAnnotation() Token {
 	start := l.pos()
 	for l.off < len(l.src) && l.src[l.off] != '\n' && l.src[l.off] != '\r' {
 		l.advanceRune()
 	}
 
-	return l.finishTrivia(TriviaAnnotation, start)
+	return l.finishTrivia(TokenAnnotation, start)
 }
 
 // scanBlockComment scans a /* */ or /** */ comment. /** ... */ yields a doc
-// comment trivia; everything else a block comment trivia. An unterminated
+// comment token; everything else a block comment token. An unterminated
 // comment consumes the rest of the input and reports an error.
-func (l *lexer) scanBlockComment() Trivia {
+func (l *lexer) scanBlockComment() Token {
 	start := l.pos()
 	doc := l.peekByte(2) == '*'
 	l.advanceByte() // /
@@ -403,9 +372,9 @@ func (l *lexer) scanBlockComment() Trivia {
 			l.advanceByte()
 			l.advanceByte()
 
-			kind := TriviaBlockComment
+			kind := TokenBlockComment
 			if doc {
-				kind = TriviaDocComment
+				kind = TokenDocComment
 			}
 
 			return l.finishTrivia(kind, start)
@@ -414,21 +383,21 @@ func (l *lexer) scanBlockComment() Trivia {
 		if doc && l.off == start.offset+3 && l.src[l.off] == '/' {
 			l.advanceByte()
 
-			return l.finishTrivia(TriviaDocComment, start)
+			return l.finishTrivia(TokenDocComment, start)
 		}
 
 		l.advanceRune()
 	}
 
-	return l.finishTrivia(TriviaBlockComment, start)
+	return l.finishTrivia(TokenBlockComment, start)
 }
 
 func (l *lexer) pos() srcPos {
 	return srcPos{l.off, l.line, l.col}
 }
 
-func (l *lexer) finishTrivia(kind TriviaKind, start srcPos) Trivia {
-	return Trivia{Kind: kind, Text: l.src[start.offset:l.off], Offset: start.offset, Line: start.line, Col: start.col}
+func (l *lexer) finishTrivia(kind TokenKind, start srcPos) Token {
+	return Token{Kind: kind, Text: l.src[start.offset:l.off], Offset: start.offset, Line: start.line, Col: start.col}
 }
 
 // scanToken scans the next real token, skipping over invalid characters with

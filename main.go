@@ -103,6 +103,8 @@ var constructFlags = []struct {
 	{"enum", formatter.ConstructEnum},
 	{"argument", formatter.ConstructArguments},
 	{"throws", formatter.ConstructThrows},
+	{"list", formatter.ConstructList},
+	{"map", formatter.ConstructMap},
 }
 
 // formatFlags are the flags of the format subcommand.
