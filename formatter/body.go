@@ -79,6 +79,7 @@ func (f *formatter) bracedBody(fields []*syntax.Field, open, close int, closeTra
 	}
 
 	openComments := f.sameLineComments(open)
+
 	openDoc := append([]doc.Doc{f.Text(" {")}, openComments...)
 	if len(openComments) > 0 {
 		openDoc = append(openDoc, doc.BreakParent)
@@ -113,6 +114,7 @@ func (f *formatter) bracedEnumBody(values []*syntax.EnumValue, open, close int, 
 	}
 
 	openComments := f.sameLineComments(open)
+
 	openDoc := append([]doc.Doc{f.Text(" {")}, openComments...)
 	if len(openComments) > 0 {
 		openDoc = append(openDoc, doc.BreakParent)
@@ -158,6 +160,7 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 	p := f.Parts(2)
 	p = append(p, f.Concat(parts...))
 	p = append(p, f.Concat(f.ownLineComments(close)...))
+
 	inner := f.Concat(p...)
 	if len(v.Functions) > 0 {
 		// The first function starts its own line; the closing trivia
@@ -174,6 +177,7 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 	}
 
 	openComments := f.sameLineComments(open)
+
 	openDoc := append([]doc.Doc{f.Text(" {")}, openComments...)
 	if len(openComments) > 0 {
 		openDoc = append(openDoc, doc.BreakParent)
@@ -276,6 +280,7 @@ func (f *formatter) throwsGroup(v *syntax.Function) doc.Doc {
 	p := f.Parts(2)
 	p = append(p, f.Text(" throws "))
 	p = append(p, f.parenGroup(v.Throws.Fields, v.Throws.TokStart(), v.Throws.TokEnd(), forced, f.opts.Separator.Get(ConstructThrows)))
+
 	return f.Concat(p...)
 }
 

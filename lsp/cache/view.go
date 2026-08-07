@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"math/rand"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 
@@ -117,7 +117,7 @@ func (v *View) KnownFiles() []uri.URI {
 		files = append(files, file)
 	}
 
-	sort.Slice(files, func(i, j int) bool { return files[i] < files[j] })
+	slices.Sort(files)
 
 	return files
 }
@@ -154,7 +154,8 @@ func (v *View) FileChange(ctx context.Context, changes []*FileChange, postFns ..
 	for _, change := range changes {
 		uris = append(uris, change.URI)
 	}
-	sort.Slice(uris, func(i, j int) bool { return uris[i] < uris[j] })
+
+	slices.Sort(uris)
 
 	for _, uri := range uris {
 		if _, err := v.snapshot.Parse(ctx, uri); err != nil {

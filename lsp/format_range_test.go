@@ -91,6 +91,7 @@ func TestBlockDiffApplyAll(t *testing.T) {
 	edits := blockDiff([]byte(old), []byte(new))
 
 	var sb strings.Builder
+
 	prev := 0
 	for _, e := range edits {
 		require.GreaterOrEqual(t, e.start, prev, "edits must be ordered and non-overlapping")
@@ -98,6 +99,7 @@ func TestBlockDiffApplyAll(t *testing.T) {
 		sb.WriteString(e.text)
 		prev = e.end
 	}
+
 	sb.WriteString(old[prev:])
 
 	assert.Equal(t, new, sb.String())

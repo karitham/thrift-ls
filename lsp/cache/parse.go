@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"sync"
 
 	"go.lsp.dev/uri"
@@ -72,9 +73,7 @@ func (c *ParseCaches) copyOnWrite() {
 	}
 
 	caches := make(map[uri.URI]*ParsedFile, len(c.caches)+1)
-	for k, v := range c.caches {
-		caches[k] = v
-	}
+	maps.Copy(caches, c.caches)
 
 	c.caches = caches
 	c.shared = false

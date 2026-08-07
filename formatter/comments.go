@@ -61,6 +61,7 @@ func (f *formatter) ownLineComment(c, prev int, first bool) []doc.Doc {
 // the line.
 func (f *formatter) sameLineComment(ct syntax.Token) ([]doc.Doc, bool) {
 	parts := f.Parts(2)
+
 	parts = append(parts, f.Text(" "), f.Text(trimComment(ct.Text)))
 	if lineComment(ct.Kind) {
 		return append(parts, doc.CommentLine), true
@@ -183,6 +184,7 @@ func (f *formatter) hasOwnLineComments(idx int) bool {
 // comments after it.
 func (f *formatter) hasSameLineComments(idx int) bool {
 	found := false
+
 	f.sameLineRun(idx, func(int) { found = true })
 
 	return found
@@ -192,6 +194,7 @@ func (f *formatter) hasSameLineComments(idx int) bool {
 // a line comment, which owns its line end.
 func (f *formatter) sameLineEndsLine(idx int) bool {
 	ended := false
+
 	f.sameLineRun(idx, func(c int) {
 		if lineComment(f.token(c).Kind) {
 			ended = true

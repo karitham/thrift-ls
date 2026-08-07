@@ -106,6 +106,7 @@ func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cm
 
 	// Shared pipeline: prefix filter, dedupe, sort, cap.
 	filtered := candidates[:0]
+
 	seen := make(map[string]struct{}, len(candidates))
 	for _, cand := range candidates {
 		// Echo suppression: a candidate identical to the typed text adds
@@ -123,6 +124,7 @@ func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cm
 		if _, ok := seen[cand.showText]; ok {
 			continue
 		}
+
 		seen[cand.showText] = struct{}{}
 
 		filtered = append(filtered, cand)

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 
@@ -166,14 +167,10 @@ func (m *FilesMap) copyOnWrite() {
 	}
 
 	files := make(map[uri.URI]FileHandle, len(m.files)+1)
-	for k, v := range m.files {
-		files[k] = v
-	}
+	maps.Copy(files, m.files)
 
 	overlays := make(map[uri.URI]*Overlay, len(m.overlays)+1)
-	for k, v := range m.overlays {
-		overlays[k] = v
-	}
+	maps.Copy(overlays, m.overlays)
 
 	m.files = files
 	m.overlays = overlays

@@ -83,6 +83,7 @@ func FuzzFormatRangeText(f *testing.F) {
 
 		// Applying every edit reproduces the whole-document formatting.
 		var sb strings.Builder
+
 		prev = 0
 
 		for _, e := range edits {

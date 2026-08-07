@@ -10,11 +10,13 @@ var benchSrc = func() []byte {
 	if err != nil {
 		panic(err)
 	}
+
 	return b
 }()
 
 func BenchmarkParse(b *testing.B) {
 	b.ReportAllocs()
+
 	for i := 0; i < b.N; i++ {
 		_, _ = Parse(benchSrc)
 	}
@@ -22,6 +24,7 @@ func BenchmarkParse(b *testing.B) {
 
 func BenchmarkLex(b *testing.B) {
 	b.ReportAllocs()
+
 	for i := 0; i < b.N; i++ {
 		_, _ = Lex(benchSrc)
 	}

@@ -21,6 +21,7 @@ type decodedToken struct {
 // coordinates.
 func decode(data []uint32) []decodedToken {
 	var out []decodedToken
+
 	line, char := uint32(0), uint32(0)
 
 	for i := 0; i+4 < len(data); i += 5 {
@@ -189,6 +190,7 @@ exception BayFull {
 	got := semanticTokens(t, src)
 
 	var union, exception decodedToken
+
 	found := 0
 
 	for _, tok := range got {

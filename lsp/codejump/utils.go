@@ -53,6 +53,7 @@ func definitionFiles(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast 
 
 	visit = func(f uri.URI) {
 		doc := ast
+
 		if f != file {
 			pf, err := ss.Parse(ctx, f)
 			if err != nil || pf.AST() == nil {

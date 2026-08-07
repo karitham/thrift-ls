@@ -11,6 +11,7 @@ package formatter
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -335,27 +336,21 @@ type padEntry struct {
 
 // containsInt reports whether xs contains v.
 func containsInt(xs []int, v int) bool {
-	for _, x := range xs {
-		if x == v {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(xs, v)
 }
 
 // padAt returns the combined pads for the token index, or "". Multiple
 // entries at the same index (id pad + requiredness column) concatenate.
 func padAt(pads []padEntry, idx int) string {
-	var out string
+	var out strings.Builder
 
 	for _, p := range pads {
 		if p.idx == idx {
-			out += p.text
+			out.WriteString(p.text)
 		}
 	}
 
-	return out
+	return out.String()
 }
 
 // prevReal returns the index of the previous real (non-comment) token
@@ -415,6 +410,7 @@ func (f *formatter) emitTokens(start, end int, o emitOpts) doc.Doc {
 			// caller emits itself (braces, field separators) gets no
 			// canonical gap — the caller's own spacing provides it.
 			comments, lineEnded := f.commentsRun(prev, i)
+
 			parts = append(parts, comments...)
 			if !lineEnded && (!skipped || o.text != "") {
 				parts = append(parts, f.tokenGap(prev, i))
@@ -648,6 +644,7 @@ func (f *formatter) constant(v *syntax.Const) doc.Doc {
 	// Own-line comments before the value render at the value boundary,
 	// outside the value's own group.
 	parts = append(parts, f.ownLineComments(value.TokStart())...)
+
 	parts = append(parts, f.constValue(value, value.TokEnd() == v.TokEnd()))
 	if value.TokEnd() < v.TokEnd() {
 		// Same-line comments after the value render at the value

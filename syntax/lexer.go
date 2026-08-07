@@ -267,16 +267,19 @@ func (l *lexer) scanTrivia() (blankLines int, comments []Token) {
 			t := l.scanLineComment()
 			t.BlankLinesBefore = blankLines
 			blankLines = 0
+
 			comments = append(comments, t)
 		case c == '/' && l.peekByte(1) == '*':
 			t := l.scanBlockComment()
 			t.BlankLinesBefore = blankLines
 			blankLines = 0
+
 			comments = append(comments, t)
 		case c == '#':
 			t := l.scanLineComment()
 			t.BlankLinesBefore = blankLines
 			blankLines = 0
+
 			comments = append(comments, t)
 		case c == '@':
 			// Java-style annotations (@name{...}) are preserved as trivia,
@@ -285,6 +288,7 @@ func (l *lexer) scanTrivia() (blankLines int, comments []Token) {
 			t := l.scanLineAnnotation()
 			t.BlankLinesBefore = blankLines
 			blankLines = 0
+
 			comments = append(comments, t)
 		default:
 			return blankLines, comments

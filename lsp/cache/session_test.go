@@ -62,6 +62,7 @@ func TestSessionViews(t *testing.T) {
 			tt.setup(s)
 
 			views := s.Views()
+
 			var got []uri.URI
 			for _, v := range views {
 				got = append(got, v.Folder())
@@ -88,6 +89,7 @@ func TestSessionRemoveViewForgetsMappings(t *testing.T) {
 
 	folder := uri.File("/tmp/a")
 	other := uri.File("/tmp/b")
+
 	s.AddView(folder)
 	s.AddView(other)
 

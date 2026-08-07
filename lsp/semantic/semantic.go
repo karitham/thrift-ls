@@ -178,6 +178,7 @@ func typeReferences(doc *syntax.Document) map[int]bool {
 	types := map[int]bool{}
 
 	var add func(t *syntax.FieldType)
+
 	add = func(t *syntax.FieldType) {
 		if t == nil {
 			return
@@ -197,6 +198,7 @@ func typeReferences(doc *syntax.Document) map[int]bool {
 		case *syntax.Service:
 			for _, fn := range v.Functions {
 				add(fn.Type)
+
 				for _, arg := range fn.Args {
 					add(arg.Type)
 				}

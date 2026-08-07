@@ -64,6 +64,7 @@ struct S {}`,
 			}
 
 			require.Len(t, got, len(tt.want))
+
 			for i, want := range tt.want {
 				assert.Equal(t, want.line, got[i].Range.Start.Line)
 				require.NotNil(t, got[i].Target)

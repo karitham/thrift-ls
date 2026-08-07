@@ -170,6 +170,7 @@ struct C { 1: string x }`,
 			dir := writeTree(t, tt.files)
 
 			session := cache.NewSession(cache.New(nil))
+
 			if tt.nested {
 				// Each top-level directory is a workspace folder.
 				dirs := map[string]bool{}
@@ -239,6 +240,7 @@ typedef string PilotName`,
 	}
 
 	syms := WorkspaceSymbols(t.Context(), session, "", 0)
+
 	byName := make(map[string]protocol.SymbolInformation, len(syms))
 	for _, s := range syms {
 		byName[s.Name] = s
@@ -288,6 +290,7 @@ service Federation {
 	}
 
 	syms := WorkspaceSymbols(t.Context(), session, "", 0)
+
 	byName := make(map[string]protocol.SymbolInformation, len(syms))
 	for _, s := range syms {
 		byName[s.Name] = s
@@ -331,6 +334,7 @@ exception BayFull {
 	openTree(t, session, dir, nil)
 
 	syms := WorkspaceSymbols(t.Context(), session, "", 0)
+
 	byName := make(map[string]protocol.SymbolInformation, len(syms))
 	for _, s := range syms {
 		byName[s.Name] = s

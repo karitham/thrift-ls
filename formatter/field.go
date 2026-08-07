@@ -90,6 +90,7 @@ func (f *formatter) enumValueList(values []*syntax.EnumValue, bodyID int) doc.Do
 // comments stay on the item's line and do not break the group.
 func (f *formatter) groupedWith(prev, cur syntax.Node, sepMode SeparatorMode) bool {
 	prevEnd := prev.TokEnd()
+
 	sep := syntax.TokenKind(0)
 	if isListSep(f.token(prevEnd).Kind) {
 		// The previous item's separator: comments before it belong to
@@ -366,6 +367,7 @@ func (f *formatter) emitWithAnnotations(start, end int, ann *syntax.Annotations,
 
 	parts := f.Parts(3)
 	parts = append(parts, f.emitTokens(start, ann.TokStart()-1, first))
+
 	parts = append(parts, f.annotationsDoc(ann, ann.TokEnd() == end))
 	if ann.TokEnd() < end {
 		parts = append(parts, f.emitTokens(f.nextReal(ann.TokEnd()+1), end, emitOpts{leading: true, skipText: o.skipText}))

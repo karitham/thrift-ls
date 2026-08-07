@@ -136,12 +136,14 @@ func (p *printer) reset(o Options) {
 
 	p.o = o
 	p.position = 0
+
 	p.out = p.out[:0]
 	if p.groupMode == nil {
 		p.groupMode = map[int]mode{}
 	} else {
 		clear(p.groupMode)
 	}
+
 	p.lineSuffix = p.lineSuffix[:0]
 	p.shouldRemeasure = false
 	p.lastLineComment = false
@@ -174,8 +176,8 @@ func (p *printer) write(s string) {
 // lineEnded reports whether the output already ends with a newline
 // (ignoring trailing spaces and tabs, i.e. indentation).
 func (p *printer) lineEnded() bool {
-	for i := len(p.out) - 1; i >= 0; i-- {
-		switch p.out[i] {
+	for _, v := range slices.Backward(p.out) {
+		switch v {
 		case ' ', '\t':
 			continue
 		case '\n':

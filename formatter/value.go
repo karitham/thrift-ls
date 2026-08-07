@@ -89,6 +89,7 @@ func (f *formatter) constItems(items []constItem, open, close int, c Construct, 
 	for i, item := range items {
 		if i > 0 {
 			prevEnd := items[i-1].end
+
 			sepIdx := f.nextReal(prevEnd + 1)
 			if isListSep(f.token(sepIdx).Kind) {
 				middle = append(middle, f.itemSep(sepIdx, sepMode)...)
@@ -162,6 +163,7 @@ func sepForcesBreakList(seps []syntax.TokenKind, mode SeparatorMode) bool {
 // end (HardLine), so the separator lands on the next line by construction.
 func (f *formatter) itemSep(sep int, mode SeparatorMode) []doc.Doc {
 	text := f.token(sep).Text
+
 	switch mode {
 	case SeparatorComma:
 		text = ","
@@ -204,6 +206,7 @@ func (f *formatter) trailingItemSep(last int, mode SeparatorMode) doc.Doc {
 	if hasSep {
 		text = f.token(sep).Text
 	}
+
 	switch mode {
 	case SeparatorComma:
 		text = ","

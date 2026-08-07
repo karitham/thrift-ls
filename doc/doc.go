@@ -105,6 +105,7 @@ func (a *Arena) Reset() {
 // Text returns a doc for literal output, allocated from the arena.
 func (a *Arena) Text(s string) Doc {
 	a.texts = append(a.texts, textNode{s: s})
+
 	return &a.texts[len(a.texts)-1]
 }
 
@@ -113,6 +114,7 @@ func (a *Arena) Text(s string) Doc {
 // be reused by the caller.
 func (a *Arena) Concat(parts ...Doc) Doc {
 	a.concats = append(a.concats, concatNode{parts: parts})
+
 	return &a.concats[len(a.concats)-1]
 }
 
@@ -142,10 +144,7 @@ func (a *Arena) Parts(capacity int) []Doc {
 		// Grow the single region geometrically. The old region stays
 		// reachable from slices handed out earlier, so it must not be
 		// reused; the copy is amortized.
-		n := len(a.parts) * 2
-		if n < a.partsLen+capacity {
-			n = a.partsLen + capacity
-		}
+		n := max(len(a.parts)*2, a.partsLen+capacity)
 
 		grown := make([]Doc, n)
 		copy(grown, a.parts[:a.partsLen])
@@ -161,24 +160,28 @@ func (a *Arena) Parts(capacity int) []Doc {
 // Group wraps d in a group allocated from the arena.
 func (a *Arena) Group(d Doc) Doc {
 	a.groups = append(a.groups, group{doc: d})
+
 	return &a.groups[len(a.groups)-1]
 }
 
 // GroupBreak wraps d in a group that always breaks, from the arena.
 func (a *Arena) GroupBreak(d Doc) Doc {
 	a.groups = append(a.groups, group{doc: d, brk: true})
+
 	return &a.groups[len(a.groups)-1]
 }
 
 // GroupID wraps d in a group with an ID, from the arena.
 func (a *Arena) GroupID(id int, d Doc) Doc {
 	a.groups = append(a.groups, group{doc: d, id: id})
+
 	return &a.groups[len(a.groups)-1]
 }
 
 // ConditionalGroup tries each state in order, from the arena.
 func (a *Arena) ConditionalGroup(id int, states ...Doc) Doc {
 	a.groups = append(a.groups, group{doc: states[0], id: id, expanded: states})
+
 	return &a.groups[len(a.groups)-1]
 }
 
@@ -186,6 +189,7 @@ func (a *Arena) ConditionalGroup(id int, states ...Doc) Doc {
 // arena.
 func (a *Arena) IfBreak(broken, flat Doc) Doc {
 	a.ifs = append(a.ifs, ifBreak{breakDoc: broken, flatDoc: flat})
+
 	return &a.ifs[len(a.ifs)-1]
 }
 
@@ -193,6 +197,7 @@ func (a *Arena) IfBreak(broken, flat Doc) Doc {
 // from the arena.
 func (a *Arena) IfBreakFor(broken, flat Doc, groupID int) Doc {
 	a.ifs = append(a.ifs, ifBreak{breakDoc: broken, flatDoc: flat, groupID: groupID})
+
 	return &a.ifs[len(a.ifs)-1]
 }
 
@@ -200,12 +205,14 @@ func (a *Arena) IfBreakFor(broken, flat Doc, groupID int) Doc {
 // the arena.
 func (a *Arena) Indent(d Doc) Doc {
 	a.indents = append(a.indents, indent{doc: d})
+
 	return &a.indents[len(a.indents)-1]
 }
 
 // Align indents its contents by n columns, from the arena.
 func (a *Arena) Align(n int, d Doc) Doc {
 	a.aligns = append(a.aligns, align{n: n, doc: d})
+
 	return &a.aligns[len(a.aligns)-1]
 }
 
@@ -213,6 +220,7 @@ func (a *Arena) Align(n int, d Doc) Doc {
 // the arena.
 func (a *Arena) LineSuffix(d Doc) Doc {
 	a.suffixes = append(a.suffixes, lineSuffix{doc: d})
+
 	return &a.suffixes[len(a.suffixes)-1]
 }
 

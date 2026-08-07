@@ -65,7 +65,7 @@ func TestSnapshotCloneIsolation(t *testing.T) {
 // files is O(1): the maps are shared copy-on-write.
 func BenchmarkSnapshotClone(b *testing.B) {
 	files := make([]*FileChange, 0, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		files = append(files, &FileChange{
 			URI:     uri.URI(fmt.Sprintf("file:///tmp/bench%d.thrift", i)),
 			Content: []byte("struct Gundam {\n\t1: required string Name\n}"),
@@ -76,6 +76,7 @@ func BenchmarkSnapshotClone(b *testing.B) {
 	ss := BuildSnapshotForTest(files)
 
 	b.ResetTimer()
+
 	for i := 0; i < b.N; i++ {
 		_, release := ss.clone()
 		release()
