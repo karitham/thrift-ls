@@ -169,7 +169,7 @@ func initializeResult() *protocol.InitializeResult {
 					WorkDoneProgress: new(true),
 				},
 			},
-			DocumentHighlightProvider: protocol.Boolean(false),
+			DocumentHighlightProvider: protocol.Boolean(true),
 			DocumentSymbolProvider: &protocol.DocumentSymbolOptions{
 				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
 					WorkDoneProgress: new(true),
@@ -186,8 +186,7 @@ func initializeResult() *protocol.InitializeResult {
 			},
 			DocumentLinkProvider: &protocol.DocumentLinkOptions{
 				ResolveProvider: new(false),
-			},
-			ColorProvider:        protocol.Boolean(false),
+			}, ColorProvider: protocol.Boolean(false),
 			FoldingRangeProvider: protocol.Boolean(true),
 			WorkspaceSymbolProvider: &protocol.WorkspaceSymbolOptions{
 				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{

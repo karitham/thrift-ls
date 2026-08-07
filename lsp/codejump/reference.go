@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 
 	"go.lsp.dev/protocol"
@@ -25,45 +26,84 @@ var validReferenceDefinitionType = map[DefinitionKind]struct{}{
 // Reference returns the locations of all references to the definition under
 // the cursor: type definitions, constant values, enum values, and services.
 func Reference(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) (res []protocol.Location, err error) {
-	res = make([]protocol.Location, 0)
-
 	pf, target, err := resolveTarget(ctx, ss, file, pos)
 	if err != nil {
-		return res, err
+		return nil, err
 	}
 
+	refs, err := searchReferences(ctx, ss, file, pf, target)
+	if err != nil {
+		return nil, err
+	}
+
+	return hits(refs), nil
+}
+
+// Highlight returns the references of the identifier at pos within the
+// same file, for document highlighting. The identifier itself is always
+// included, so the cursor word stays highlighted.
+func Highlight(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) ([]protocol.DocumentHighlight, error) {
+	pf, target, err := resolveTarget(ctx, ss, file, pos)
+	if err != nil {
+		return nil, err
+	}
+
+	refs, err := searchReferences(ctx, ss, file, pf, target)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]protocol.DocumentHighlight, 0, len(refs)+1)
+	seen := map[protocol.Range]bool{}
+
+	add := func(r protocol.Range) {
+		if seen[r] {
+			return
+		}
+
+		seen[r] = true
+		out = append(out, protocol.DocumentHighlight{Range: r, Kind: protocol.DocumentHighlightKindText})
+	}
+
+	// The identifier at the cursor is always highlighted; the reference
+	// search already includes it when the cursor sits on a usage, so the
+	// set dedups.
+	if id := target.identifier(); id != nil {
+		add(nodeRange(pf.AST(), id))
+	}
+
+	for _, r := range refs {
+		if r.loc.URI == file {
+			add(r.loc.Range)
+		}
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i].Range.Start, out[j].Range.Start
+		if a.Line != b.Line {
+			return a.Line < b.Line
+		}
+
+		return a.Character < b.Character
+	})
+
+	return out, nil
+}
+
+// searchReferences dispatches to the reference search for the target kind.
+func searchReferences(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) ([]referenceHit, error) {
 	switch target.kind {
 	case TargetTypeName:
-		refs, err := searchTypeNameReferences(ctx, ss, file, pf, target)
-		if err != nil {
-			return nil, err
-		}
-
-		return hits(refs), nil
+		return searchTypeNameReferences(ctx, ss, file, pf, target)
 	case TargetConstValue:
-		refs, err := searchConstValueReferences(ctx, ss, file, pf, target)
-		if err != nil {
-			return nil, err
-		}
-
-		return hits(refs), nil
+		return searchConstValueReferences(ctx, ss, file, pf, target)
 	case TargetService:
-		refs, err := searchServiceReferences(ctx, ss, file, target.identifier().Text)
-		if err != nil {
-			return nil, err
-		}
-
-		return hits(refs), nil
+		return searchServiceReferences(ctx, ss, file, target.identifier().Text)
 	case TargetDefinition:
-		refs, err := searchDefinitionReferences(ctx, ss, file, pf, target)
-		if err != nil {
-			return nil, err
-		}
-
-		return hits(refs), nil
+		return searchDefinitionReferences(ctx, ss, file, pf, target)
 	}
 
-	return res, err
+	return nil, nil
 }
 
 // searchDefinitionReferences handles references from a definition name:

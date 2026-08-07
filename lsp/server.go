@@ -164,11 +164,11 @@ func (s *Server) DocumentColor(ctx context.Context, params *protocol.DocumentCol
 }
 
 func (s *Server) DocumentHighlight(ctx context.Context, params *protocol.DocumentHighlightParams) (result []protocol.DocumentHighlight, err error) {
-	return []protocol.DocumentHighlight{}, nil
+	return s.documentHighlight(ctx, params)
 }
 
 func (s *Server) DocumentLink(ctx context.Context, params *protocol.DocumentLinkParams) (result []protocol.DocumentLink, err error) {
-	return []protocol.DocumentLink{}, nil
+	return s.documentLink(ctx, params)
 }
 
 func (s *Server) DocumentLinkResolve(ctx context.Context, params *protocol.DocumentLink) (result *protocol.DocumentLink, err error) {
