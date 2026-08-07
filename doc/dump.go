@@ -26,6 +26,12 @@ func dumpDoc(b *strings.Builder, d Doc, ind string) {
 		for _, c := range v {
 			dumpDoc(b, c, ind+"  ")
 		}
+	case *concatNode:
+		fmt.Fprintf(b, "%sConcat\n", ind)
+
+		for _, c := range v.parts {
+			dumpDoc(b, c, ind+"  ")
+		}
 	case *group:
 		extra := ""
 		if v.id != 0 {
@@ -72,6 +78,12 @@ func dumpDoc(b *strings.Builder, d Doc, ind string) {
 			fmt.Fprintf(b, "%sText \"\"\n", ind)
 		} else {
 			fmt.Fprintf(b, "%sText %q\n", ind, string(v))
+		}
+	case *textNode:
+		if v.s == "" {
+			fmt.Fprintf(b, "%sText \"\"\n", ind)
+		} else {
+			fmt.Fprintf(b, "%sText %q\n", ind, v.s)
 		}
 	case LineDoc:
 		kind := "Line"

@@ -44,13 +44,13 @@ func lineComment(k syntax.TokenKind) bool {
 func (f *formatter) ownLineComment(c, prev int, first bool) []doc.Doc {
 	ct := f.token(c)
 
-	parts := make([]doc.Doc, 0, 4)
+	parts := f.Parts(4)
 	if prev >= 0 || !first || ct.BlankLinesBefore > 0 {
 		parts = append(parts, doc.SoftLine)
 	}
 
 	parts = append(parts, f.blankLineDocs(ct.BlankLinesBefore, doc.HardLine)...)
-	parts = append(parts, doc.Text(trimComment(ct.Text)), doc.CommentLine)
+	parts = append(parts, f.Text(trimComment(ct.Text)), doc.CommentLine)
 
 	return parts
 }
@@ -59,8 +59,9 @@ func (f *formatter) ownLineComment(c, prev int, first bool) []doc.Doc {
 // real token's line: a space, the comment text, and — for line comments —
 // a hard line owning its line end. It reports whether the comment ended
 // the line.
-func sameLineComment(ct syntax.Token) ([]doc.Doc, bool) {
-	parts := []doc.Doc{doc.Text(" "), doc.Text(trimComment(ct.Text))}
+func (f *formatter) sameLineComment(ct syntax.Token) ([]doc.Doc, bool) {
+	parts := f.Parts(2)
+	parts = append(parts, f.Text(" "), f.Text(trimComment(ct.Text)))
 	if lineComment(ct.Kind) {
 		return append(parts, doc.CommentLine), true
 	}
@@ -90,7 +91,7 @@ func (f *formatter) sameLineRun(idx int, fn func(c int)) {
 func (f *formatter) ownLineComments(idx int) []doc.Doc {
 	prev := f.prevReal(idx - 1)
 
-	parts := make([]doc.Doc, 0, 4)
+	parts := f.Parts(4)
 	first := true
 
 	for c := prev + 1; c < idx; c++ {
@@ -113,10 +114,10 @@ func (f *formatter) ownLineComments(idx int) []doc.Doc {
 // sameLineComments renders the same-line comments after the real token at
 // idx.
 func (f *formatter) sameLineComments(idx int) []doc.Doc {
-	parts := make([]doc.Doc, 0, 4)
+	parts := f.Parts(4)
 
 	f.sameLineRun(idx, func(c int) {
-		docs, _ := sameLineComment(f.token(c))
+		docs, _ := f.sameLineComment(f.token(c))
 		parts = append(parts, docs...)
 	})
 
@@ -130,14 +131,14 @@ func (f *formatter) sameLineComments(idx int) []doc.Doc {
 // the run ended the line, in which case the caller must not emit the
 // canonical gap.
 func (f *formatter) commentsRun(prev, cur int) ([]doc.Doc, bool) {
-	parts := make([]doc.Doc, 0, 4)
+	parts := f.Parts(4)
 	lineEnded := false
 
 	for c := prev + 1; c < cur; c++ {
 		ct := f.token(c)
 		if ct.Line == f.token(prev).Line {
 			// Same-line: inline after the previous token.
-			docs, ended := sameLineComment(ct)
+			docs, ended := f.sameLineComment(ct)
 			parts = append(parts, docs...)
 			lineEnded = ended
 
@@ -156,7 +157,7 @@ func (f *formatter) commentsRun(prev, cur int) ([]doc.Doc, bool) {
 // separator (the mode drops its text) that cannot share the previous
 // content's line: each starts its own line, so the output round-trips.
 func (f *formatter) suppressedSepComments(idx int) []doc.Doc {
-	parts := make([]doc.Doc, 0, 4)
+	parts := f.Parts(4)
 
 	f.sameLineRun(idx, func(c int) {
 		parts = append(parts, f.ownLineComment(c, idx, false)...)

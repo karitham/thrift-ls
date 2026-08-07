@@ -19,7 +19,7 @@ func isListSep(kind syntax.TokenKind) bool {
 // belongs to the declaration's trailing comments.
 func (f *formatter) constValue(v *syntax.ConstValue, isLast bool) doc.Doc {
 	if v == nil {
-		return doc.Concat{}
+		return f.Concat()
 	}
 
 	switch v.Kind {
@@ -78,13 +78,13 @@ func (f *formatter) constItems(items []constItem, open, close int, c Construct, 
 	openOpts := emitOpts{trailing: true}
 
 	if len(items) == 0 {
-		return doc.Concat{
+		return f.Concat(
 			f.emitTokens(open, open, openOpts),
 			f.emitTokens(close, close, emitOpts{leading: true}),
-		}
+		)
 	}
 
-	middle := make([]doc.Doc, 0, len(items)*2)
+	middle := f.Parts(len(items) * 2)
 
 	for i, item := range items {
 		if i > 0 {
@@ -116,21 +116,21 @@ func (f *formatter) constItems(items []constItem, open, close int, c Construct, 
 	// The single break before the close. A line comment owns its line end
 	// (HardLine); the printer collapses a following structural line, so
 	// the SoftLine never leaves a blank line.
-	closeBreak := doc.IfBreak(doc.SoftLine, doc.Text(""))
+	closeBreak := f.IfBreak(doc.SoftLine, f.Text(""))
 
-	inner := doc.Concat{
+	inner := f.Concat(
 		f.emitTokens(open, open, openOpts),
-		doc.Indent(doc.Concat{f.foldBreak(open, ""), doc.Concat(middle)}),
+		f.Indent(f.Concat(f.foldBreak(open, ""), f.Concat(middle...))),
 		trailing,
 		closeBreak,
 		f.emitTokens(close, close, closeOpts),
-	}
+	)
 	if f.opts.Break.Get(c) || sepForcesBreakList(f.sepsOf(items), sepMode) {
 		// BreakParent inside the group forces it to the broken layout.
-		inner = doc.Concat{doc.BreakParent, inner}
+		inner = f.Concat(doc.BreakParent, inner)
 	}
 
-	return doc.Group(inner)
+	return f.Group(inner)
 }
 
 // sepForcesBreakList reports whether a preserved separator mix forces the
@@ -206,7 +206,7 @@ func (f *formatter) trailingItemSep(last int, mode SeparatorMode) doc.Doc {
 	}
 
 	if !hasSep && text == "" {
-		return doc.Concat{}
+		return f.Concat()
 	}
 
 	if hasSep && text == f.token(sep).Text {
@@ -215,7 +215,7 @@ func (f *formatter) trailingItemSep(last int, mode SeparatorMode) doc.Doc {
 		// line end instead.
 		sepDoc := f.emitTokens(sep, sep, emitOpts{leading: true, trailing: true})
 		if !f.sameLineEndsLine(sep) {
-			sepDoc = doc.Concat{sepDoc, doc.Text(" ")}
+			sepDoc = f.Concat(sepDoc, f.Text(" "))
 		}
 
 		return sepDoc
@@ -224,7 +224,7 @@ func (f *formatter) trailingItemSep(last int, mode SeparatorMode) doc.Doc {
 	if !hasSep {
 		// No source separator: the forced text and the flat gap before
 		// the closing bracket.
-		return doc.Concat{doc.Text(text), doc.Text(" ")}
+		return f.Concat(f.Text(text), f.Text(" "))
 	}
 
 	// Forced text (or dropping the source separator under SeparatorNone):
@@ -234,7 +234,7 @@ func (f *formatter) trailingItemSep(last int, mode SeparatorMode) doc.Doc {
 	// is stable across a reparse.
 	sepDoc := f.emitTokens(sep, sep, emitOpts{leading: true, trailing: true, skipText: []int{sep}, text: text})
 	if text != "" && !f.sameLineEndsLine(sep) {
-		sepDoc = doc.Concat{sepDoc, doc.Text(" ")}
+		sepDoc = f.Concat(sepDoc, f.Text(" "))
 	}
 
 	return sepDoc

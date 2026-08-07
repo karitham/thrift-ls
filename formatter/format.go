@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/karitham/thrift-ls/doc"
 	"github.com/karitham/thrift-ls/syntax"
@@ -208,6 +209,17 @@ func (o Options) normalize() Options {
 // Format renders a parsed document. The document must have been parsed
 // without errors; callers check the parse errors before formatting. Format
 // is deterministic and pure: it reads nothing but the document and options.
+// formatArena is the shared node arena for Format and FormatNode. The
+// doc IR dies with the print, so a single pooled arena is safe: regions
+// are reused across calls and the garbage the GC would scan shrinks to
+// the region overflows.
+var (
+	formatArena doc.Arena
+	formatMu    sync.Mutex
+)
+
+// Format renders the whole document. The arena is pooled: the returned
+// string is the only thing that outlives the call.
 func Format(d *syntax.Document, o Options) (string, error) {
 	if d == nil {
 		return "", errors.New("formatter: nil document")
@@ -215,17 +227,41 @@ func Format(d *syntax.Document, o Options) (string, error) {
 
 	o = o.normalize()
 
-	return PrintIR(BuildIR(d, o), o)
+	formatMu.Lock()
+	defer formatMu.Unlock()
+
+	formatArena.Reset()
+
+	f := &formatter{
+		Arena: &formatArena,
+		doc:   d,
+		toks:  d.Tokens,
+		opts:  o,
+	}
+
+	return doc.Print(f.document(), printOptions(o))
 }
 
-// BuildIR builds the document IR for the given options. The IR can be
-// inspected with doc.Dump before printing; the printer mutates groups in
-// place, so dump after PrintIR to see the layout decisions.
+// printOptions maps formatter options to printer options.
+func printOptions(o Options) doc.Options {
+	return doc.Options{
+		PrintWidth: o.PrintWidth,
+		Indent:     o.Indent,
+		TabWidth:   o.TabWidth,
+		NewLine:    "\n",
+	}
+}
+
+// BuildIR builds the document IR for the given options, from a fresh
+// arena: the IR outlives the call and can be inspected with doc.Dump
+// before printing; the printer mutates groups in place, so dump after
+// PrintIR to see the layout decisions.
 func BuildIR(d *syntax.Document, o Options) doc.Doc {
 	f := &formatter{
-		doc:  d,
-		toks: d.Tokens,
-		opts: o,
+		Arena: &doc.Arena{},
+		doc:   d,
+		toks:  d.Tokens,
+		opts:  o,
 	}
 
 	return f.document()
@@ -233,12 +269,7 @@ func BuildIR(d *syntax.Document, o Options) doc.Doc {
 
 // PrintIR prints the document IR.
 func PrintIR(ir doc.Doc, o Options) (string, error) {
-	return doc.Print(ir, doc.Options{
-		PrintWidth: o.PrintWidth,
-		Indent:     o.Indent,
-		TabWidth:   o.TabWidth,
-		NewLine:    "\n",
-	})
+	return doc.Print(ir, printOptions(o))
 }
 
 // FormatNode renders a single node with its comments, for hover previews
@@ -250,22 +281,23 @@ func FormatNode(d *syntax.Document, n syntax.Node, o Options) (string, error) {
 
 	o = o.normalize()
 
-	f := &formatter{
-		doc:  d,
-		toks: d.Tokens,
-		opts: o,
-	}
-	ir := f.node(n)
+	formatMu.Lock()
+	defer formatMu.Unlock()
 
-	return doc.Print(ir, doc.Options{
-		PrintWidth: o.PrintWidth,
-		Indent:     o.Indent,
-		TabWidth:   o.TabWidth,
-		NewLine:    "\n",
-	})
+	formatArena.Reset()
+
+	f := &formatter{
+		Arena: &formatArena,
+		doc:   d,
+		toks:  d.Tokens,
+		opts:  o,
+	}
+
+	return doc.Print(f.node(n), printOptions(o))
 }
 
 type formatter struct {
+	*doc.Arena
 	doc    *syntax.Document
 	toks   []syntax.Token
 	opts   Options
@@ -357,9 +389,9 @@ func (f *formatter) nextReal(idx int) int {
 // structural layout emits itself (text replaces the suppressed text when
 // set); pads widen alignment columns.
 func (f *formatter) emitTokens(start, end int, o emitOpts) doc.Doc {
-	parts := make([]doc.Doc, 0, 8)
+	parts := f.Parts(8)
 	if o.prefix != "" {
-		parts = append(parts, doc.Text(o.prefix))
+		parts = append(parts, f.Text(o.prefix))
 	}
 
 	if o.leading {
@@ -395,14 +427,14 @@ func (f *formatter) emitTokens(start, end int, o emitOpts) doc.Doc {
 				text = "oneway"
 			}
 
-			parts = append(parts, doc.Text(text))
+			parts = append(parts, f.Text(text))
 		} else if o.text != "" {
-			parts = append(parts, doc.Text(o.text))
+			parts = append(parts, f.Text(o.text))
 		}
 
 		if !skipped && o.pads != nil {
 			if pad := padAt(o.pads, i); pad != "" {
-				parts = append(parts, doc.Text(pad))
+				parts = append(parts, f.Text(pad))
 			}
 		}
 
@@ -429,7 +461,7 @@ func (f *formatter) emitTokens(start, end int, o emitOpts) doc.Doc {
 		}
 	}
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 // tokenGap returns the canonical gap between two adjacent real tokens:
@@ -437,16 +469,16 @@ func (f *formatter) emitTokens(start, end int, o emitOpts) doc.Doc {
 // line, the canonical spacing otherwise.
 func (f *formatter) tokenGap(prev, cur int) doc.Doc {
 	if f.sameLineEndsLine(prev) {
-		return doc.Concat{}
+		return f.Concat()
 	}
 
-	return doc.Text(rawTokenGap(f.token(prev), f.token(cur)))
+	return f.Text(rawTokenGap(f.token(prev), f.token(cur)))
 }
 
 // foldBreak is the foldable gap after an opening token or separating
 // comma: a line in the broken layout, a space (or nothing) flat.
 func (f *formatter) foldBreak(i int, flat string) doc.Doc {
-	return doc.IfBreak(doc.Line, doc.Text(flat))
+	return f.IfBreak(doc.Line, f.Text(flat))
 }
 
 // commaSep renders a separating comma with its trivia, then the foldable
@@ -498,7 +530,7 @@ func (f *formatter) node(n syntax.Node) doc.Doc {
 	parts := append(f.ownLineComments(n.TokStart()), f.nodeBody(n))
 	parts = append(parts, f.sameLineComments(n.TokEnd())...)
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 // nodeBody formats a node without its comments.
@@ -528,7 +560,7 @@ func (f *formatter) nodeBody(n syntax.Node) doc.Doc {
 // document assembles the whole file: top-level nodes separated by
 // collapsible lines, blank lines preserved, and trailing comments.
 func (f *formatter) document() doc.Doc {
-	parts := make([]doc.Doc, 0, 8)
+	parts := f.Parts(8)
 
 	for i, n := range f.doc.Nodes {
 		if i > 0 {
@@ -550,7 +582,7 @@ func (f *formatter) document() doc.Doc {
 		parts = append(parts, doc.Line)
 	}
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 // --- headers ---------------------------------------------------------------
@@ -578,7 +610,7 @@ func (f *formatter) namespace(v *syntax.Namespace) doc.Doc {
 	parts = append(parts, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
 	parts = append(parts, f.afterAnnotations(v.Annotations, v.TokEnd()))
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 func (f *formatter) typedef(v *syntax.Typedef) doc.Doc {
@@ -596,7 +628,7 @@ func (f *formatter) typedef(v *syntax.Typedef) doc.Doc {
 	parts = append(parts, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
 	parts = append(parts, f.afterAnnotations(v.Annotations, v.TokEnd()))
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 func (f *formatter) constant(v *syntax.Const) doc.Doc {
@@ -623,7 +655,7 @@ func (f *formatter) constant(v *syntax.Const) doc.Doc {
 		parts = append(parts, f.emitTokens(f.nextReal(value.TokEnd()+1), v.TokEnd(), emitOpts{leading: true}))
 	}
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 // --- annotations -----------------------------------------------------------
@@ -633,7 +665,7 @@ func (f *formatter) constant(v *syntax.Const) doc.Doc {
 // their comments.
 func (f *formatter) afterAnnotations(a *syntax.Annotations, end int) doc.Doc {
 	if a == nil || a.TokEnd() >= end {
-		return doc.Concat{}
+		return f.Concat()
 	}
 
 	return f.emitTokens(f.nextReal(a.TokEnd()+1), end, emitOpts{leading: true})
@@ -644,27 +676,27 @@ func (f *formatter) afterAnnotations(a *syntax.Annotations, end int) doc.Doc {
 // commas render as token runs, so comments inside the parens are preserved.
 func (f *formatter) annotationsDoc(a *syntax.Annotations, isLast bool) doc.Doc {
 	if a == nil {
-		return doc.Concat{}
+		return f.Concat()
 	}
 
 	open, close := a.TokStart(), a.TokEnd()
 	if len(a.Items) == 0 {
-		out := doc.Concat{
-			doc.Text(" "),
+		out := f.Concat(
+			f.Text(" "),
 			f.emitTokens(open, open, emitOpts{leading: true, trailing: true}),
 			f.emitTokens(close, close, emitOpts{leading: true}),
-		}
+		)
 		if !isLast {
 			// Same-line comments after the close render at the group
 			// boundary, outside it.
-			out = doc.Concat{out, doc.Concat(f.sameLineComments(close))}
+			out = f.Concat(out, f.Concat(f.sameLineComments(close)...))
 		}
 
 		return out
 	}
 
 	all := emitOpts{leading: true, trailing: true}
-	middle := make([]doc.Doc, 0, len(a.Items)*2)
+	middle := f.Parts(len(a.Items) * 2)
 	last := open
 
 	for i, item := range a.Items {
@@ -694,18 +726,18 @@ func (f *formatter) annotationsDoc(a *syntax.Annotations, isLast bool) doc.Doc {
 		last = lastItem.TokEnd()
 	}
 
-	group := doc.Group(doc.Concat{
+	group := f.Group(f.Concat(
 		f.emitTokens(open, open, all),
-		doc.Indent(doc.Concat{f.foldBreak(open, ""), doc.Concat(middle)}),
+		f.Indent(f.Concat(f.foldBreak(open, ""), f.Concat(middle...))),
 		f.foldBreak(last, ""),
 		f.emitTokens(close, close, emitOpts{leading: true}),
-	})
+	))
 
-	out := doc.Concat{doc.Text(" "), group}
+	out := f.Concat(f.Text(" "), group)
 	if !isLast {
 		// Same-line comments after the close render at the group boundary,
 		// outside the group, so the group folds independently.
-		out = doc.Concat{out, doc.Concat(f.sameLineComments(close))}
+		out = f.Concat(out, f.Concat(f.sameLineComments(close)...))
 	}
 
 	return out

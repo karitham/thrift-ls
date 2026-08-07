@@ -19,7 +19,7 @@ func (f *formatter) structLike(v *syntax.Struct) doc.Doc {
 	parts = append(parts, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
 	parts = append(parts, f.afterAnnotations(v.Annotations, v.TokEnd()))
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 // enum formats an enum declaration.
@@ -34,7 +34,7 @@ func (f *formatter) enum(v *syntax.Enum) doc.Doc {
 	parts = append(parts, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
 	parts = append(parts, f.afterAnnotations(v.Annotations, v.TokEnd()))
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 // scanKind returns the first token of the given kind in [start, end], or
@@ -71,61 +71,61 @@ func (f *formatter) bracedBody(fields []*syntax.Field, open, close int, closeTra
 	bodyID := f.id()
 	sepMode := f.opts.Separator.Get(c)
 	inner := append([]doc.Doc{doc.Line, f.fieldList(fields, bodyID, sepMode)}, f.ownLineComments(close)...)
-	closeBreak := doc.IfBreak(doc.SoftLine, doc.Text(" "))
+	closeBreak := f.IfBreak(doc.SoftLine, f.Text(" "))
 
 	if len(fields) == 0 {
 		inner = append([]doc.Doc{}, f.ownLineComments(close)...)
-		closeBreak = doc.IfBreak(doc.SoftLine, doc.Concat{})
+		closeBreak = f.IfBreak(doc.SoftLine, f.Concat())
 	}
 
 	openComments := f.sameLineComments(open)
-	openDoc := append([]doc.Doc{doc.Text(" {")}, openComments...)
+	openDoc := append([]doc.Doc{f.Text(" {")}, openComments...)
 	if len(openComments) > 0 {
 		openDoc = append(openDoc, doc.BreakParent)
 	}
 
-	content := doc.Concat{
-		doc.Concat(openDoc),
-		doc.Indent(doc.Concat(inner)),
+	content := f.Concat(
+		f.Concat(openDoc...),
+		f.Indent(f.Concat(inner...)),
 		closeBreak,
 		f.emitTokens(close, close, emitOpts{trailing: closeTrailing}),
-	}
+	)
 	if len(fields) > 0 && (f.opts.Break.Get(c) || sepForcesBreak(sepsOfFields(fields), sepMode)) {
 		// BreakParent inside the group forces it to the broken layout.
-		content = doc.Concat{doc.BreakParent, content}
+		content = f.Concat(doc.BreakParent, content)
 	}
 
-	return doc.GroupID(bodyID, content)
+	return f.GroupID(bodyID, content)
 }
 
 // bracedEnumBody is bracedBody for enum values.
 func (f *formatter) bracedEnumBody(values []*syntax.EnumValue, open, close int, closeTrailing bool) doc.Doc {
 	bodyID := f.id()
 	inner := append([]doc.Doc{doc.Line, f.enumValueList(values, bodyID)}, f.ownLineComments(close)...)
-	closeBreak := doc.IfBreak(doc.SoftLine, doc.Text(" "))
+	closeBreak := f.IfBreak(doc.SoftLine, f.Text(" "))
 
 	if len(values) == 0 {
 		inner = append([]doc.Doc{}, f.ownLineComments(close)...)
-		closeBreak = doc.IfBreak(doc.SoftLine, doc.Concat{})
+		closeBreak = f.IfBreak(doc.SoftLine, f.Concat())
 	}
 
 	openComments := f.sameLineComments(open)
-	openDoc := append([]doc.Doc{doc.Text(" {")}, openComments...)
+	openDoc := append([]doc.Doc{f.Text(" {")}, openComments...)
 	if len(openComments) > 0 {
 		openDoc = append(openDoc, doc.BreakParent)
 	}
 
-	content := doc.Concat{
-		doc.Concat(openDoc),
-		doc.Indent(doc.Concat(inner)),
+	content := f.Concat(
+		f.Concat(openDoc...),
+		f.Indent(f.Concat(inner...)),
 		closeBreak,
 		f.emitTokens(close, close, emitOpts{trailing: closeTrailing}),
-	}
+	)
 	if len(values) > 0 && (f.opts.Break.Get(ConstructEnum) || sepForcesBreak(sepsOfValues(values), f.opts.Separator.Get(ConstructEnum))) {
-		content = doc.Concat{doc.BreakParent, content}
+		content = f.Concat(doc.BreakParent, content)
 	}
 
-	return doc.GroupID(bodyID, content)
+	return f.GroupID(bodyID, content)
 }
 
 // service formats a service declaration. The body is always multiline:
@@ -134,7 +134,7 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 	open := f.scanKind(v.TokStart(), v.TokEnd(), syntax.TokenLBrace)
 	close := f.scanKind(open+1, v.TokEnd(), syntax.TokenRBrace)
 
-	parts := make([]doc.Doc, 0, 8)
+	parts := f.Parts(8)
 
 	for i, fn := range v.Functions {
 		if i > 0 {
@@ -149,20 +149,20 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 		parts = append(parts, f.function(fn))
 	}
 
-	inner := doc.Concat{doc.Concat(parts), doc.Concat(f.ownLineComments(close))}
+	inner := f.Concat(f.Concat(parts...), f.Concat(f.ownLineComments(close)...))
 	if len(v.Functions) > 0 {
 		// The first function starts its own line; the closing trivia
 		// provides the break before it for empty bodies, so the blank
 		// count does not double.
-		inner = doc.Concat{doc.Line, doc.Concat(parts), doc.Concat(f.ownLineComments(close))}
+		inner = f.Concat(doc.Line, f.Concat(parts...), f.Concat(f.ownLineComments(close)...))
 	} else if !f.hasOwnLineComments(close) && f.token(close).BlankLinesBefore > 0 {
 		// Empty body with blank lines before the close and no comments:
 		// the blanks round-trip through the close's own line.
-		inner = doc.Concat{doc.Concat(f.blankLineDocs(f.token(close).BlankLinesBefore, doc.HardLine)), inner}
+		inner = f.Concat(f.Concat(f.blankLineDocs(f.token(close).BlankLinesBefore, doc.HardLine)...), inner)
 	}
 
 	openComments := f.sameLineComments(open)
-	openDoc := append([]doc.Doc{doc.Text(" {")}, openComments...)
+	openDoc := append([]doc.Doc{f.Text(" {")}, openComments...)
 	if len(openComments) > 0 {
 		openDoc = append(openDoc, doc.BreakParent)
 	}
@@ -170,12 +170,12 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 	// The line before the close collapses when the body ended with a line
 	// comment (which owns its line end) and renders after a real blank
 	// line, so the close always lands on its own line.
-	body := doc.Concat{
-		doc.Concat(openDoc),
-		doc.Indent(inner),
+	body := f.Concat(
+		f.Concat(openDoc...),
+		f.Indent(inner),
 		doc.AfterCommentLine,
 		f.emitTokens(close, close, emitOpts{trailing: close != v.TokEnd()}),
-	}
+	)
 
 	out := []doc.Doc{
 		f.emitTokens(v.TokStart(), open, emitOpts{skipText: []int{open}}),
@@ -183,7 +183,7 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 	}
 	out = append(out, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
 
-	return doc.Concat(out)
+	return f.Concat(out...)
 }
 
 // function formats a service method. The signature escalates via nested
@@ -196,7 +196,7 @@ func (f *formatter) function(v *syntax.Function) doc.Doc {
 	parts := append(f.ownLineComments(v.TokStart()), f.functionBody(v))
 	parts = append(parts, f.sameLineComments(v.TokEnd())...)
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 func (f *formatter) functionBody(v *syntax.Function) doc.Doc {
@@ -219,19 +219,19 @@ func (f *formatter) functionBody(v *syntax.Function) doc.Doc {
 	args := f.parenGroup(v.Args, open, f.parenClose(v.Args, open), false, argsMode)
 
 	if v.Throws == nil {
-		return doc.Group(doc.Concat{
+		return f.Group(f.Concat(
 			header,
 			args,
 			f.functionTail(v, open),
-		})
+		))
 	}
 
-	return doc.Group(doc.Concat{
+	return f.Group(f.Concat(
 		header,
 		args,
 		f.throwsGroup(v),
 		f.functionTail(v, open),
-	})
+	))
 }
 
 // parenGroup renders "(fields)" as its own group, folding independently:
@@ -241,15 +241,15 @@ func (f *formatter) functionBody(v *syntax.Function) doc.Doc {
 func (f *formatter) parenGroup(fields []*syntax.Field, open, close int, forced bool, sepMode SeparatorMode) doc.Doc {
 	broken := f.brokenParens(fields, open, close, sepMode)
 	if forced {
-		broken = doc.Concat{broken, doc.BreakParent}
+		broken = f.Concat(broken, doc.BreakParent)
 	}
 
-	flat := append([]doc.Doc{doc.Text("(")}, f.sameLineComments(open)...)
-	flat = append(flat, f.flatFieldsJoin(fields, sepMode), doc.Text(")"))
+	flat := append([]doc.Doc{f.Text("(")}, f.sameLineComments(open)...)
+	flat = append(flat, f.flatFieldsJoin(fields, sepMode), f.Text(")"))
 
-	return doc.Group(doc.IfBreak(
+	return f.Group(f.IfBreak(
 		broken,
-		doc.Concat(flat),
+		f.Concat(flat...),
 	))
 }
 
@@ -258,7 +258,7 @@ func (f *formatter) parenGroup(fields []*syntax.Field, open, close int, forced b
 func (f *formatter) throwsGroup(v *syntax.Function) doc.Doc {
 	forced := f.fieldsForcedBroken(v.Throws.Fields) || sepForcesBreak(sepsOfFields(v.Throws.Fields), f.opts.Separator.Get(ConstructThrows)) || f.opts.Break.Get(ConstructThrows)
 
-	return doc.Concat{doc.Text(" throws "), f.parenGroup(v.Throws.Fields, v.Throws.TokStart(), v.Throws.TokEnd(), forced, f.opts.Separator.Get(ConstructThrows))}
+	return f.Concat(f.Text(" throws "), f.parenGroup(v.Throws.Fields, v.Throws.TokStart(), v.Throws.TokEnd(), forced, f.opts.Separator.Get(ConstructThrows)))
 }
 
 // parenClose returns the close paren index matching the open paren at
@@ -316,19 +316,19 @@ func sepsOfValues(values []*syntax.EnumValue) []syntax.TokenKind {
 // field's own separator when preserving, or a single forced separator per
 // the sepMode.
 func (f *formatter) flatFieldsJoin(fields []*syntax.Field, sepMode SeparatorMode) doc.Doc {
-	parts := make([]doc.Doc, 0, len(fields))
+	parts := f.Parts(len(fields))
 	for i, field := range fields {
 		if i > 0 {
-			parts = append(parts, doc.Concat{
-				doc.Text(sepText(fields[i-1].Sep, sepMode)),
+			parts = append(parts, f.Concat(
+				f.Text(sepText(fields[i-1].Sep, sepMode)),
 				doc.Line,
-			})
+			))
 		}
 
 		parts = append(parts, f.fieldContent(field, nil, false, sepMode))
 	}
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 // functionBrokenArgs renders the signature with arguments and throws both
@@ -346,7 +346,7 @@ func (f *formatter) functionBrokenArgs(v *syntax.Function, header doc.Doc) doc.D
 
 	parts = append(parts, f.functionTail(v, open))
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 // functionTail renders the tokens of the function after its args and
@@ -354,7 +354,7 @@ func (f *formatter) functionBrokenArgs(v *syntax.Function, header doc.Doc) doc.D
 // annotations, and any stray tokens lenient sources leave — everything the
 // structural layout does not emit itself. open is the args open paren.
 func (f *formatter) functionTail(v *syntax.Function, open int) doc.Doc {
-	parts := make([]doc.Doc, 0, 8)
+	parts := f.Parts(8)
 
 	argsClose := f.parenClose(v.Args, open)
 	if argsClose < v.TokEnd() {
@@ -385,14 +385,14 @@ func (f *formatter) functionTail(v *syntax.Function, open int) doc.Doc {
 		parts = append(parts, f.emitTokens(f.nextReal(idx), v.TokEnd(), emitOpts{leading: true}))
 	}
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 // brokenFields renders fields one per line, each with its trailing
 // separator per the sepMode option. Comments and blank lines inside
 // the list are preserved.
 func (f *formatter) brokenFields(fields []*syntax.Field, sepMode SeparatorMode) doc.Doc {
-	parts := make([]doc.Doc, 0, 8)
+	parts := f.Parts(8)
 
 	for i, field := range fields {
 		if i > 0 {
@@ -407,7 +407,7 @@ func (f *formatter) brokenFields(fields []*syntax.Field, sepMode SeparatorMode) 
 		parts = append(parts, f.fieldDoc(field, f.alignmentFor(fields, i, sepMode), 0, sepMode))
 	}
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 // brokenParens renders "open, fields, close" one field per line, or just
@@ -415,18 +415,18 @@ func (f *formatter) brokenFields(fields []*syntax.Field, sepMode SeparatorMode) 
 // indices; their comments are preserved even with no fields.
 func (f *formatter) brokenParens(fields []*syntax.Field, open, close int, sepMode SeparatorMode) doc.Doc {
 	if len(fields) == 0 {
-		return doc.Concat{
-			doc.Text("("),
-			doc.Concat(f.sameLineComments(open)),
+		return f.Concat(
+			f.Text("("),
+			f.Concat(f.sameLineComments(open)...),
 			f.emitTokens(close, close, emitOpts{leading: true}),
-		}
+		)
 	}
 
 	inner := append([]doc.Doc{doc.Line, f.brokenFields(fields, sepMode)}, f.ownLineComments(close)...)
-	parts := append([]doc.Doc{doc.Text("(")}, f.sameLineComments(open)...)
-	parts = append(parts, doc.Indent(doc.Concat(inner)), doc.Line, doc.Text(")"))
+	parts := append([]doc.Doc{f.Text("(")}, f.sameLineComments(open)...)
+	parts = append(parts, f.Indent(f.Concat(inner...)), doc.Line, f.Text(")"))
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 // fieldsForcedBroken reports whether any field has comments or blank lines
@@ -474,7 +474,7 @@ func (f *formatter) blankLines(n syntax.Node, line doc.Doc) []doc.Doc {
 // blankLineDocs returns count copies of line, for blank lines that must be
 // preserved exactly.
 func (f *formatter) blankLineDocs(count int, line doc.Doc) []doc.Doc {
-	parts := make([]doc.Doc, 0, count)
+	parts := f.Parts(count)
 	for range count {
 		parts = append(parts, line)
 	}

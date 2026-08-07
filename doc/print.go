@@ -37,19 +37,18 @@ type command struct {
 	doc         Doc
 }
 
-// indentation is the indentation of the current line: the string to emit and its
-// display width.
+// indentation is the indentation of the current line: the number of
+// indent levels, any extra alignment columns, and the display width.
+// The prefix string is materialized from the levels on write, so
+// commands carry no string copies.
 type indentation struct {
-	value  string
+	levels int
+	alignN int
 	length int
 }
 
 func (i indentation) add(o Options) indentation {
-	if o.Indent == "" {
-		o.Indent = strings.Repeat(" ", o.TabWidth)
-	}
-
-	i.value += o.Indent
+	i.levels++
 	i.length += o.TabWidth
 
 	return i
@@ -57,13 +56,13 @@ func (i indentation) add(o Options) indentation {
 
 func (i indentation) align(n int, o Options) indentation {
 	if o.Indent != "\t" {
-		i.value += strings.Repeat(" ", n)
+		i.alignN += n
 		i.length += n
 
 		return i
 	}
 	// With tabs, a numeric alignment renders as one tab, matching Prettier.
-	i.value += "\t"
+	i.levels++
 	i.length += o.TabWidth
 
 	return i
@@ -110,6 +109,7 @@ type printer struct {
 	// and would otherwise allocate a builder and a command stack per call.
 	fitOutput   strings.Builder
 	fitCommands []command
+	prefixes    []string // materialized indent prefixes, one per level
 }
 
 func (p *printer) write(s string) {
@@ -151,6 +151,32 @@ func (p *printer) trim() int {
 	return n
 }
 
+// indentPrefix returns the materialized indentation string for levels
+// indent levels, building each level once and caching it.
+func (p *printer) indentPrefix(levels int) string {
+	if len(p.prefixes) == 0 {
+		p.prefixes = append(p.prefixes, "")
+	}
+
+	for len(p.prefixes) <= levels {
+		p.prefixes = append(p.prefixes, p.prefixes[len(p.prefixes)-1]+p.o.Indent)
+	}
+
+	return p.prefixes[levels]
+}
+
+// writeIndent writes the indentation of a command: the indent-level
+// prefix, then any extra alignment columns.
+func (p *printer) writeIndent(i indentation) {
+	if i.levels > 0 {
+		p.write(p.indentPrefix(i.levels))
+	}
+
+	if i.alignN > 0 {
+		p.out = append(p.out, strings.Repeat(" ", i.alignN)...)
+	}
+}
+
 func (p *printer) run(d Doc) (string, error) {
 	commands := []command{{indentation: indentation{}, mode: modeBreak, doc: d}}
 	newLine := p.o.NewLine
@@ -176,8 +202,24 @@ func (p *printer) run(d Doc) (string, error) {
 				p.lastLineComment = false
 			}
 
+		case *textNode:
+			if v.s != "" {
+				p.write(v.s)
+
+				if len(commands) > 0 {
+					p.position += stringWidth(v.s)
+				}
+
+				p.lastLineComment = false
+			}
+
 		case Concat:
 			for _, v0 := range slices.Backward(v) {
+				commands = append(commands, command{indentation: cmd.indentation, mode: cmd.mode, doc: v0})
+			}
+
+		case *concatNode:
+			for _, v0 := range slices.Backward(v.parts) {
 				commands = append(commands, command{indentation: cmd.indentation, mode: cmd.mode, doc: v0})
 			}
 
@@ -279,14 +321,15 @@ func (p *printer) run(d Doc) (string, error) {
 					// lines).
 					if !v.Hard && p.lineEnded() && (!v.AfterComment || p.lastLineComment) {
 						p.trim()
-						p.write(cmd.indentation.value)
+						p.writeIndent(cmd.indentation)
 						p.position = cmd.indentation.length
 
 						break
 					}
 
 					p.trim()
-					p.write(newLine + cmd.indentation.value)
+					p.write(newLine)
+					p.writeIndent(cmd.indentation)
 					p.position = cmd.indentation.length
 					// A comment's hard line marks the line as comment
 					// ended; blank hard lines do not end a content line,
@@ -376,6 +419,9 @@ func (p *printer) fits(next command, rest []command, remainingWidth int, hasLine
 
 	p.fitCommands = p.fitCommands[:0]
 	commands := append(p.fitCommands, next)
+	// Retain whatever capacity the loop grew to, so the next fits call
+	// starts from the larger backing array.
+	defer func() { p.fitCommands = commands[:0] }()
 
 	for remainingWidth >= 0 {
 		if p.fitsDBG {
@@ -413,8 +459,26 @@ func (p *printer) fits(next command, rest []command, remainingWidth int, hasLine
 				remainingWidth -= stringWidth(s)
 			}
 
+		case *textNode:
+			if v.s != "" {
+				if hasPendingSpace {
+					output.WriteString(" ")
+
+					remainingWidth--
+					hasPendingSpace = false
+				}
+
+				output.WriteString(v.s)
+				remainingWidth -= stringWidth(v.s)
+			}
+
 		case Concat:
 			for _, v0 := range slices.Backward(v) {
+				commands = append(commands, command{indentation: cmd.indentation, mode: cmd.mode, doc: v0})
+			}
+
+		case *concatNode:
+			for _, v0 := range slices.Backward(v.parts) {
 				commands = append(commands, command{indentation: cmd.indentation, mode: cmd.mode, doc: v0})
 			}
 
@@ -558,6 +622,10 @@ func traverseDoc(d Doc, enter func(Doc) bool, exit func(Doc), includeConditional
 	switch v := d.(type) {
 	case Concat:
 		for _, part := range v {
+			traverseDoc(part, enter, exit, includeConditionalGroups)
+		}
+	case *concatNode:
+		for _, part := range v.parts {
 			traverseDoc(part, enter, exit, includeConditionalGroups)
 		}
 	case *group:
