@@ -169,12 +169,23 @@ func (f *formatter) blankBefore(n syntax.Node) int {
 }
 
 // leadingComments returns the comments attached before the node's first
-// token, as docs that each end with a hard line.
+// token, each ending with a hard line, with the blank lines from the source
+// gap distributed exactly as written: before the run, between comments, and
+// between the last comment and the node itself. blankLines deliberately
+// emits nothing when leading comments exist.
 func (f *formatter) leadingComments(n syntax.Node) []doc.Doc {
+	tok := f.token(n.TokStart())
+	if len(tok.Leading) == 0 {
+		return nil
+	}
 	var parts []doc.Doc
-	for _, c := range f.token(n.TokStart()).Leading {
+	prevBlank := 0
+	for _, c := range tok.Leading {
+		parts = append(parts, f.blankLineDocs(c.BlankLinesBefore-prevBlank, doc.HardLine)...)
+		prevBlank = c.BlankLinesBefore
 		parts = append(parts, doc.Text(c.Text), doc.HardLine)
 	}
+	parts = append(parts, f.blankLineDocs(tok.BlankLinesBefore-prevBlank, doc.HardLine)...)
 	return parts
 }
 
@@ -238,9 +249,11 @@ func (f *formatter) document() doc.Doc {
 	if len(eof.Leading) > 0 {
 		if len(f.doc.Nodes) > 0 {
 			parts = append(parts, doc.HardLine)
-			parts = append(parts, f.blankLineDocs(eof.BlankLinesBefore, doc.HardLine)...)
 		}
+		prevBlank := 0
 		for i, c := range eof.Leading {
+			parts = append(parts, f.blankLineDocs(c.BlankLinesBefore-prevBlank, doc.HardLine)...)
+			prevBlank = c.BlankLinesBefore
 			parts = append(parts, doc.Text(c.Text))
 			if i < len(eof.Leading)-1 {
 				parts = append(parts, doc.HardLine)

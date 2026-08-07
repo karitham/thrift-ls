@@ -67,33 +67,42 @@ func (f *formatter) enumValueList(values []*syntax.EnumValue, bodyID int) doc.Do
 	return doc.Concat(parts)
 }
 
+// groupedWith reports whether the node joins the alignment group of the
+// item before it: no blank line and no comment sits between them. A comment
+// in the gap is a visual break, like whitespace.
+func (f *formatter) groupedWith(n syntax.Node) bool {
+	return f.blankBefore(n) < 1 && len(f.token(n.TokStart()).Leading) == 0
+}
+
 // alignmentFor returns the column alignment for field i, or nil when
-// alignment is disabled. Alignment is scoped to the blank-line group the
-// field belongs to.
+// alignment is disabled. Alignment is scoped to the blank-line and comment
+// group the field belongs to.
 func (f *formatter) alignmentFor(fields []*syntax.Field, i int) *columnAlign {
 	if f.opts.Align == AlignDisable {
 		return nil
 	}
 	start := i
-	for start > 0 && f.blankBefore(fields[start]) < 1 {
+	for start > 0 && f.groupedWith(fields[start]) {
 		start--
 	}
 	end := i
-	for end+1 < len(fields) && f.blankBefore(fields[end+1]) < 1 {
+	for end+1 < len(fields) && f.groupedWith(fields[end+1]) {
 		end++
 	}
 	group := fields[start : end+1]
 	a := computeFieldAlign(group)
-	if !f.alignmentFits(group, a) {
+	if !f.alignmentFits(group, a) && !f.sourceAligned(fields, start, end) {
 		return nil
 	}
 	return a
 }
 
-// alignmentFits reports whether column alignment keeps the group within
-// printWidth: the padded columns plus the longest field name must fit one
-// indent level under the limit. Default values and annotations are ignored;
-// a line that long overflows regardless of alignment.
+// alignmentFits reports whether column alignment keeps the structural
+// content of every line within printWidth: the padded columns plus, per
+// field, its name and trailing separator. Trailing comments are excluded —
+// a comment may overflow its line without affecting alignment. Default
+// values and annotations are ignored; a line that long overflows regardless
+// of alignment.
 func (f *formatter) alignmentFits(fields []*syntax.Field, a *columnAlign) bool {
 	limit := f.opts.PrintWidth - f.opts.TabWidth
 	columns := a.idWidth + 1
@@ -103,11 +112,31 @@ func (f *formatter) alignmentFits(fields []*syntax.Field, a *columnAlign) bool {
 	if f.opts.Align == AlignField {
 		columns += a.typeWidth + 1
 	}
-	longestName := 0
+	longest := 0
 	for _, field := range fields {
-		longestName = maxInt(longestName, len(field.Name.Text))
+		w := len(field.Name.Text)
+		if field.Sep != 0 {
+			w++ // trailing separator
+		}
+		longest = maxInt(longest, w)
 	}
-	return columns+longestName <= limit
+	return columns+longest <= limit
+}
+
+// sourceAligned reports whether the group's field names start at the same
+// column in the source. Such a layout is deliberate — preserving it matters
+// more than printWidth — so alignment survives the width gate for it.
+func (f *formatter) sourceAligned(fields []*syntax.Field, start, end int) bool {
+	col := 0
+	for i := start; i <= end; i++ {
+		c := f.token(fields[i].Name.TokStart()).Col
+		if col == 0 {
+			col = c
+		} else if c != col {
+			return false
+		}
+	}
+	return true
 }
 
 func (f *formatter) alignmentForEnum(values []*syntax.EnumValue, i int) *columnAlign {
@@ -115,11 +144,11 @@ func (f *formatter) alignmentForEnum(values []*syntax.EnumValue, i int) *columnA
 		return nil
 	}
 	start := i
-	for start > 0 && f.blankBefore(values[start]) < 1 {
+	for start > 0 && f.groupedWith(values[start]) {
 		start--
 	}
 	end := i
-	for end+1 < len(values) && f.blankBefore(values[end+1]) < 1 {
+	for end+1 < len(values) && f.groupedWith(values[end+1]) {
 		end++
 	}
 	return computeEnumAlign(values[start : end+1])

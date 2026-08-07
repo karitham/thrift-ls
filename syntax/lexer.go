@@ -184,6 +184,10 @@ type Trivia struct {
 	Offset int    // byte offset of the first character
 	Line   int    // 1-based line of the first character
 	Col    int    // 1-based rune column of the first character
+
+	// BlankLinesBefore is the number of empty lines between the previous
+	// token (or trivia) and this one, within the enclosing gap.
+	BlankLinesBefore int
 }
 
 // Token is a single lexical token with its attached comment trivia.
@@ -283,16 +287,16 @@ func (l *lexer) scanTrivia(prevLine int) (leading, trailing []Trivia, blankLines
 		case isWhitespace(c):
 			blankLines += l.scanWhitespace()
 		case c == '/' && l.peekByte(1) == '/':
-			leading, trailing = l.appendComment(leading, trailing, prevLine, l.scanLineComment())
+			leading, trailing = l.appendComment(leading, trailing, prevLine, blankLines, l.scanLineComment())
 		case c == '/' && l.peekByte(1) == '*':
-			leading, trailing = l.appendComment(leading, trailing, prevLine, l.scanBlockComment())
+			leading, trailing = l.appendComment(leading, trailing, prevLine, blankLines, l.scanBlockComment())
 		case c == '#':
-			leading, trailing = l.appendComment(leading, trailing, prevLine, l.scanLineComment())
+			leading, trailing = l.appendComment(leading, trailing, prevLine, blankLines, l.scanLineComment())
 		case c == '@':
 			// Java-style annotations (@name{...}) are preserved as trivia,
 			// like comments, so they round-trip without being part of the
 			// grammar.
-			leading, trailing = l.appendComment(leading, trailing, prevLine, l.scanLineAnnotation())
+			leading, trailing = l.appendComment(leading, trailing, prevLine, blankLines, l.scanLineAnnotation())
 		default:
 			return leading, trailing, blankLines
 		}
@@ -300,7 +304,8 @@ func (l *lexer) scanTrivia(prevLine int) (leading, trailing []Trivia, blankLines
 	return leading, trailing, blankLines
 }
 
-func (l *lexer) appendComment(leading, trailing []Trivia, prevLine int, t Trivia) ([]Trivia, []Trivia) {
+func (l *lexer) appendComment(leading, trailing []Trivia, prevLine, blankLines int, t Trivia) ([]Trivia, []Trivia) {
+	t.BlankLinesBefore = blankLines
 	if t.Line == prevLine {
 		return leading, append(trailing, t)
 	}

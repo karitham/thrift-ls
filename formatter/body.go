@@ -44,7 +44,7 @@ func (f *formatter) bracedBody(fields []*syntax.Field) doc.Doc {
 		doc.IfBreak(doc.SoftLine, doc.Text(" ")),
 		doc.Text("}"),
 	}
-	if f.opts.BreakStructs {
+	if f.opts.BreakStructs || hasTrailingDelim(fields[len(fields)-1].Sep) {
 		// BreakParent inside the group forces it to the broken layout.
 		content = doc.Concat{doc.BreakParent, content}
 	}
@@ -65,7 +65,7 @@ func (f *formatter) bracedEnumBody(values []*syntax.EnumValue) doc.Doc {
 		doc.IfBreak(doc.SoftLine, doc.Text(" ")),
 		doc.Text("}"),
 	}
-	if f.opts.BreakEnums {
+	if f.opts.BreakEnums || hasTrailingDelim(values[len(values)-1].Sep) {
 		content = doc.Concat{doc.BreakParent, content}
 	}
 	return doc.GroupID(bodyID, content)
@@ -80,7 +80,10 @@ func (f *formatter) closingTrivia(last syntax.Node) []doc.Doc {
 	var parts []doc.Doc
 	if len(close.Leading) > 0 {
 		parts = append(parts, doc.HardLine)
+		prevBlank := 0
 		for i, c := range close.Leading {
+			parts = append(parts, f.blankLineDocs(c.BlankLinesBefore-prevBlank, doc.HardLine)...)
+			prevBlank = c.BlankLinesBefore
 			parts = append(parts, doc.Text(c.Text))
 			if i < len(close.Leading)-1 {
 				parts = append(parts, doc.HardLine)
@@ -136,14 +139,12 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 	return doc.Concat(out)
 }
 
-// function formats a service method with the signature escalation:
-//
-//  1. the whole signature on one line, when it fits;
-//  2. arguments on one line, the throws clause broken;
-//  3. arguments and throws clause both broken.
-//
-// Each state is tried in order by the conditional group, so the escalation
-// is decided by the remaining width at the function's position.
+// function formats a service method. The signature escalates via nested
+// groups: the whole signature folds when it fits, otherwise the throws
+// clause unfolds while the arguments stay flat, and the arguments unfold
+// last. Each clause is forced independently — comments, blank lines, or a
+// trailing delimiter in throws never break the arguments, because the
+// throws clause is a sibling group, not an ancestor.
 func (f *formatter) function(v *syntax.Function) doc.Doc {
 	parts := append(f.leadingComments(v), f.functionBody(v))
 	parts = append(parts, f.trailingComments(v)...)
@@ -151,23 +152,62 @@ func (f *formatter) function(v *syntax.Function) doc.Doc {
 }
 
 func (f *formatter) functionBody(v *syntax.Function) doc.Doc {
-	// Comments or blank lines inside the argument or throws lists force the
-	// multiline layout: the flat states would drop them.
-	if f.fieldsForcedBroken(v.Args) || v.Throws != nil && f.fieldsForcedBroken(v.Throws.Fields) {
+	// Comments or blank lines in the arguments force the multiline layout:
+	// the flat argument group would drop them.
+	if f.fieldsForcedBroken(v.Args) || hasTrailingDelim(lastSep(v.Args)) {
 		return f.functionBrokenArgs(v)
 	}
 
+	// The argument group folds to "(a, b)" when it fits and unfolds to one
+	// field per line otherwise.
+	args := doc.Group(doc.IfBreak(
+		f.brokenParens("(", ")", v.Args),
+		doc.Concat{doc.Text("("), f.flatFieldsJoin(v.Args), doc.Text(")")},
+	))
+
 	if v.Throws == nil {
-		return doc.ConditionalGroup(0,
-			f.functionFlat(v, false),
-			f.functionBrokenArgs(v),
-		)
+		return doc.Group(doc.Concat{
+			doc.Text(f.functionHeader(v)),
+			args,
+			f.annotationsDoc(v.Annotations),
+		})
 	}
-	return doc.ConditionalGroup(0,
-		f.functionFlat(v, false),
-		f.functionFlat(v, true),
-		f.functionBrokenArgs(v),
-	)
+
+	// The throws clause unfolds when the outer group breaks. A trailing
+	// delimiter, comment, or blank line inside it forces the unfold with a
+	// break parent; being a sibling of the args group, it cannot break the
+	// arguments themselves.
+	throws := doc.Concat{doc.Text(" throws "), f.brokenParens("(", ")", v.Throws.Fields)}
+	if f.fieldsForcedBroken(v.Throws.Fields) || hasTrailingDelim(lastSep(v.Throws.Fields)) {
+		throws = doc.Concat{throws, doc.BreakParent}
+	}
+
+	return doc.Group(doc.Concat{
+		doc.Text(f.functionHeader(v)),
+		args,
+		doc.IfBreak(
+			throws,
+			doc.Concat{doc.Text(" throws ("), f.flatFieldsJoin(v.Throws.Fields), doc.Text(")")},
+		),
+		f.annotationsDoc(v.Annotations),
+	})
+}
+
+// lastSep returns the separator of the last list item, or 0 for an empty
+// list.
+func lastSep(fields []*syntax.Field) syntax.TokenKind {
+	if len(fields) == 0 {
+		return 0
+	}
+	return fields[len(fields)-1].Sep
+}
+
+// hasTrailingDelim reports whether the separator of the last list item is
+// present, i.e. the source carries a trailing delimiter. Like zig fmt, a
+// trailing delimiter forces the list to unfold when formatting; without
+// one, the list may fold when it fits.
+func hasTrailingDelim(sep syntax.TokenKind) bool {
+	return sep != 0
 }
 
 // functionHeader renders "[oneway] <type|void> <name>".
@@ -182,32 +222,6 @@ func (f *formatter) functionHeader(v *syntax.Function) string {
 		out += typeText(v.Type) + " "
 	}
 	return out + v.Name.Text
-}
-
-// functionFlat renders the signature with args flat and throws either flat
-// or broken. The states are printed flat (or measured flat), so line docs
-// render as spaces; throwsBroken inserts hard lines to break the clause.
-func (f *formatter) functionFlat(v *syntax.Function, throwsBroken bool) doc.Doc {
-	args := f.flatFieldsJoin(v.Args)
-	parts := []doc.Doc{
-		doc.Text(f.functionHeader(v)),
-		doc.Text("("),
-		args,
-		doc.Text(")"),
-	}
-	if v.Throws != nil {
-		if throwsBroken {
-			parts = append(parts, doc.Text(" throws "), f.brokenParens("(", ")", v.Throws.Fields))
-		} else {
-			parts = append(parts,
-				doc.Text(" throws ("),
-				f.flatFieldsJoin(v.Throws.Fields),
-				doc.Text(")"),
-			)
-		}
-	}
-	parts = append(parts, f.annotationsDoc(v.Annotations))
-	return doc.Concat(parts)
 }
 
 // flatFieldsJoin joins fields with their separators on one line: each
@@ -301,8 +315,13 @@ func (f *formatter) fieldsForcedBroken(fields []*syntax.Field) bool {
 }
 
 // blankLines returns count hard-line docs for the blank lines before a
-// node's first token.
+// node's first token. When the node carries leading comments the blank
+// lines belong to that run and leadingComments emits them; returning nil
+// here keeps them from being printed twice.
 func (f *formatter) blankLines(n syntax.Node, line doc.Doc) []doc.Doc {
+	if len(f.token(n.TokStart()).Leading) > 0 {
+		return nil
+	}
 	return f.blankLineDocs(f.blankBefore(n), line)
 }
 

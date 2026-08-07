@@ -108,7 +108,7 @@ func TestFormatAnnotations(t *testing.T) {
 		{
 			name: "empty annotation before an enum",
 			src:  "@deprecation.Deprecated{}\nenum Status {\n  A,\n  B,\n}\n",
-			want: "@deprecation.Deprecated{}\nenum Status { A, B }\n",
+			want: "@deprecation.Deprecated{}\nenum Status {\n  A,\n  B,\n}\n",
 		},
 		{
 			name: "multiple annotations keep order",
@@ -315,7 +315,7 @@ func TestFormatStructs(t *testing.T) {
 		{
 			name: "semicolon separators preserved",
 			src:  "struct S {\n  1: i32 a;\n  2: string b;\n}",
-			want: "struct S { 1: i32 a; 2: string b }\n",
+			want: "struct S {\n  1: i32    a;\n  2: string b;\n}\n",
 		},
 		{
 			name: "mixed separators preserved per field",
@@ -827,6 +827,82 @@ func TestFormatBlankLines(t *testing.T) {
 	}
 }
 
+func TestFormatCommentBlankLines(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "blank line below leading comment stays below",
+			src:  "struct A {\n  1: i32 a\n}\n\n// above\n\nstruct B {\n  1: i32 b\n}",
+			want: "struct A { 1: i32 a }\n\n// above\n\nstruct B { 1: i32 b }\n",
+		},
+		{
+			name: "blank line between field comment and field stays",
+			src:  "struct S {\n  1: i32 a\n  // note\n\n  2: i32 b\n}",
+			want: "struct S {\n  1: i32 a\n  // note\n\n  2: i32 b\n}\n",
+		},
+		{
+			name: "blank lines between comment run members",
+			src:  "struct A {\n  1: i32 a\n}\n\n// one\n\n// two\n\nstruct B {\n  1: i32 b\n}",
+			want: "struct A { 1: i32 a }\n\n// one\n\n// two\n\nstruct B { 1: i32 b }\n",
+		},
+		{
+			name: "blank line before closing comment",
+			src:  "struct S {\n  1: i32 a\n\n  // close\n}",
+			want: "struct S {\n  1: i32 a\n\n  // close\n}\n",
+		},
+		{
+			name: "blank line between closing comments",
+			src:  "struct S {\n  1: i32 a\n  // one\n\n  // two\n}",
+			want: "struct S {\n  1: i32 a\n  // one\n\n  // two\n}\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCase(t, tt.src, testOpts(80), tt.want)
+		})
+	}
+}
+
+func TestFormatAlignmentCommentBreak(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "comment between fields breaks alignment",
+			src: "struct MobileSuit {\n" +
+				"  1: required zeon.PropulsionSystemType propulsion_system\n" +
+				"  // the beam cannon\n" +
+				"  2: required string registry_code\n" +
+				"}",
+			want: "struct MobileSuit {\n" +
+				"  1: required zeon.PropulsionSystemType propulsion_system\n" +
+				"  // the beam cannon\n" +
+				"  2: required string registry_code\n" +
+				"}\n",
+		},
+		{
+			name: "comment between enum values breaks alignment",
+			src:  "enum E {\n  AValue = 1\n  // separated\n  B = 2\n}",
+			want: "enum E {\n  AValue = 1\n  // separated\n  B = 2\n}\n",
+		},
+		{
+			name: "trailing line comment does not break alignment",
+			src:  "struct S {\n  1: i32 a // one\n  2: string longer\n}",
+			want: "struct S {\n  1: i32    a // one\n  2: string longer\n}\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCase(t, tt.src, testOpts(80), tt.want)
+		})
+	}
+}
+
 func TestFormatAlignmentWidth(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -837,8 +913,8 @@ func TestFormatAlignmentWidth(t *testing.T) {
 		{
 			name:  "alignment dropped when the group exceeds printWidth",
 			width: 40,
-			src:   "struct S {\n  1: i32 a\n  2: some_very_long_namespace.SomeVeryLongTypeName b\n}",
-			want:  "struct S {\n  1: i32 a\n  2: some_very_long_namespace.SomeVeryLongTypeName b\n}\n",
+			src:   "struct S {\n  1: i32 a\n  2: federation_special_weapons.MegaParticleCannonType b\n}",
+			want:  "struct S {\n  1: i32 a\n  2: federation_special_weapons.MegaParticleCannonType b\n}\n",
 		},
 		{
 			name:  "alignment kept when the group fits",
@@ -846,10 +922,178 @@ func TestFormatAlignmentWidth(t *testing.T) {
 			src:   "struct S {\n  1: i32 a\n  2: string longer_name\n}",
 			want:  "struct S {\n  1: i32    a\n  2: string longer_name\n}\n",
 		},
+		{
+			name:  "source-aligned group keeps alignment over printWidth",
+			width: 40,
+			src: "struct S {\n" +
+				"  1: federation.MobileSuitFrameType frame_type;\n" +
+				"  2: federation.PropulsionType      propulsion_type;\n" +
+				"}",
+			want: "struct S {\n" +
+				"  1: federation.MobileSuitFrameType frame_type;\n" +
+				"  2: federation.PropulsionType      propulsion_type;\n" +
+				"}\n",
+		},
+		{
+			name:  "trailing comment overflow does not drop alignment",
+			width: 80,
+			src: "struct S {\n" +
+				"  1: federation.SensorType sensor_type; //deprecated, use the mobile suit registry instead\n" +
+				"  2: federation.MobileSuitFrameType frame_type;\n" +
+				"}",
+			want: "struct S {\n" +
+				"  1: federation.SensorType          sensor_type; //deprecated, use the mobile suit registry instead\n" +
+				"  2: federation.MobileSuitFrameType frame_type;\n" +
+				"}\n",
+		},
+		{
+			name:  "source-aligned group re-pads to widest type over printWidth",
+			width: 40,
+			src: "struct S {\n" +
+				"  1: federation.MobileSuitFrameType                frame_type;\n" +
+				"  2: federation.PropulsionType                     propulsion_type;\n" +
+				"}",
+			want: "struct S {\n" +
+				"  1: federation.MobileSuitFrameType frame_type;\n" +
+				"  2: federation.PropulsionType      propulsion_type;\n" +
+				"}\n",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			runCase(t, tt.src, testOpts(tt.width), tt.want)
+		})
+	}
+}
+
+func TestFormatFullFile(t *testing.T) {
+	src := `include "gundam/types.thrift"
+
+namespace * mobile_suit.zeon
+
+enum Status {
+  Active,
+  Decommissioned,
+}
+
+// A mobile suit's combat record.
+struct CombatRecord {
+  1: required string model_number
+  2: optional i64 sorties
+  3: optional i64 kills
+}
+
+union MobileSuit {
+  1: CombatRecord combat_record
+  2: string notes
+}
+
+service Hangar {
+  void dock(1: string bay) throws (
+    1: exceptions.BayFull bay_full, // bay is occupied
+    2: exceptions.SuitMismatch suit_mismatch
+  )
+
+  // Deploy resets the telemetry counters.
+  CombatRecord deploy(
+    1: MobileSuit suit,
+    2: string pilot,
+  )
+
+  oneway void status(1: string bay)
+}
+`
+	want := `include "gundam/types.thrift"
+
+namespace * mobile_suit.zeon
+
+enum Status {
+  Active,
+  Decommissioned,
+}
+
+// A mobile suit's combat record.
+struct CombatRecord {
+  1: required string model_number
+  2: optional i64    sorties
+  3: optional i64    kills
+}
+
+union MobileSuit { 1: CombatRecord combat_record 2: string notes }
+
+service Hangar {
+  void dock(1: string bay) throws (
+    1: exceptions.BayFull      bay_full, // bay is occupied
+    2: exceptions.SuitMismatch suit_mismatch
+  )
+
+  // Deploy resets the telemetry counters.
+  CombatRecord deploy(
+    1: MobileSuit suit,
+    2: string     pilot,
+  )
+
+  oneway void status(1: string bay)
+}
+`
+	runCase(t, src, testOpts(80), want)
+}
+
+func TestFormatTrailingDelim(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "trailing delimiter forces struct body broken",
+			src:  "struct S {\n  1: i32 a;\n}",
+			want: "struct S {\n  1: i32 a;\n}\n",
+		},
+		{
+			name: "no trailing delimiter folds struct body",
+			src:  "struct S {\n  1: i32 a\n}",
+			want: "struct S { 1: i32 a }\n",
+		},
+		{
+			name: "trailing delimiter forces enum body broken",
+			src:  "enum E {\n  A,\n  B,\n}",
+			want: "enum E {\n  A,\n  B,\n}\n",
+		},
+		{
+			name: "no trailing delimiter folds enum body",
+			src:  "enum E {\n  A,\n  B\n}",
+			want: "enum E { A, B }\n",
+		},
+		{
+			name: "trailing delimiter forces args broken",
+			src:  "service F {\n  void go(\n    1: i32 a,\n  )\n}",
+			want: "service F {\n  void go(\n    1: i32 a,\n  )\n}\n",
+		},
+		{
+			name: "no trailing delimiter folds args",
+			src:  "service F {\n  void go(\n    1: i32 a\n  )\n}",
+			want: "service F {\n  void go(1: i32 a)\n}\n",
+		},
+		{
+			name: "throws comment does not break args",
+			src: "service Hangar {\n" +
+				"  void dock(1: i32 a) throws (\n" +
+				"    1: exceptions.BayFull bay_full, // bay is occupied\n" +
+				"    2: exceptions.SuitMismatch suit_mismatch\n" +
+				"  )\n" +
+				"}",
+			want: "service Hangar {\n" +
+				"  void dock(1: i32 a) throws (\n" +
+				"    1: exceptions.BayFull      bay_full, // bay is occupied\n" +
+				"    2: exceptions.SuitMismatch suit_mismatch\n" +
+				"  )\n" +
+				"}\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCase(t, tt.src, testOpts(80), tt.want)
 		})
 	}
 }
