@@ -9,8 +9,8 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/options"
 )
 
 func TestServerRangeFormatting(t *testing.T) {
@@ -27,7 +27,7 @@ struct B {
 struct C { 3: i64 c }
 `
 
-	srv := NewServer(cache.New(nil), nil, formatter.Options{})
+	srv := NewServer(cache.New(nil), nil, options.Patch{})
 
 	require.NoError(t, srv.DidOpen(ctx, &protocol.DidOpenTextDocumentParams{
 		TextDocument: protocol.TextDocumentItem{

@@ -21,6 +21,19 @@ const REPO = 'karitham/thrift-ls';
 const RELEASES_URL = `https://github.com/${REPO}/releases`;
 const DOWNLOAD_URL = `${RELEASES_URL}/latest/download`;
 
+// The constructs with per-construct separator and break settings.
+const CONSTRUCTS = [
+  'structs',
+  'unions',
+  'exceptions',
+  'enums',
+  'arguments',
+  'throws',
+  'lists',
+  'maps',
+  'sets',
+] as const;
+
 // The release asset and its checksum file for the running platform, or
 // undefined when no prebuilt binary exists for it.
 interface ReleaseTarget {
@@ -47,6 +60,11 @@ export async function activate(context: ExtensionContext) {
   const serverOptions: ServerOptions = { command: bin, args: ['lsp'] };
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ language: 'thrift' }],
+    // Formatter settings are sent as initializationOptions; the client
+    // re-sends them via didChangeConfiguration when settings change, so the
+    // server re-formats with the new values without a restart.
+    initializationOptions: formatSettings(),
+    synchronize: { configurationSection: 'thrift-ls' },
   };
 
   client = new LanguageClient(
@@ -69,6 +87,44 @@ function deactivate(): Thenable<void> | undefined {
  * offers to download the release binary. Undefined means no server this
  * session.
  */
+/**
+ * formatSettings returns the thrift-ls formatter settings as the options
+ * document the server expects (the thrift-ls.json schema). The `path`
+ * setting is not a server option and is left out; the server drops it
+ * defensively anyway.
+ */
+function formatSettings(): Record<string, unknown> {
+  const cfg = workspace.getConfiguration('thrift-ls');
+  const opts: Record<string, unknown> = {};
+  for (const key of ['printWidth', 'indent', 'tabWidth', 'align'] as const) {
+    const value = cfg.get(key);
+    if (value !== undefined) {
+      opts[key] = value;
+    }
+  }
+
+  const separators: Record<string, string> = {};
+  const breaks: Record<string, boolean> = {};
+  for (const construct of CONSTRUCTS) {
+    const separator = cfg.get<string>(`separators.${construct}`);
+    if (separator !== undefined) {
+      separators[construct] = separator;
+    }
+    const brk = cfg.get<boolean>(`break.${construct}`);
+    if (brk !== undefined) {
+      breaks[construct] = brk;
+    }
+  }
+  if (Object.keys(separators).length > 0) {
+    opts.separators = separators;
+  }
+  if (Object.keys(breaks).length > 0) {
+    opts.break = breaks;
+  }
+
+  return opts;
+}
+
 async function resolveBinary(context: ExtensionContext): Promise<string | undefined> {
   const configured = workspace.getConfiguration('thrift-ls').get<string>('path');
   if (configured) {

@@ -56,6 +56,175 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Absolute path to the `thrift-ls` binary. Empty (default): search `PATH`, then prompt to download the latest release binary into the extension's storage."
+        },
+        "thrift-ls.printWidth": {
+          "type": "number",
+          "default": 80,
+          "markdownDescription": "Target line width for breaking decisions. Overrides the `thrift-ls.json` config file."
+        },
+        "thrift-ls.indent": {
+          "type": "string",
+          "default": "    ",
+          "markdownDescription": "Indentation: a literal string of spaces or tabs, e.g. `\"  \"` or `\"\\t\"`."
+        },
+        "thrift-ls.tabWidth": {
+          "type": "number",
+          "default": 4,
+          "markdownDescription": "Display width of a tab when measuring line width."
+        },
+        "thrift-ls.align": {
+          "type": "string",
+          "default": "field",
+          "enum": [
+            "field",
+            "assign",
+            "disable"
+          ],
+          "markdownDescription": "Column alignment of struct/union/exception fields and enum values: `field` (align ids/requiredness/types), `assign` (align `=`), `disable`."
+        },
+        "thrift-ls.separators.structs": {
+          "type": "string",
+          "default": "preserve",
+          "enum": [
+            "comma",
+            "semicolon",
+            "none",
+            "preserve"
+          ],
+          "markdownDescription": "Trailing separator for struct fields."
+        },
+        "thrift-ls.separators.unions": {
+          "type": "string",
+          "default": "preserve",
+          "enum": [
+            "comma",
+            "semicolon",
+            "none",
+            "preserve"
+          ],
+          "markdownDescription": "Trailing separator for union fields."
+        },
+        "thrift-ls.separators.exceptions": {
+          "type": "string",
+          "default": "preserve",
+          "enum": [
+            "comma",
+            "semicolon",
+            "none",
+            "preserve"
+          ],
+          "markdownDescription": "Trailing separator for exception fields."
+        },
+        "thrift-ls.separators.enums": {
+          "type": "string",
+          "default": "preserve",
+          "enum": [
+            "comma",
+            "semicolon",
+            "none",
+            "preserve"
+          ],
+          "markdownDescription": "Trailing separator for enum values."
+        },
+        "thrift-ls.separators.arguments": {
+          "type": "string",
+          "default": "preserve",
+          "enum": [
+            "comma",
+            "semicolon",
+            "none",
+            "preserve"
+          ],
+          "markdownDescription": "Trailing separator for function arguments."
+        },
+        "thrift-ls.separators.throws": {
+          "type": "string",
+          "default": "preserve",
+          "enum": [
+            "comma",
+            "semicolon",
+            "none",
+            "preserve"
+          ],
+          "markdownDescription": "Trailing separator for throws clauses."
+        },
+        "thrift-ls.separators.lists": {
+          "type": "string",
+          "default": "preserve",
+          "enum": [
+            "comma",
+            "semicolon",
+            "none",
+            "preserve"
+          ],
+          "markdownDescription": "Trailing separator for const list values."
+        },
+        "thrift-ls.separators.maps": {
+          "type": "string",
+          "default": "preserve",
+          "enum": [
+            "comma",
+            "semicolon",
+            "none",
+            "preserve"
+          ],
+          "markdownDescription": "Trailing separator for const map values."
+        },
+        "thrift-ls.separators.sets": {
+          "type": "string",
+          "default": "preserve",
+          "enum": [
+            "comma",
+            "semicolon",
+            "none",
+            "preserve"
+          ],
+          "markdownDescription": "Trailing separator for const set values."
+        },
+        "thrift-ls.break.structs": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Always break struct bodies onto multiple lines."
+        },
+        "thrift-ls.break.unions": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Always break union bodies onto multiple lines."
+        },
+        "thrift-ls.break.exceptions": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Always break exception bodies onto multiple lines."
+        },
+        "thrift-ls.break.enums": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Always break enum bodies onto multiple lines."
+        },
+        "thrift-ls.break.arguments": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Always break function arguments onto multiple lines."
+        },
+        "thrift-ls.break.throws": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Always break throws clauses onto multiple lines."
+        },
+        "thrift-ls.break.lists": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Always break const lists onto multiple lines."
+        },
+        "thrift-ls.break.maps": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Always break const maps onto multiple lines."
+        },
+        "thrift-ls.break.sets": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Always break const sets onto multiple lines."
         }
       }
     }

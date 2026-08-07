@@ -287,6 +287,27 @@ func isWhitespaceOnly(s string) bool {
 	return true
 }
 
+// Parse reads and parses a config document. Unknown keys are rejected so
+// that typos and stale settings (e.g. the removed overrides feature) fail
+// loudly. Include paths in the document are left as written; Load resolves
+// them against the config file's directory.
+func Parse(data []byte) (*Patch, error) {
+	var p Patch
+
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+
+	if err := dec.Decode(&p); err != nil {
+		return nil, err
+	}
+
+	if err := p.Validate(); err != nil {
+		return nil, err
+	}
+
+	return &p, nil
+}
+
 // Load reads and parses a config file. Unknown keys are rejected so that
 // typos and stale settings (e.g. the removed overrides feature) fail loudly.
 func Load(path string) (*Patch, error) {
@@ -295,18 +316,11 @@ func Load(path string) (*Patch, error) {
 		return nil, err
 	}
 
-	var p Patch
-
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-
-	if err := dec.Decode(&p); err != nil {
+	p, err := Parse(data)
+	if err != nil {
 		return nil, fmt.Errorf("options: %s: %w", path, err)
 	}
 
-	if err := p.Validate(); err != nil {
-		return nil, fmt.Errorf("options: %s: %w", path, err)
-	}
 	// Include paths are relative to the config file, not the process CWD,
 	// so resolution works the same for the CLI and the LSP no matter where
 	// the server is launched from.
@@ -323,7 +337,7 @@ func Load(path string) (*Patch, error) {
 		p.IncludePaths = &abs
 	}
 
-	return &p, nil
+	return p, nil
 }
 
 // FindConfig returns the config file path for dir: THRIFT_LS_CONFIG when set,

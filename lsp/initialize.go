@@ -45,6 +45,16 @@ func (s *Server) initialize(ctx context.Context, params *protocol.InitializePara
 
 	s.folders = folders
 
+	// Workspace settings (initializationOptions) overlay the base
+	// configuration; didChangeConfiguration updates them later.
+	if len(params.InitializationOptions) > 0 {
+		if patch, err := lspSettings(params.InitializationOptions); err != nil {
+			slog.Error("initializationOptions rejected", "err", err)
+		} else {
+			s.setWorkspaceSettings(*patch)
+		}
+	}
+
 	// Kick off the workspace walk immediately, off the request path, so
 	// the workspace is indexed by the time the client makes its first
 	// request. The walk is async (it parses every thrift file) and the

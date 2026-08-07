@@ -13,13 +13,25 @@ import (
 	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/lsp/source"
+	"github.com/karitham/thrift-ls/options"
 )
 
 type Server struct {
 	cache   *cache.Cache
 	session *cache.Session
 
-	client     protocol.Client
+	client protocol.Client
+
+	// base is the process configuration: defaults overlaid with the config
+	// file and CLI flags. It never changes; workspace settings from
+	// initializationOptions and didChangeConfiguration are overlaid on it.
+	base options.Patch
+
+	// opts is the effective configuration (base with workspace settings
+	// applied) and formatOpts its resolved formatter options. Both are
+	// guarded by optsMu because settings can change between requests.
+	optsMu     sync.RWMutex
+	opts       options.Patch
 	formatOpts formatter.Options
 
 	// folders are the workspace folders from the initialize request; the
@@ -36,13 +48,46 @@ type Server struct {
 	dirWalkOnce       sync.Once
 }
 
-func NewServer(c *cache.Cache, client protocol.Client, formatOpts formatter.Options) *Server {
-	return &Server{
-		cache:      c,
-		session:    cache.NewSession(c),
-		client:     client,
-		formatOpts: formatOpts,
+// NewServer returns a Server formatting with the base options. The base is
+// expected to validate; workspace settings overlay it at initialize time.
+func NewServer(c *cache.Cache, client protocol.Client, base options.Patch) *Server {
+	s := &Server{
+		cache:   c,
+		session: cache.NewSession(c),
+		client:  client,
+		base:    base,
 	}
+	s.opts = base
+	s.formatOpts, _ = base.Formatter()
+
+	return s
+}
+
+// setWorkspaceSettings overlays workspace settings on the base
+// configuration. Invalid settings are rejected: the previous configuration
+// stays in effect and the error is logged.
+func (s *Server) setWorkspaceSettings(overlay options.Patch) {
+	merged := overlay.Apply(s.base)
+	fopts, err := merged.Formatter()
+	if err != nil {
+		slog.Error("workspace settings rejected", "err", err)
+		return
+	}
+
+	s.optsMu.Lock()
+	s.opts = merged
+	s.formatOpts = fopts
+	s.optsMu.Unlock()
+
+	slog.Debug("workspace settings applied")
+}
+
+// formatOptions returns the current effective formatter options.
+func (s *Server) formatOptions() formatter.Options {
+	s.optsMu.RLock()
+	defer s.optsMu.RUnlock()
+
+	return s.formatOpts
 }
 
 func (s *Server) Initialize(ctx context.Context, params *protocol.InitializeParams) (result *protocol.InitializeResult, err error) {
@@ -129,6 +174,18 @@ func (s *Server) DidChange(ctx context.Context, params *protocol.DidChangeTextDo
 }
 
 func (s *Server) DidChangeConfiguration(ctx context.Context, params *protocol.DidChangeConfigurationParams) (err error) {
+	if len(params.Settings) == 0 {
+		return nil
+	}
+
+	patch, err := lspSettings(params.Settings)
+	if err != nil {
+		slog.Error("didChangeConfiguration rejected", "err", err)
+		return nil
+	}
+
+	s.setWorkspaceSettings(*patch)
+
 	return nil
 }
 

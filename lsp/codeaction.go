@@ -13,7 +13,7 @@ import (
 // document when the range covers it, or the range when it is a selection.
 func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionParams) ([]protocol.CommandOrCodeAction, error) {
 	return withFile(ctx, s.session, params.TextDocument.URI, func(ss *cache.Snapshot, fh cache.FileHandle) ([]protocol.CommandOrCodeAction, error) {
-		action, err := source.FormatDocumentAction(ctx, ss, fh, s.formatOpts)
+		action, err := source.FormatDocumentAction(ctx, ss, fh, s.formatOptions())
 		if err != nil {
 			return nil, err
 		}

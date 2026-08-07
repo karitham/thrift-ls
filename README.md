@@ -230,6 +230,12 @@ Configuration lives in a `thrift-ls.json` file, discovered by walking up from
 the file being formatted or the workspace root (like Biome). Set the
 `THRIFT_LS_CONFIG` env var to point at an explicit config file.
 
+Layered from lowest to highest precedence: defaults, the config file, LSP
+workspace settings, CLI flags. The VS Code extension exposes the formatter
+options as `thrift-ls.*` settings (see `vscode/README.md`), which override
+the config file for LSP formatting; `includePaths` and `logLevel` are not
+available as settings — use the config file or flags for those.
+
 ```json
 {
   "printWidth": 100,

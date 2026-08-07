@@ -12,8 +12,8 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/options"
 )
 
 // recordingClient records PublishDiagnostics calls per URI; every other
@@ -53,7 +53,7 @@ func (c *recordingClient) count(file uri.URI) int {
 }
 
 func newTestServer(client protocol.Client) *Server {
-	return NewServer(cache.New(nil), client, formatter.Options{})
+	return NewServer(cache.New(nil), client, options.Patch{})
 }
 
 func writeFile(t *testing.T, path, content string) {

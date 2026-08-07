@@ -174,14 +174,15 @@ func lspAction(ctx context.Context, cmd *cli.Command) error {
 
 	tlog.Init(logLevelValue)
 
-	fopts, err := patch.Formatter()
-	if err != nil {
+	// Validate the effective configuration early; the server re-resolves
+	// it per request, and workspace settings overlay it at initialize time.
+	if _, err := patch.Formatter(); err != nil {
 		return err
 	}
 
 	lspOpts := &lsp.Options{
 		IncludePaths: derefStrings(patch.IncludePaths),
-		Format:       fopts,
+		Config:       patch,
 	}
 
 	ss := lsp.NewStreamServer(lspOpts)

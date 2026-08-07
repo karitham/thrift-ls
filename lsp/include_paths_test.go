@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/options"
 )
 
 // TestServerIncludePathsFlow verifies that include paths configured on the
@@ -23,7 +23,7 @@ func TestServerIncludePathsFlow(t *testing.T) {
 	assert.NoError(t, os.WriteFile(shared, []byte("struct Shared {}"), 0o644))
 
 	c := cache.New([]string{includeDir})
-	srv := NewServer(c, nil, formatter.DefaultOptions())
+	srv := NewServer(c, nil, options.Default())
 
 	// Views are created per workspace folder at initialization.
 	srv.session.AddView(uri.File(dir))
