@@ -569,3 +569,126 @@ func Test_CodeActionFormatDocument(t *testing.T) {
 		})
 	}
 }
+
+// Test_CompletionQualifiedType pins qualified type completion: in a type
+// position, typing an include name followed by a dot suggests the
+// include's types, qualified.
+func Test_CompletionQualifiedType(t *testing.T) {
+	ctx := t.Context()
+
+	baseParams := &protocol.DidOpenTextDocumentParams{
+		TextDocument: protocol.TextDocumentItem{
+			URI:        "file:///tmp/federation.thrift",
+			LanguageID: "thrift",
+			Version:    0,
+			Text: `struct MobileSuit {
+	1: required string Name
+}
+
+struct Guntank {
+	1: required i32 Treads
+}`,
+		},
+	}
+
+	testContent := `include "federation.thrift"
+
+struct StrikeRouge {
+	1: required federation.MobileSuit pack,
+	2: required federation.Guntank support,
+}`
+	testURI := uri.URI("file:///tmp/test.thrift")
+
+	srv := NewServer(cache.New([]string{"/tmp"}), nil, formatter.Options{})
+	require.NoError(t, srv.DidOpen(ctx, baseParams))
+	require.NoError(t, srv.DidOpen(ctx, &protocol.DidOpenTextDocumentParams{
+		TextDocument: protocol.TextDocumentItem{
+			URI:        testURI,
+			LanguageID: "thrift",
+			Version:    0,
+			Text:       testContent,
+		},
+	}))
+
+	completion := func(line, character uint32) []string {
+		result, err := srv.Completion(ctx, &protocol.CompletionParams{
+			TextDocumentPositionParams: protocol.TextDocumentPositionParams{
+				TextDocument: protocol.TextDocumentIdentifier{URI: testURI},
+				Position:     protocol.Position{Line: line, Character: character},
+			},
+			Context: protocol.CompletionContext{TriggerKind: protocol.CompletionTriggerKindInvoked},
+		})
+		require.NoError(t, err)
+
+		list, ok := result.(*protocol.CompletionList)
+		require.True(t, ok)
+
+		labels := make([]string, len(list.Items))
+		for i, item := range list.Items {
+			labels[i] = item.Label
+		}
+
+		return labels
+	}
+
+	t.Run("mid-word qualified prefix suggests matching include types", func(t *testing.T) {
+		// Cursor at "federation.Mo|bileSuit" in the first field type.
+		labels := completion(3, 27)
+
+		assert.Contains(t, labels, "federation.MobileSuit")
+		// The prefix filter excludes include types that do not match.
+		assert.NotContains(t, labels, "federation.Guntank")
+		// Bare names from other files are not suggested behind a qualifier.
+		assert.NotContains(t, labels, "MobileSuit")
+	})
+
+	t.Run("cursor right after the dot suggests include types", func(t *testing.T) {
+		// Cursor at "federation.|" in the second field type.
+		labels := completion(4, 24)
+
+		assert.Contains(t, labels, "federation.Guntank")
+		assert.Contains(t, labels, "federation.MobileSuit")
+	})
+
+	t.Run("no services in a type slot", func(t *testing.T) {
+		// Cursor in the first field type position, bare prefix: services
+		// are not valid field types and must not be suggested.
+		testContent := `include "federation.thrift"
+
+struct StrikeRouge {
+	1: required |
+}`
+		testURI := uri.URI("file:///tmp/test.thrift")
+
+		srv := NewServer(cache.New([]string{"/tmp"}), nil, formatter.Options{})
+		require.NoError(t, srv.DidOpen(ctx, baseParams))
+		require.NoError(t, srv.DidOpen(ctx, &protocol.DidOpenTextDocumentParams{
+			TextDocument: protocol.TextDocumentItem{
+				URI:        testURI,
+				LanguageID: "thrift",
+				Version:    0,
+				Text:       testContent,
+			},
+		}))
+
+		result, err := srv.Completion(ctx, &protocol.CompletionParams{
+			TextDocumentPositionParams: protocol.TextDocumentPositionParams{
+				TextDocument: protocol.TextDocumentIdentifier{URI: testURI},
+				Position:     protocol.Position{Line: 3, Character: 15},
+			},
+			Context: protocol.CompletionContext{TriggerKind: protocol.CompletionTriggerKindInvoked},
+		})
+		require.NoError(t, err)
+
+		list, ok := result.(*protocol.CompletionList)
+		require.True(t, ok)
+
+		labels := make([]string, len(list.Items))
+		for i, item := range list.Items {
+			labels[i] = item.Label
+		}
+
+		assert.Contains(t, labels, "i32")
+		assert.NotContains(t, labels, "Federation")
+	})
+}

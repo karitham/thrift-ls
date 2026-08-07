@@ -3,14 +3,12 @@ package lsp
 import (
 	"bytes"
 	"context"
-	"strings"
 
 	"go.lsp.dev/protocol"
 
 	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/lsp/mapper"
 	"github.com/karitham/thrift-ls/lsp/types"
-	"github.com/karitham/thrift-ls/syntax"
 )
 
 func (s *Server) formatting(ctx context.Context, params *protocol.DocumentFormattingParams) (result []protocol.TextEdit, err error) {
@@ -75,11 +73,11 @@ func (s *Server) formatting(ctx context.Context, params *protocol.DocumentFormat
 // rangeFormatting implements textDocument/rangeFormatting.
 //
 // The formatter only knows how to print whole documents, so a range is
-// formatted by extracting the selected slice, formatting it as a standalone
-// document, and splicing the result back into the file. Following Prettier's
-// range-formatting contract, the range must be bounded by blank lines (or
-// file edges) after expansion to line boundaries; otherwise no edits are
-// produced and the request is a no-op.
+// formatted by formatting the whole document and diffing it against the
+// original at the granularity of blank-line-separated blocks. Blank lines
+// are preserved exactly by the formatter, so the blocks align one-to-one;
+// every edit is bounded by blank lines or file edges, and any subset
+// splices safely. Only the edits overlapping the selection are returned.
 func (s *Server) rangeFormatting(ctx context.Context, params *protocol.DocumentRangeFormattingParams) (result []protocol.TextEdit, err error) {
 	fileURI := params.TextDocument.URI
 
@@ -101,6 +99,24 @@ func (s *Server) rangeFormatting(ctx context.Context, params *protocol.DocumentR
 		return nil, err
 	}
 
+	pf, err := ss.Parse(ctx, fileURI)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(pf.Errors()) > 0 || pf.AST() == nil {
+		return nil, pf.AggregatedError()
+	}
+
+	formatted, err := formatter.Format(pf.AST(), s.formatOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	if string(content) == formatted {
+		return nil, nil
+	}
+
 	mp := mapper.NewMapper(fileURI, content)
 
 	start, err := mp.LSPPosToParserPosition(lspPosition(params.Range.Start))
@@ -113,38 +129,36 @@ func (s *Server) rangeFormatting(ctx context.Context, params *protocol.DocumentR
 		return nil, nil
 	}
 
-	rs, re := start.Offset, end.Offset
-	if rs >= re {
-		return nil, nil
+	// The selection expanded to whole lines.
+	selStart := lineStart(content, start.Offset)
+	selEnd := nextLineStart(content, lineStart(content, end.Offset))
+
+	for _, be := range blockDiff(content, []byte(formatted)) {
+		// Overlap test on byte offsets; adjacent edits touch at most.
+		if be.end <= selStart || be.start >= selEnd {
+			continue
+		}
+
+		startPos, err := mp.OffsetToLSPPosition(be.start)
+		if err != nil {
+			return nil, nil
+		}
+
+		endPos, err := mp.OffsetToLSPPosition(be.end)
+		if err != nil {
+			return nil, nil
+		}
+
+		result = append(result, protocol.TextEdit{
+			Range: protocol.Range{
+				Start: protocolPosition(startPos),
+				End:   protocolPosition(endPos),
+			},
+			NewText: be.text,
+		})
 	}
 
-	// A selection covering the whole document delegates to full formatting.
-	if rs == 0 && re == len(content) {
-		return s.formatting(ctx, &protocol.DocumentFormattingParams{TextDocument: params.TextDocument})
-	}
-
-	newText, rs, re, ok := formatRangeText(content, rs, re, s.formatOpts)
-	if !ok {
-		return nil, nil
-	}
-
-	startPos, err := mp.OffsetToLSPPosition(rs)
-	if err != nil {
-		return nil, nil
-	}
-
-	endPos, err := mp.OffsetToLSPPosition(re)
-	if err != nil {
-		return nil, nil
-	}
-
-	return []protocol.TextEdit{{
-		Range: protocol.Range{
-			Start: protocolPosition(startPos),
-			End:   protocolPosition(endPos),
-		},
-		NewText: newText,
-	}}, nil
+	return result, nil
 }
 
 // lspPosition converts a protocol position to the internal position type.
@@ -163,50 +177,98 @@ func protocolPosition(p types.Position) protocol.Position {
 	}
 }
 
-// formatRangeText formats content[rs:re] (half-open byte offsets) and returns
-// the replacement text. ok is false when the range is not safely bounded by
-// blank lines or file edges, or the slice does not parse cleanly.
-func formatRangeText(content []byte, rs, re int, opts formatter.Options) (newText string, outRS, outRE int, ok bool) {
-	// An empty or inverted selection produces no edits.
-	if rs >= re {
-		return "", rs, re, false
+// blockEdit replaces content[start:end] with text. Every block edit is
+// bounded by blank lines or file edges, so it splices safely.
+type blockEdit struct {
+	start, end int
+	text       string
+}
+
+// blockDiff returns the edits turning old into new, one per changed block
+// of non-blank lines, plus the leading and trailing blank regions when
+// they differ. Blank lines are preserved exactly by the formatter, so old
+// and new split into the same number of aligned blocks.
+func blockDiff(old, new []byte) []blockEdit {
+	oldBlocks := blocks(old)
+	newBlocks := blocks(new)
+
+	if len(oldBlocks) != len(newBlocks) {
+		// Should not happen: the formatter preserves the blank-line
+		// structure. Fall back to a single whole-document edit.
+		return []blockEdit{{0, len(old), string(new)}}
 	}
 
-	// Expand to line boundaries, then trim leading and trailing blank lines
-	// from the selection.
-	rs = lineStart(content, rs)
-	re = lineEnd(content, re)
-	rs = skipBlankLinesForward(content, rs, re)
+	var edits []blockEdit
 
-	re = skipBlankLinesBackward(content, rs, re)
-	if rs >= re {
-		return "", rs, re, false
+	// Leading blank region.
+	oldLead := old[:oldBlocks[0].start]
+	newLead := new[:newBlocks[0].start]
+	if string(oldLead) != string(newLead) {
+		edits = append(edits, blockEdit{0, oldBlocks[0].start, string(newLead)})
 	}
 
-	// The lines immediately outside the range must be blank, or the range
-	// must touch a file edge.
-	if !blankLineBefore(content, rs) || !blankLineAfter(content, re) {
-		return "", rs, re, false
+	for i := range oldBlocks {
+		if oldBlocks[i].text != newBlocks[i].text {
+			edits = append(edits, blockEdit{
+				start: oldBlocks[i].start,
+				end:   oldBlocks[i].end,
+				text:  newBlocks[i].text,
+			})
+		}
 	}
 
-	slice := content[rs:re]
-
-	doc, errs := syntax.Parse(slice)
-	if len(errs) > 0 {
-		return "", rs, re, false
+	// Trailing blank region.
+	oldTail := old[oldBlocks[len(oldBlocks)-1].end:]
+	newTail := new[newBlocks[len(newBlocks)-1].end:]
+	if string(oldTail) != string(newTail) {
+		last := oldBlocks[len(oldBlocks)-1]
+		edits = append(edits, blockEdit{last.end, len(old), string(newTail)})
 	}
 
-	formatted, err := formatter.Format(doc, opts)
-	if err != nil {
-		return "", rs, re, false
+	return edits
+}
+
+// block is a maximal run of non-blank lines: the byte range from the first
+// line's start to just after the last line's newline, with the exact text.
+type block struct {
+	start, end int
+	text       string
+}
+
+// blocks splits content into runs of non-blank lines.
+func blocks(content []byte) []block {
+	var out []block
+
+	i := 0
+	for i < len(content) {
+		// Skip blank lines.
+		for i < len(content) && len(bytes.TrimSpace(content[i:lineEnd(content, i)])) == 0 {
+			i = nextLineStart(content, i)
+		}
+
+		if i >= len(content) {
+			break
+		}
+
+		start := i
+		for i < len(content) && len(bytes.TrimSpace(content[i:lineEnd(content, i)])) > 0 {
+			i = nextLineStart(content, i)
+		}
+
+		out = append(out, block{start: start, end: i, text: string(content[start:i])})
 	}
 
-	// The splice must not add or drop newlines at the boundaries: the slice
-	// starts at a line start and ends just before its last line's newline.
-	formatted = strings.TrimLeft(formatted, "\n")
-	formatted = strings.TrimRight(formatted, "\r\n")
+	return out
+}
 
-	return formatted, rs, re, true
+// nextLineStart returns the offset just after the newline ending the line
+// containing offset, or len(content) for the last line.
+func nextLineStart(content []byte, offset int) int {
+	if i := bytes.IndexByte(content[offset:], '\n'); i != -1 {
+		return offset + i + 1
+	}
+
+	return len(content)
 }
 
 // lineStart returns the byte offset of the start of the line containing offset.
@@ -230,57 +292,3 @@ func lineEnd(content []byte, offset int) int {
 
 // blankLineBefore reports whether the line before the line starting at offset
 // is blank (whitespace only) or offset is at the start of the file.
-func blankLineBefore(content []byte, offset int) bool {
-	if offset == 0 {
-		return true
-	}
-
-	start := lineStart(content, offset-1)
-
-	return len(bytes.TrimSpace(content[start:offset])) == 0
-}
-
-// blankLineAfter reports whether the line after the one ending at offset is
-// blank (whitespace only) or offset is at the end of the file.
-func blankLineAfter(content []byte, offset int) bool {
-	if offset == len(content) {
-		return true
-	}
-
-	end := lineEnd(content, offset+1)
-
-	return len(bytes.TrimSpace(content[offset+1:end])) == 0
-}
-
-// skipBlankLinesForward advances offset past blank lines, stopping at limit.
-func skipBlankLinesForward(content []byte, offset, limit int) int {
-	for offset < limit {
-		end := lineEnd(content, offset)
-		if end >= limit {
-			break
-		}
-
-		if len(bytes.TrimSpace(content[offset:end])) > 0 {
-			break
-		}
-
-		offset = end + 1
-	}
-
-	return offset
-}
-
-// skipBlankLinesBackward retreats offset (a newline position or len(content))
-// past blank lines, stopping at start.
-func skipBlankLinesBackward(content []byte, start, offset int) int {
-	for offset > start {
-		lineStart := lineStart(content, offset-1)
-		if len(bytes.TrimSpace(content[lineStart:offset])) > 0 {
-			break
-		}
-
-		offset = max(lineStart-1, 0)
-	}
-
-	return offset
-}

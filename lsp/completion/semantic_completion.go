@@ -3,6 +3,7 @@ package completion
 import (
 	"context"
 	"sort"
+	"strings"
 
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
@@ -14,39 +15,45 @@ import (
 // typeCandidates collects the names of all type definitions (structs,
 // unions, exceptions, enums, typedefs, services) from the file and its
 // transitively included files, plus the base type keywords.
-func typeCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, doc *syntax.Document) []Candidate {
-	names := make(map[string]struct{})
-	collectTypeNames := func(ast *syntax.Document) {
-		for _, st := range ast.Structs() {
-			names[st.Name.Text] = struct{}{}
+func typeCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, c Context) []Candidate {
+	// A dotted prefix scopes the completion to the include: suggest the
+	// include's type names, qualified with the include name.
+	if i := strings.LastIndexByte(c.Prefix, '.'); i >= 0 {
+		includeName := c.Prefix[:i]
+
+		incURI := ss.Resolver().GetIncludeURI(file, c.Doc, includeName)
+		if incURI == "" {
+			return nil
 		}
 
-		for _, st := range ast.Unions() {
-			names[st.Name.Text] = struct{}{}
+		pf, err := ss.Parse(ctx, incURI)
+		if err != nil || pf.AST() == nil {
+			return nil
 		}
 
-		for _, st := range ast.Exceptions() {
-			names[st.Name.Text] = struct{}{}
+		names := make(map[string]struct{})
+		collectTypeNames(pf.AST(), names)
+
+		res := make([]Candidate, 0, len(names))
+		for name := range names {
+			res = append(res, Candidate{
+				showText:   includeName + "." + name,
+				insertText: includeName + "." + name,
+				format:     protocol.InsertTextFormatPlainText,
+			})
 		}
 
-		for _, enum := range ast.Enums() {
-			names[enum.Name.Text] = struct{}{}
-		}
+		sort.Slice(res, func(i, j int) bool { return res[i].showText < res[j].showText })
 
-		for _, td := range ast.Typedefs() {
-			names[td.Name.Text] = struct{}{}
-		}
-
-		for _, svc := range ast.Services() {
-			names[svc.Name.Text] = struct{}{}
-		}
+		return res
 	}
 
-	collectTypeNames(doc)
+	names := make(map[string]struct{})
+	collectTypeNames(c.Doc, names)
 
 	for _, inc := range includedFiles(ss, file) {
 		if pf, err := ss.Parse(ctx, inc); err == nil && pf.AST() != nil {
-			collectTypeNames(pf.AST())
+			collectTypeNames(pf.AST(), names)
 		}
 	}
 
@@ -59,9 +66,64 @@ func typeCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, doc *
 		})
 	}
 
+	for _, kw := range typeKeywords {
+		res = append(res, Candidate{
+			showText:   kw.text,
+			insertText: kw.text,
+			format:     kw.format,
+		})
+	}
+
 	sort.Slice(res, func(i, j int) bool { return res[i].showText < res[j].showText })
 
 	return res
+}
+
+// collectTypeNames adds the type definition names of a document to names:
+// structs, unions, exceptions, enums, and typedefs. Services are not
+// types and never complete in a type position.
+func collectTypeNames(ast *syntax.Document, names map[string]struct{}) {
+	for _, st := range ast.Structs() {
+		names[st.Name.Text] = struct{}{}
+	}
+
+	for _, st := range ast.Unions() {
+		names[st.Name.Text] = struct{}{}
+	}
+
+	for _, st := range ast.Exceptions() {
+		names[st.Name.Text] = struct{}{}
+	}
+
+	for _, enum := range ast.Enums() {
+		names[enum.Name.Text] = struct{}{}
+	}
+
+	for _, td := range ast.Typedefs() {
+		names[td.Name.Text] = struct{}{}
+	}
+}
+
+// typeKeywords are the base and container type keywords offered in a type
+// position.
+var typeKeywords = []struct {
+	text   string
+	format protocol.InsertTextFormat
+}{
+	{"bool", protocol.InsertTextFormatPlainText},
+	{"byte", protocol.InsertTextFormatPlainText},
+	{"i8", protocol.InsertTextFormatPlainText},
+	{"i16", protocol.InsertTextFormatPlainText},
+	{"i32", protocol.InsertTextFormatPlainText},
+	{"i64", protocol.InsertTextFormatPlainText},
+	{"double", protocol.InsertTextFormatPlainText},
+	{"string", protocol.InsertTextFormatPlainText},
+	{"binary", protocol.InsertTextFormatPlainText},
+	{"slist", protocol.InsertTextFormatPlainText},
+	{"uuid", protocol.InsertTextFormatPlainText},
+	{"list<$1>", protocol.InsertTextFormatSnippet},
+	{"set<$1>", protocol.InsertTextFormatSnippet},
+	{"map<$1, $2>", protocol.InsertTextFormatSnippet},
 }
 
 // valueCandidates collects const names and enum names and values from the

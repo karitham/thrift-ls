@@ -32,7 +32,10 @@ func providersFor(kind ContextKind) []Provider {
 	case CtxIncludePath:
 		return []Provider{includeProvider{}}
 	case CtxType:
-		return []Provider{typeProvider{}, keywordProvider{}}
+		// The type provider covers base and container keywords itself, so
+		// the identifier-dumping keyword provider cannot leak non-type
+		// names (services) into a type position.
+		return []Provider{typeProvider{}}
 	case CtxFieldValue:
 		return []Provider{valueProvider{}}
 	case CtxFieldName:
@@ -63,7 +66,7 @@ type typeProvider struct{}
 func (typeProvider) Kind() ContextKind { return CtxType }
 
 func (typeProvider) Candidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, c Context) []Candidate {
-	return typeCandidates(ctx, ss, file, c.Doc)
+	return typeCandidates(ctx, ss, file, c)
 }
 
 type valueProvider struct{}
