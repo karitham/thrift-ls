@@ -201,8 +201,9 @@ func TestCompletionSlotProviders(t *testing.T) {
 	typeCands := typeProvider{}.Candidates(ctx, ss, "file:///tmp/main.thrift", cc)
 	typeLabels := labelsOf(typeCands)
 	assert.Contains(t, typeLabels, "Gundam")
-	assert.Contains(t, typeLabels, "MobileSuit", "types from included files")
-	assert.Contains(t, typeLabels, "BayFull", "types from included files")
+	assert.Contains(t, typeLabels, "federation.gundam.MobileSuit", "types from included files are include-qualified")
+	assert.NotContains(t, typeLabels, "MobileSuit", "bare imported types do not resolve")
+	assert.Contains(t, typeLabels, "federation.gundam.BayFull", "types from included files are include-qualified")
 
 	fieldCands := fieldNameProvider{}.Candidates(ctx, ss, "file:///tmp/main.thrift", cc)
 	fieldLabels := labelsOf(fieldCands)

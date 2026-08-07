@@ -51,12 +51,6 @@ func typeCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, c Con
 	names := make(map[string]struct{})
 	collectTypeNames(c.Doc, names)
 
-	for _, inc := range includedFiles(ss, file) {
-		if pf, err := ss.Parse(ctx, inc); err == nil && pf.AST() != nil {
-			collectTypeNames(pf.AST(), names)
-		}
-	}
-
 	var res []Candidate
 	for name := range names {
 		res = append(res, Candidate{
@@ -64,6 +58,28 @@ func typeCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, c Con
 			insertText: name,
 			format:     protocol.InsertTextFormatPlainText,
 		})
+	}
+
+	// Types from included files are suggested with their include
+	// qualifier: a bare reference to an imported type does not resolve.
+	for _, inc := range includedFiles(ss, file) {
+		pf, err := ss.Parse(ctx, inc)
+		if err != nil || pf.AST() == nil {
+			continue
+		}
+
+		incNames := make(map[string]struct{})
+		collectTypeNames(pf.AST(), incNames)
+
+		qual := includeNameOf(inc)
+		for name := range incNames {
+			show := qual + "." + name
+			res = append(res, Candidate{
+				showText:   show,
+				insertText: show,
+				format:     protocol.InsertTextFormatPlainText,
+			})
+		}
 	}
 
 	for _, kw := range typeKeywords {

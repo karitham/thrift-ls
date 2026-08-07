@@ -120,9 +120,19 @@ func ResolveContext(doc *syntax.Document, pos syntax.Position) Context {
 		case syntax.TokenComma, syntax.TokenSemicolon:
 			if opener, ok := parenOpener(doc, prevIdx); ok {
 				c.Kind = insideParenKind(doc, opener)
+			} else if _, ok := ltOpener(doc, prevIdx); ok {
+				// Inside a container type: map<i32, | is a type slot.
+				c.Kind = CtxType
 			} else if kw, ok := braceBodyKind(doc, prevIdx); ok {
 				c.Kind = memberKind(kw)
 			}
+
+			return c
+		case syntax.TokenLt, syntax.TokenConst, syntax.TokenTypedef:
+			// After a container opener or a const/typedef keyword: a type
+			// slot. The parser bails on the incomplete construct, so the
+			// keyword fallback would otherwise leak every identifier.
+			c.Kind = CtxType
 
 			return c
 		case syntax.TokenLBrace:
@@ -149,12 +159,17 @@ func ResolveContext(doc *syntax.Document, pos syntax.Position) Context {
 
 			return c
 		case syntax.TokenIdentifier:
-			// "user.|" — the lexer drops a trailing dot, so the
-			// identifier token ends one byte before the cursor and the
-			// byte between them is the dot. The slot of the identifier
-			// decides: a type position keeps the type kind with the
-			// dotted prefix (the type provider scopes to the include),
-			// anything else is a qualified value.
+			// The identifier at the cursor. Mid-type typing ("required
+			// so|") is a type slot when the identifier sits directly
+			// after a type marker; "songs.|" drops the trailing dot (one
+			// byte before the cursor) and must keep the dotted prefix so
+			// the type provider scopes to the include.
+			if prev.Offset+len(prev.Text) == c.Offset && typeSlotAfterIdent(doc, prevIdx) {
+				c.Kind = CtxType
+
+				return c
+			}
+
 			if prev.Offset+len(prev.Text) == c.Offset-1 {
 				if typeSlotAfterIdent(doc, prevIdx) {
 					c.Kind = CtxType
@@ -489,6 +504,28 @@ func parenOpener(doc *syntax.Document, from int) (int, bool) {
 		case syntax.TokenRParen:
 			depth++
 		case syntax.TokenLParen:
+			if depth == 0 {
+				return i, true
+			}
+
+			depth--
+		}
+	}
+
+	return 0, false
+}
+
+// ltOpener returns the index of the nearest unclosed '<' at or before from.
+// Containers only appear in type positions, so an unclosed opener means
+// the cursor is inside a container type.
+func ltOpener(doc *syntax.Document, from int) (int, bool) {
+	depth := 0
+
+	for i := from; i >= 0; i-- {
+		switch doc.Tokens[i].Kind {
+		case syntax.TokenGt:
+			depth++
+		case syntax.TokenLt:
 			if depth == 0 {
 				return i, true
 			}

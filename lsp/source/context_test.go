@@ -76,6 +76,12 @@ func TestResolveContext(t *testing.T) {
 		{"field name on identifier", `struct Gundam { 1: required string Na|me }`, CtxFieldName},
 		{"field type on identifier", `struct Gundam { 1: required Str|ing Name }`, CtxType},
 		{"map key type", `struct Gundam { 1: map<|i32, string> fields }`, CtxType},
+		{"type slot after map opener", `struct Gundam { 1: map<|}`, CtxType},
+		{"type slot after list opener", `struct Gundam { 1: list<|}`, CtxType},
+		{"type slot after set opener", `struct Gundam { 1: set<|}`, CtxType},
+		{"map value type after comma", `struct Gundam { 1: map<i32, |}`, CtxType},
+		{"const type slot", `const |`, CtxType},
+		{"typedef type slot", `typedef |`, CtxType},
 		{"field after annotations", `struct Gundam { 1: string Name (color = "blue") |}`, CtxKeyword},
 
 		// Values.
