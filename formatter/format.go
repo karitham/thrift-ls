@@ -267,14 +267,45 @@ func (f *formatter) token(i int) syntax.Token {
 
 // emitOpts controls token emission.
 type emitOpts struct {
-	leading       bool         // emit the first token's leading trivia
-	trailing      bool         // emit the last token's trailing trivia
-	breakTrailing bool         // line-comment trailing forces groups to break
-	skipText      map[int]bool // tokens whose text and gap are suppressed
-	breakSkip     bool         // hard line before a skipped token whose text
+	leading       bool  // emit the first token's leading trivia
+	trailing      bool  // emit the last token's trailing trivia
+	breakTrailing bool  // line-comment trailing forces groups to break
+	skipText      []int // token indexes whose text and gap are suppressed
+	breakSkip     bool  // hard line before a skipped token whose text
 	// the caller emits (separators)
-	pads   map[int]string // spaces inserted after a token, before its gap
-	prefix string         // spaces emitted before the first token
+	pads   []padEntry // spaces inserted after a token, before its gap
+	prefix string     // spaces emitted before the first token
+}
+
+// padEntry is one alignment pad at a token index.
+type padEntry struct {
+	idx  int
+	text string
+}
+
+// containsInt reports whether xs contains v.
+func containsInt(xs []int, v int) bool {
+	for _, x := range xs {
+		if x == v {
+			return true
+		}
+	}
+
+	return false
+}
+
+// padAt returns the combined pads for the token index, or "". Multiple
+// entries at the same index (id pad + requiredness column) concatenate.
+func padAt(pads []padEntry, idx int) string {
+	var out string
+
+	for _, p := range pads {
+		if p.idx == idx {
+			out += p.text
+		}
+	}
+
+	return out
 }
 
 // emitTokens renders the tokens in [start, end] with their trivia, joined
@@ -283,7 +314,7 @@ type emitOpts struct {
 // corresponding flag is set. skipText suppresses separator tokens that the
 // structural layout emits itself; pads widen alignment columns.
 func (f *formatter) emitTokens(start, end int, o emitOpts) doc.Doc {
-	var parts []doc.Doc
+	parts := make([]doc.Doc, 0, 8)
 	if o.prefix != "" {
 		parts = append(parts, doc.Text(o.prefix))
 	}
@@ -291,7 +322,7 @@ func (f *formatter) emitTokens(start, end int, o emitOpts) doc.Doc {
 	for i := start; i <= end; i++ {
 		tok := f.token(i)
 
-		skipped := o.skipText[i]
+		skipped := containsInt(o.skipText, i)
 		if i > start {
 			if skipped {
 				// Leading trivia always forces a hard line; a trailing
@@ -328,7 +359,7 @@ func (f *formatter) emitTokens(start, end int, o emitOpts) doc.Doc {
 		}
 
 		if !skipped && o.pads != nil {
-			if pad, ok := o.pads[i]; ok && pad != "" {
+			if pad := padAt(o.pads, i); pad != "" {
 				parts = append(parts, doc.Text(pad))
 			}
 		}
@@ -448,7 +479,7 @@ func (f *formatter) leadingComments(n syntax.Node) []doc.Doc {
 		return nil
 	}
 
-	var parts []doc.Doc
+	parts := make([]doc.Doc, 0, 8)
 
 	prevBlank := 0
 	for _, c := range tok.Leading {
@@ -469,7 +500,7 @@ func (f *formatter) leadingComments(n syntax.Node) []doc.Doc {
 // the separator already ends with a line comment, these comments cannot
 // share the line and get their own lines instead.
 func (f *formatter) trailingComments(n syntax.Node, sepEmitted bool) []doc.Doc {
-	var parts []doc.Doc
+	parts := make([]doc.Doc, 0, 8)
 	// Comments attached to a separator share the separator's own line,
 	// unless the separator is not emitted (the mode drops it): then a line
 	// comment before it would swallow them, and they need their own lines.
@@ -543,7 +574,7 @@ func (f *formatter) nodeBody(n syntax.Node) doc.Doc {
 // document assembles the whole file: top-level nodes separated by hard
 // lines, blank lines preserved, and trailing comments.
 func (f *formatter) document() doc.Doc {
-	var parts []doc.Doc
+	parts := make([]doc.Doc, 0, 8)
 
 	for i, n := range f.doc.Nodes {
 		if i > 0 {

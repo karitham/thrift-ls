@@ -14,7 +14,7 @@ import (
 // the body to break. Column alignment applies per blank-line group,
 // matching the previous formatter.
 func (f *formatter) fieldList(fields []*syntax.Field, bodyID int, sepMode SeparatorMode) doc.Doc {
-	var parts []doc.Doc
+	parts := make([]doc.Doc, 0, 8)
 
 	for i, field := range fields {
 		if i > 0 {
@@ -63,7 +63,7 @@ func sepText(prevSep syntax.TokenKind, mode SeparatorMode) string {
 
 // enumValueList formats enum bodies with the same layout as fieldList.
 func (f *formatter) enumValueList(values []*syntax.EnumValue, bodyID int) doc.Doc {
-	var parts []doc.Doc
+	parts := make([]doc.Doc, 0, 8)
 
 	for i, value := range values {
 		if i > 0 {
@@ -350,7 +350,7 @@ func (f *formatter) fieldContent(v *syntax.Field, align *columnAlign, padded boo
 
 	o := emitOpts{breakTrailing: true}
 	if v.Sep != 0 {
-		o.skipText = map[int]bool{v.TokEnd(): true}
+		o.skipText = []int{v.TokEnd()}
 		o.breakSkip = sepEmits(v.Sep, sepMode)
 	}
 
@@ -365,7 +365,7 @@ func (f *formatter) fieldContent(v *syntax.Field, align *columnAlign, padded boo
 // when the field carries comments that make the padded widths unknowable.
 // The prefix is the leading padding of a field without an id whose
 // requiredness column is empty.
-func (f *formatter) fieldPads(v *syntax.Field, a *columnAlign) (map[int]string, string) {
+func (f *formatter) fieldPads(v *syntax.Field, a *columnAlign) ([]padEntry, string) {
 	start, end := v.TokStart(), v.TokEnd()
 	if v.Sep != 0 {
 		end--
@@ -383,19 +383,19 @@ func (f *formatter) fieldPads(v *syntax.Field, a *columnAlign) (map[int]string, 
 		}
 	}
 
-	pads := map[int]string{}
+	var pads []padEntry
 	if v.FieldID != nil {
-		pads[v.TokStart()+1] = padRight("", a.idWidth-len(v.FieldID.Text)-1)
+		pads = append(pads, padEntry{v.TokStart() + 1, padRight("", a.idWidth-len(v.FieldID.Text)-1)})
 	}
 
 	if v.Req != 0 {
-		pads[v.Type.TokStart()-1] = padRight("", a.reqWidth-len(v.Req.String()))
+		pads = append(pads, padEntry{v.Type.TokStart() - 1, padRight("", a.reqWidth-len(v.Req.String()))})
 	} else if a.hasReq {
 		// The empty requiredness column: extend the id pad by one column
 		// plus the missing req width, or lead the field with it when there
 		// is no id token to pad after.
 		if v.FieldID != nil {
-			pads[v.TokStart()+1] += padRight("", a.reqWidth+1)
+			pads = append(pads, padEntry{v.TokStart() + 1, padRight("", a.reqWidth+1)})
 		} else {
 			return nil, padRight("", a.reqWidth+1)
 		}
@@ -407,11 +407,11 @@ func (f *formatter) fieldPads(v *syntax.Field, a *columnAlign) (map[int]string, 
 			end = v.Type.Annotations.TokStart() - 1
 		}
 
-		pads[end] = padRight("", a.typeWidth-len(typeText(v.Type)))
+		pads = append(pads, padEntry{end, padRight("", a.typeWidth-len(typeText(v.Type)))})
 	}
 
 	if v.Value != nil && a.nameWidth > 0 {
-		pads[v.Name.TokStart()] = padRight("", a.nameWidth-len(v.Name.Text))
+		pads = append(pads, padEntry{v.Name.TokStart(), padRight("", a.nameWidth-len(v.Name.Text))})
 	}
 
 	return pads, ""
@@ -440,12 +440,12 @@ func (f *formatter) enumValueContent(v *syntax.EnumValue, align *columnAlign, pa
 
 	o := emitOpts{breakTrailing: true}
 	if v.Sep != 0 {
-		o.skipText = map[int]bool{v.TokEnd(): true}
+		o.skipText = []int{v.TokEnd()}
 		o.breakSkip = sepEmits(v.Sep, sepMode)
 	}
 
 	if padded && align.enumAssign && align.nameWidth > 0 {
-		o.pads = map[int]string{v.Name.TokStart(): padRight("", align.nameWidth-len(v.Name.Text))}
+		o.pads = []padEntry{{v.Name.TokStart(), padRight("", align.nameWidth-len(v.Name.Text))}}
 	}
 
 	return f.emitWithAnnotations(v.TokStart(), v.TokEnd(), v.Annotations, o)

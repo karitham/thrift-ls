@@ -260,7 +260,10 @@ type srcPos struct {
 func (l *lexer) run() ([]Token, []Error) {
 	l.line, l.col = 1, 1
 
-	var tokens []Token
+	// A thrift token averages roughly six source bytes. Sizing the slice
+	// up front avoids repeated growth reallocs, which dominate lexing cost
+	// (each realloc zeroes a large backing array).
+	tokens := make([]Token, 0, len(l.src)/6+8)
 
 	for {
 		prevLine := -1

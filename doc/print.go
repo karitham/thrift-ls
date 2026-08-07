@@ -104,6 +104,11 @@ type printer struct {
 	groupMode       map[int]mode
 	lineSuffix      []command
 	shouldRemeasure bool
+
+	// fits scratch: the width check is called for every line candidate
+	// and would otherwise allocate a builder and a command stack per call.
+	fitOutput   strings.Builder
+	fitCommands []command
 }
 
 func (p *printer) write(s string) {
@@ -314,9 +319,11 @@ func (p *printer) fits(next command, rest []command, remainingWidth int, hasLine
 	hasPendingSpace := false
 	// output is only used for width counting because trim needs to look
 	// backwards for spaces.
-	var output strings.Builder
+	p.fitOutput.Reset()
+	output := &p.fitOutput
 
-	commands := []command{next}
+	p.fitCommands = p.fitCommands[:0]
+	commands := append(p.fitCommands, next)
 
 	for remainingWidth >= 0 {
 		if p.fitsDBG {

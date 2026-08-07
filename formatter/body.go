@@ -13,7 +13,7 @@ func (f *formatter) structLike(v *syntax.Struct) doc.Doc {
 	close := f.scanKind(open+1, v.TokEnd(), syntax.TokenRBrace)
 
 	parts := []doc.Doc{
-		f.emitTokens(v.TokStart(), open, emitOpts{skipText: map[int]bool{open: true}, breakSkip: true}),
+		f.emitTokens(v.TokStart(), open, emitOpts{skipText: []int{open}, breakSkip: true}),
 		f.bracedBody(v.Fields, open, close, close != v.TokEnd(), f.constructOf(v.Kind)),
 	}
 	if v.Annotations != nil {
@@ -32,7 +32,7 @@ func (f *formatter) enum(v *syntax.Enum) doc.Doc {
 	close := f.scanKind(open+1, v.TokEnd(), syntax.TokenRBrace)
 
 	parts := []doc.Doc{
-		f.emitTokens(v.TokStart(), open, emitOpts{skipText: map[int]bool{open: true}, breakSkip: true}),
+		f.emitTokens(v.TokStart(), open, emitOpts{skipText: []int{open}, breakSkip: true}),
 		f.bracedEnumBody(v.Values, open, close, close != v.TokEnd()),
 	}
 	if v.Annotations != nil {
@@ -135,7 +135,7 @@ func (f *formatter) bracedEnumBody(values []*syntax.EnumValue, open, close int, 
 func (f *formatter) closingTriviaAt(close int) []doc.Doc {
 	tok := f.token(close)
 
-	var parts []doc.Doc
+	parts := make([]doc.Doc, 0, 8)
 	if len(tok.Leading) > 0 {
 		parts = append(parts, doc.HardLine)
 
@@ -160,7 +160,7 @@ func (f *formatter) closingTriviaAt(close int) []doc.Doc {
 func (f *formatter) openTriviaAt(open int) []doc.Doc {
 	tok := f.token(open)
 
-	var parts []doc.Doc
+	parts := make([]doc.Doc, 0, 8)
 
 	if len(tok.Trailing) > 0 {
 		for _, c := range tok.Trailing {
@@ -179,7 +179,7 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 	open := f.scanKind(v.TokStart(), v.TokEnd(), syntax.TokenLBrace)
 	close := f.scanKind(open+1, v.TokEnd(), syntax.TokenRBrace)
 
-	var parts []doc.Doc
+	parts := make([]doc.Doc, 0, 8)
 
 	for i, fn := range v.Functions {
 		if i > 0 {
@@ -213,7 +213,7 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 	}
 
 	out := []doc.Doc{
-		f.emitTokens(v.TokStart(), open, emitOpts{skipText: map[int]bool{open: true}, breakSkip: true}),
+		f.emitTokens(v.TokStart(), open, emitOpts{skipText: []int{open}, breakSkip: true}),
 		body,
 	}
 	if v.Annotations != nil {
@@ -245,7 +245,7 @@ func (f *formatter) functionBody(v *syntax.Function) doc.Doc {
 	// The open paren's text is emitted by the args group; its trailing
 	// trivia belongs to openTrivia.
 	open := f.scanKind(v.TokStart(), v.TokEnd(), syntax.TokenLParen)
-	header := f.emitTokens(v.TokStart(), open, emitOpts{skipText: map[int]bool{open: true}, breakSkip: true})
+	header := f.emitTokens(v.TokStart(), open, emitOpts{skipText: []int{open}, breakSkip: true})
 
 	// Comments or blank lines in the arguments force the multiline layout:
 	// the flat argument group would drop them.
@@ -391,7 +391,7 @@ func (f *formatter) functionBrokenArgs(v *syntax.Function, header doc.Doc) doc.D
 // annotations, and any stray tokens lenient sources leave — everything the
 // structural layout does not emit itself. open is the args open paren.
 func (f *formatter) functionTail(v *syntax.Function, open int) doc.Doc {
-	var parts []doc.Doc
+	parts := make([]doc.Doc, 0, 8)
 
 	argsClose := parenClose(v.Args, open)
 	if argsClose < v.TokEnd() {
@@ -451,7 +451,7 @@ func (f *formatter) tailAfter(idx int) []doc.Doc {
 // separator per the sepMode option. Comments and blank lines inside
 // the list are preserved.
 func (f *formatter) brokenFields(fields []*syntax.Field, sepMode SeparatorMode) doc.Doc {
-	var parts []doc.Doc
+	parts := make([]doc.Doc, 0, 8)
 
 	for i, field := range fields {
 		if i > 0 {
