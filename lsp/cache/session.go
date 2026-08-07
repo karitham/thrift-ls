@@ -59,6 +59,55 @@ func (s *Session) CreateView(folder uri.URI) {
 	s.views = append(s.views, view)
 }
 
+// AddView registers a view for the workspace folder, returning the
+// existing view when the folder is already tracked.
+func (s *Session) AddView(folder uri.URI) *View {
+	s.viewMu.Lock()
+	defer s.viewMu.Unlock()
+
+	for _, v := range s.views {
+		if v.folder == folder {
+			return v
+		}
+	}
+
+	view := NewView(folder.Path(), folder, s.overlayFS, s.cache.IncludePaths)
+	s.views = append(s.views, view)
+
+	return view
+}
+
+// RemoveView drops the view for the workspace folder and forgets every
+// cached file-to-view mapping that pointed at it, so ViewOf re-resolves
+// against the remaining folders.
+func (s *Session) RemoveView(folder uri.URI) {
+	s.viewMu.Lock()
+	defer s.viewMu.Unlock()
+
+	for i, v := range s.views {
+		if v.folder != folder {
+			continue
+		}
+
+		s.views = append(s.views[:i], s.views[i+1:]...)
+		for file, view := range s.viewMap {
+			if view == v {
+				delete(s.viewMap, file)
+			}
+		}
+
+		return
+	}
+}
+
+// Views returns the workspace folders' views.
+func (s *Session) Views() []*View {
+	s.viewMu.Lock()
+	defer s.viewMu.Unlock()
+
+	return append([]*View(nil), s.views...)
+}
+
 func (s *Session) ViewOf(fileURI uri.URI) (*View, error) {
 	s.viewMu.Lock()
 	defer s.viewMu.Unlock()

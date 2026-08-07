@@ -1,9 +1,12 @@
 package lsp
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
@@ -403,4 +406,66 @@ struct Other {
 			}
 		})
 	}
+}
+
+func Test_DidChangeWorkspaceFolders(t *testing.T) {
+	ctx := t.Context()
+
+	dirA := t.TempDir()
+	dirB := t.TempDir()
+
+	require.NoError(t, os.WriteFile(filepath.Join(dirA, "a.thrift"), []byte("struct FromA {}"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dirB, "b.thrift"), []byte("struct FromB {}"), 0o644))
+
+	srv := NewServer(cache.New(nil), nil, formatter.Options{})
+
+	// Adding folders walks them and registers their thrift files.
+	err := srv.DidChangeWorkspaceFolders(ctx, &protocol.DidChangeWorkspaceFoldersParams{
+		Event: protocol.WorkspaceFoldersChangeEvent{
+			Added: []protocol.WorkspaceFolder{{URI: uri.File(dirA)}},
+		},
+	})
+	require.NoError(t, err)
+
+	err = srv.DidChangeWorkspaceFolders(ctx, &protocol.DidChangeWorkspaceFoldersParams{
+		Event: protocol.WorkspaceFoldersChangeEvent{
+			Added: []protocol.WorkspaceFolder{{URI: uri.File(dirB)}},
+		},
+	})
+	require.NoError(t, err)
+
+	assert.Len(t, srv.session.Views(), 2)
+
+	files, err := srv.Symbols(ctx, &protocol.WorkspaceSymbolParams{Query: ""})
+	require.NoError(t, err)
+
+	syms, ok := files.(protocol.SymbolInformationSlice)
+	require.True(t, ok)
+	assert.Equal(t, []string{"FromA", "FromB"}, symbolNames(syms))
+
+	// Removing a folder drops its view and its symbols.
+	err = srv.DidChangeWorkspaceFolders(ctx, &protocol.DidChangeWorkspaceFoldersParams{
+		Event: protocol.WorkspaceFoldersChangeEvent{
+			Removed: []protocol.WorkspaceFolder{{URI: uri.File(dirA)}},
+		},
+	})
+	require.NoError(t, err)
+
+	assert.Len(t, srv.session.Views(), 1)
+
+	files, err = srv.Symbols(ctx, &protocol.WorkspaceSymbolParams{Query: ""})
+	require.NoError(t, err)
+
+	syms, ok = files.(protocol.SymbolInformationSlice)
+	require.True(t, ok)
+	assert.Equal(t, []string{"FromB"}, symbolNames(syms))
+}
+
+func symbolNames(syms protocol.SymbolInformationSlice) []string {
+	names := make([]string, len(syms))
+	for i, s := range syms {
+		names[i] = s.Name
+	}
+
+	return names
 }

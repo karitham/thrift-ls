@@ -83,6 +83,11 @@ func (v *View) ContainsFile(uri uri.URI) bool {
 	return strings.HasPrefix(file, "/")
 }
 
+// Folder returns the workspace folder the view covers.
+func (v *View) Folder() uri.URI {
+	return v.folder
+}
+
 func (v *View) MarkFileKnown(fileURI uri.URI) {
 	v.knownFilesMu.Lock()
 	defer v.knownFilesMu.Unlock()
@@ -99,6 +104,22 @@ func (v *View) FileKnown(uri uri.URI) bool {
 	defer v.knownFilesMu.Unlock()
 
 	return v.knownFiles[uri]
+}
+
+// KnownFiles returns the known file URIs of the view, sorted for
+// deterministic iteration.
+func (v *View) KnownFiles() []uri.URI {
+	v.knownFilesMu.Lock()
+	defer v.knownFilesMu.Unlock()
+
+	files := make([]uri.URI, 0, len(v.knownFiles))
+	for file := range v.knownFiles {
+		files = append(files, file)
+	}
+
+	sort.Slice(files, func(i, j int) bool { return files[i] < files[j] })
+
+	return files
 }
 
 // FileChange applies changes to the view: it swaps in a new snapshot (an

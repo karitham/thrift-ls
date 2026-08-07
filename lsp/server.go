@@ -8,6 +8,7 @@ import (
 
 	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/lsp/symbols"
 )
 
 type Server struct {
@@ -114,6 +115,15 @@ func (s *Server) DidChangeWatchedFiles(ctx context.Context, params *protocol.Did
 }
 
 func (s *Server) DidChangeWorkspaceFolders(ctx context.Context, params *protocol.DidChangeWorkspaceFoldersParams) (err error) {
+	for _, folder := range params.Event.Removed {
+		s.session.RemoveView(folder.URI)
+	}
+
+	for _, folder := range params.Event.Added {
+		s.session.AddView(folder.URI)
+		s.walkFoldersThriftFile(folder.URI)
+	}
+
 	return nil
 }
 
@@ -215,7 +225,7 @@ func (s *Server) SignatureHelp(ctx context.Context, params *protocol.SignatureHe
 }
 
 func (s *Server) Symbols(ctx context.Context, params *protocol.WorkspaceSymbolParams) (result protocol.WorkspaceSymbolResult, err error) {
-	return protocol.SymbolInformationSlice{}, nil
+	return protocol.SymbolInformationSlice(symbols.WorkspaceSymbols(ctx, s.session, params.Query, 1000)), nil
 }
 
 func (s *Server) TypeDefinition(ctx context.Context, params *protocol.TypeDefinitionParams) (result protocol.DefinitionResult, err error) {
