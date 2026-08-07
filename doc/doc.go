@@ -71,8 +71,9 @@ func Join(sep Doc, parts []Doc) Doc {
 // arena allocates its nodes from a few growing regions instead of one
 // heap allocation per node, at the cost of the arena retaining the
 // regions until it is discarded. The arena must outlive the printing of
-// the documents it built, and must not be used by concurrent builders.
-// The zero value is ready to use.
+// the documents it built, must not be used by concurrent builders, and
+// must not be copied after first use (it holds a printer with scratch
+// buffers). The zero value is ready to use.
 type Arena struct {
 	texts    []textNode
 	concats  []concatNode
@@ -83,6 +84,7 @@ type Arena struct {
 	suffixes []lineSuffix
 	parts    []Doc
 	partsLen int
+	printer  printer // reused by Print; not safe to copy once used
 }
 
 // Reset reuses the arena's regions for a fresh document: the previous

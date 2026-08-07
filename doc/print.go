@@ -5,6 +5,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"sync"
 )
 
 // Options control how a document is printed.
@@ -68,18 +69,63 @@ func (i indentation) align(n int, o Options) indentation {
 	return i
 }
 
+// printerPool reuses printer scratch (the output buffer, the fits
+// lookahead builder and command stack) across prints; a printer is
+// single-threaded and must not be used concurrently. The pool's contents
+// are dropped by the GC, so hot paths prefer an Arena's own printer,
+// which lives as long as the arena.
+var printerPool = sync.Pool{New: func() any { return &printer{} }}
+
 // Print renders doc to a string. Options are validated; a document of an
 // unknown shape returns an error (unreachable with the sealed Doc
 // interface). Print mutates doc: break propagation sets group break flags.
 func Print(d Doc, o Options) (string, error) {
+	if err := validateOptions(o); err != nil {
+		return "", err
+	}
+
+	propagateBreaks(d)
+
+	p := printerPool.Get().(*printer)
+	p.reset(o)
+
+	res, err := p.run(d)
+
+	printerPool.Put(p)
+
+	return res, err
+}
+
+// Print renders doc with the arena's own printer, whose scratch survives
+// the GC as long as the arena does. Like Print, it mutates doc, and the
+// arena must not be used concurrently.
+func (a *Arena) Print(d Doc, o Options) (string, error) {
+	if err := validateOptions(o); err != nil {
+		return "", err
+	}
+
+	propagateBreaks(d)
+
+	p := &a.printer
+	p.reset(o)
+
+	return p.run(d)
+}
+
+func validateOptions(o Options) error {
 	if o.PrintWidth <= 0 {
-		return "", fmt.Errorf("doc: PrintWidth must be positive, got %d", o.PrintWidth)
+		return fmt.Errorf("doc: PrintWidth must be positive, got %d", o.PrintWidth)
 	}
 
 	if o.TabWidth <= 0 {
-		return "", fmt.Errorf("doc: TabWidth must be positive, got %d", o.TabWidth)
+		return fmt.Errorf("doc: TabWidth must be positive, got %d", o.TabWidth)
 	}
 
+	return nil
+}
+
+// reset prepares a printer for a fresh document, retaining its scratch.
+func (p *printer) reset(o Options) {
 	if o.NewLine == "" {
 		o.NewLine = "\n"
 	}
@@ -88,11 +134,20 @@ func Print(d Doc, o Options) (string, error) {
 		o.Indent = strings.Repeat(" ", o.TabWidth)
 	}
 
-	propagateBreaks(d)
-
-	p := &printer{o: o, groupMode: map[int]mode{}}
-
-	return p.run(d)
+	p.o = o
+	p.position = 0
+	p.out = p.out[:0]
+	if p.groupMode == nil {
+		p.groupMode = map[int]mode{}
+	} else {
+		clear(p.groupMode)
+	}
+	p.lineSuffix = p.lineSuffix[:0]
+	p.shouldRemeasure = false
+	p.lastLineComment = false
+	p.fitOutput.Reset()
+	p.fitCommands = p.fitCommands[:0]
+	p.prefixes = p.prefixes[:0]
 }
 
 type printer struct {

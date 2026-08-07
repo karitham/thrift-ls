@@ -127,7 +127,10 @@ func (f *formatter) constItems(items []constItem, open, close int, c Construct, 
 	)
 	if f.opts.Break.Get(c) || sepForcesBreakList(f.sepsOf(items), sepMode) {
 		// BreakParent inside the group forces it to the broken layout.
-		inner = f.Concat(doc.BreakParent, inner)
+		p := f.Parts(2)
+		p = append(p, doc.BreakParent)
+		p = append(p, inner)
+		inner = f.Concat(p...)
 	}
 
 	return f.Group(inner)
@@ -169,17 +172,22 @@ func (f *formatter) itemSep(sep int, mode SeparatorMode) []doc.Doc {
 	}
 
 	if text == f.token(sep).Text {
-		return []doc.Doc{f.emitTokens(sep, sep, emitOpts{leading: true, trailing: true}), f.foldBreak(sep, " ")}
+		p := f.Parts(2)
+		p = append(p, f.emitTokens(sep, sep, emitOpts{leading: true, trailing: true}))
+		p = append(p, f.foldBreak(sep, " "))
+
+		return p
 	}
 
 	// Forced separator differing from the source: the forced text replaces
 	// the suppressed text inside the run, so the source token's comments
 	// stay ordered around it — own-line comments before it, same-line
 	// comments after.
-	return []doc.Doc{
-		f.emitTokens(sep, sep, emitOpts{leading: true, trailing: true, skipText: []int{sep}, text: text}),
-		f.foldBreak(sep, " "),
-	}
+	p := f.Parts(2)
+	p = append(p, f.emitTokens(sep, sep, emitOpts{leading: true, trailing: true, skipText: []int{sep}, text: text}))
+	p = append(p, f.foldBreak(sep, " "))
+
+	return p
 }
 
 // trailingItemSep is the trailing separator of a list/map: the source
@@ -215,7 +223,10 @@ func (f *formatter) trailingItemSep(last int, mode SeparatorMode) doc.Doc {
 		// line end instead.
 		sepDoc := f.emitTokens(sep, sep, emitOpts{leading: true, trailing: true})
 		if !f.sameLineEndsLine(sep) {
-			sepDoc = f.Concat(sepDoc, f.Text(" "))
+			p := f.Parts(2)
+			p = append(p, sepDoc)
+			p = append(p, f.Text(" "))
+			sepDoc = f.Concat(p...)
 		}
 
 		return sepDoc
@@ -234,7 +245,10 @@ func (f *formatter) trailingItemSep(last int, mode SeparatorMode) doc.Doc {
 	// is stable across a reparse.
 	sepDoc := f.emitTokens(sep, sep, emitOpts{leading: true, trailing: true, skipText: []int{sep}, text: text})
 	if text != "" && !f.sameLineEndsLine(sep) {
-		sepDoc = f.Concat(sepDoc, f.Text(" "))
+		p := f.Parts(2)
+		p = append(p, sepDoc)
+		p = append(p, f.Text(" "))
+		sepDoc = f.Concat(p...)
 	}
 
 	return sepDoc

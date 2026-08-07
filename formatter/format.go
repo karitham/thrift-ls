@@ -239,7 +239,7 @@ func Format(d *syntax.Document, o Options) (string, error) {
 		opts:  o,
 	}
 
-	return doc.Print(f.document(), printOptions(o))
+	return formatArena.Print(f.document(), printOptions(o))
 }
 
 // printOptions maps formatter options to printer options.
@@ -293,7 +293,7 @@ func FormatNode(d *syntax.Document, n syntax.Node, o Options) (string, error) {
 		opts:  o,
 	}
 
-	return doc.Print(f.node(n), printOptions(o))
+	return formatArena.Print(f.node(n), printOptions(o))
 }
 
 type formatter struct {
@@ -389,7 +389,7 @@ func (f *formatter) nextReal(idx int) int {
 // structural layout emits itself (text replaces the suppressed text when
 // set); pads widen alignment columns.
 func (f *formatter) emitTokens(start, end int, o emitOpts) doc.Doc {
-	parts := f.Parts(8)
+	parts := f.Parts(12)
 	if o.prefix != "" {
 		parts = append(parts, f.Text(o.prefix))
 	}
@@ -484,10 +484,11 @@ func (f *formatter) foldBreak(i int, flat string) doc.Doc {
 // commaSep renders a separating comma with its trivia, then the foldable
 // gap after it.
 func (f *formatter) commaSep(comma int) []doc.Doc {
-	return []doc.Doc{
-		f.emitTokens(comma, comma, emitOpts{leading: true, trailing: true}),
-		f.foldBreak(comma, " "),
-	}
+	p := f.Parts(2)
+	p = append(p, f.emitTokens(comma, comma, emitOpts{leading: true, trailing: true}))
+	p = append(p, f.foldBreak(comma, " "))
+
+	return p
 }
 
 // rawTokenGap returns the canonical text between two adjacent tokens:
@@ -560,7 +561,7 @@ func (f *formatter) nodeBody(n syntax.Node) doc.Doc {
 // document assembles the whole file: top-level nodes separated by
 // collapsible lines, blank lines preserved, and trailing comments.
 func (f *formatter) document() doc.Doc {
-	parts := f.Parts(8)
+	parts := f.Parts(12)
 
 	for i, n := range f.doc.Nodes {
 		if i > 0 {
@@ -606,7 +607,8 @@ func (f *formatter) namespace(v *syntax.Namespace) doc.Doc {
 		o.trailing = true
 	}
 
-	parts := []doc.Doc{f.emitTokens(v.TokStart(), end, o)}
+	parts := f.Parts(3)
+	parts = append(parts, f.emitTokens(v.TokStart(), end, o))
 	parts = append(parts, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
 	parts = append(parts, f.afterAnnotations(v.Annotations, v.TokEnd()))
 
@@ -624,7 +626,8 @@ func (f *formatter) typedef(v *syntax.Typedef) doc.Doc {
 		o.trailing = true
 	}
 
-	parts := []doc.Doc{f.emitTokens(v.TokStart(), end, o)}
+	parts := f.Parts(3)
+	parts = append(parts, f.emitTokens(v.TokStart(), end, o))
 	parts = append(parts, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
 	parts = append(parts, f.afterAnnotations(v.Annotations, v.TokEnd()))
 
@@ -639,10 +642,9 @@ func (f *formatter) constant(v *syntax.Const) doc.Doc {
 
 	eq := f.prevReal(value.TokStart() - 1)
 
-	parts := []doc.Doc{
-		f.emitTokens(v.TokStart(), eq, emitOpts{trailing: true}),
-		f.tokenGap(eq, value.TokStart()),
-	}
+	parts := f.Parts(2)
+	parts = append(parts, f.emitTokens(v.TokStart(), eq, emitOpts{trailing: true}))
+	parts = append(parts, f.tokenGap(eq, value.TokStart()))
 	// Own-line comments before the value render at the value boundary,
 	// outside the value's own group.
 	parts = append(parts, f.ownLineComments(value.TokStart())...)
@@ -726,21 +728,33 @@ func (f *formatter) annotationsDoc(a *syntax.Annotations, isLast bool) doc.Doc {
 		last = lastItem.TokEnd()
 	}
 
-	group := f.Group(f.Concat(
-		f.emitTokens(open, open, all),
-		f.Indent(f.Concat(f.foldBreak(open, ""), f.Concat(middle...))),
-		f.foldBreak(last, ""),
-		f.emitTokens(close, close, emitOpts{leading: true}),
-	))
+	openBreak := f.Parts(2)
+	openBreak = append(openBreak, f.foldBreak(open, ""))
+	openBreak = append(openBreak, f.Concat(middle...))
 
-	out := f.Concat(f.Text(" "), group)
+	parts := f.Parts(4)
+	parts = append(parts, f.emitTokens(open, open, all))
+	parts = append(parts, f.Indent(f.Concat(openBreak...)))
+	parts = append(parts, f.foldBreak(last, ""))
+	parts = append(parts, f.emitTokens(close, close, emitOpts{leading: true}))
+
+	group := f.Group(f.Concat(parts...))
+
+	out := f.Parts(2)
+	out = append(out, f.Text(" "))
+	out = append(out, group)
+
 	if !isLast {
 		// Same-line comments after the close render at the group boundary,
 		// outside the group, so the group folds independently.
-		out = f.Concat(out, f.Concat(f.sameLineComments(close)...))
+		withSuffix := f.Parts(2)
+		withSuffix = append(withSuffix, f.Concat(out...))
+		withSuffix = append(withSuffix, f.Concat(f.sameLineComments(close)...))
+
+		return f.Concat(withSuffix...)
 	}
 
-	return out
+	return f.Concat(out...)
 }
 
 // trimComment returns the comment text without trailing whitespace, which

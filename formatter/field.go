@@ -27,7 +27,7 @@ func (f *formatter) fieldList(fields []*syntax.Field, bodyID int, sepMode Separa
 		parts = append(parts, f.field(field, f.alignmentFor(fields, i, sepMode), bodyID, sepMode))
 	}
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 // fieldSep is the separator between two list items: a newline when the
@@ -35,7 +35,11 @@ func (f *formatter) fieldList(fields []*syntax.Field, bodyID int, sepMode Separa
 // preserving (each item keeps its own trailing separator), or a single
 // forced separator per the comma mode.
 func (f *formatter) fieldSep(prevSep syntax.TokenKind, mode SeparatorMode) doc.Doc {
-	return f.IfBreak(doc.Line, f.Concat(f.Text(sepText(prevSep, mode)), doc.Line))
+	p := f.Parts(2)
+	p = append(p, f.Text(sepText(prevSep, mode)))
+	p = append(p, doc.Line)
+
+	return f.IfBreak(doc.Line, f.Concat(p...))
 }
 
 // sepText is the separator text between two flat list items: each item's
@@ -76,7 +80,7 @@ func (f *formatter) enumValueList(values []*syntax.EnumValue, bodyID int) doc.Do
 		parts = append(parts, f.enumValue(value, f.alignmentForEnum(values, i, f.opts.Separator.Get(ConstructEnum)), bodyID))
 	}
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 // groupedWith reports whether the node joins the alignment group of the
@@ -320,13 +324,17 @@ func (f *formatter) nodeTrailingInline(end int, sep syntax.TokenKind, sepMode Se
 func (f *formatter) fieldDoc(v *syntax.Field, align *columnAlign, bodyID int, sepMode SeparatorMode) doc.Doc {
 	content := f.fieldContent(v, align, false, sepMode)
 	if bodyID != 0 {
-		content = f.IfBreakFor(
-			f.Concat(f.fieldContent(v, align, true, sepMode), f.trailingSep(v.Sep, sepMode)),
-			content,
-			bodyID,
-		)
+		broken := f.Parts(2)
+		broken = append(broken, f.fieldContent(v, align, true, sepMode))
+		broken = append(broken, f.trailingSep(v.Sep, sepMode))
+
+		content = f.IfBreakFor(f.Concat(broken...), content, bodyID)
 	} else {
-		content = f.Concat(f.fieldContent(v, align, true, sepMode), f.trailingSep(v.Sep, sepMode))
+		broken := f.Parts(2)
+		broken = append(broken, f.fieldContent(v, align, true, sepMode))
+		broken = append(broken, f.trailingSep(v.Sep, sepMode))
+
+		content = f.Concat(broken...)
 	}
 
 	parts := append(f.ownLineComments(v.TokStart()), content)
@@ -336,7 +344,7 @@ func (f *formatter) fieldDoc(v *syntax.Field, align *columnAlign, bodyID int, se
 		parts = append(parts, f.suppressedSepComments(v.TokEnd())...)
 	}
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 // field assembles a struct-like body field, switching on the body group's
@@ -356,13 +364,14 @@ func (f *formatter) emitWithAnnotations(start, end int, ann *syntax.Annotations,
 	first := o
 	first.trailing = true
 
-	parts := []doc.Doc{f.emitTokens(start, ann.TokStart()-1, first)}
+	parts := f.Parts(3)
+	parts = append(parts, f.emitTokens(start, ann.TokStart()-1, first))
 	parts = append(parts, f.annotationsDoc(ann, ann.TokEnd() == end))
 	if ann.TokEnd() < end {
 		parts = append(parts, f.emitTokens(f.nextReal(ann.TokEnd()+1), end, emitOpts{leading: true, skipText: o.skipText}))
 	}
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 // fieldContent renders the field as a token run. padded selects the
@@ -405,7 +414,7 @@ func (f *formatter) fieldPads(v *syntax.Field, a *columnAlign) ([]padEntry, stri
 		}
 	}
 
-	var pads []padEntry
+	pads := make([]padEntry, 0, 3)
 	if v.FieldID != nil {
 		pads = append(pads, padEntry{v.TokStart() + 1, padRight("", a.idWidth-len(v.FieldID.Text)-1)})
 	}
@@ -444,11 +453,11 @@ func (f *formatter) fieldPads(v *syntax.Field, a *columnAlign) ([]padEntry, stri
 func (f *formatter) enumValue(v *syntax.EnumValue, align *columnAlign, bodyID int) doc.Doc {
 	content := f.enumValueContent(v, align, false, f.opts.Separator.Get(ConstructEnum))
 	if bodyID != 0 {
-		content = f.IfBreakFor(
-			f.Concat(f.enumValueContent(v, align, true, f.opts.Separator.Get(ConstructEnum)), f.trailingSep(v.Sep, f.opts.Separator.Get(ConstructEnum))),
-			content,
-			bodyID,
-		)
+		broken := f.Parts(2)
+		broken = append(broken, f.enumValueContent(v, align, true, f.opts.Separator.Get(ConstructEnum)))
+		broken = append(broken, f.trailingSep(v.Sep, f.opts.Separator.Get(ConstructEnum)))
+
+		content = f.IfBreakFor(f.Concat(broken...), content, bodyID)
 	}
 
 	parts := append(f.ownLineComments(v.TokStart()), content)
@@ -458,7 +467,7 @@ func (f *formatter) enumValue(v *syntax.EnumValue, align *columnAlign, bodyID in
 		parts = append(parts, f.suppressedSepComments(v.TokEnd())...)
 	}
 
-	return doc.Concat(parts)
+	return f.Concat(parts...)
 }
 
 func (f *formatter) enumValueContent(v *syntax.EnumValue, align *columnAlign, padded bool, sepMode SeparatorMode) doc.Doc {
@@ -539,9 +548,26 @@ func (f *formatter) trailingSep(sep syntax.TokenKind, mode SeparatorMode) doc.Do
 	}
 }
 
-// padRight pads s with trailing spaces to width w.
+// spaces is a shared run of spaces for column padding; padRight slices
+// it for widths within it instead of allocating.
+const spaces = "                                                                " // 64
+
+// padRight pads s with trailing spaces to width w. With an empty base
+// the pad is a slice of the shared spaces constant, no allocation.
 func padRight(s string, w int) string {
 	if n := w - len(s); n > 0 {
+		if n <= len(spaces) {
+			if s == "" {
+				return spaces[:n]
+			}
+
+			return s + spaces[:n]
+		}
+
+		if s == "" {
+			return strings.Repeat(" ", n)
+		}
+
 		return s + strings.Repeat(" ", n)
 	}
 

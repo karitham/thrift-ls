@@ -92,7 +92,10 @@ func (f *formatter) bracedBody(fields []*syntax.Field, open, close int, closeTra
 	)
 	if len(fields) > 0 && (f.opts.Break.Get(c) || sepForcesBreak(sepsOfFields(fields), sepMode)) {
 		// BreakParent inside the group forces it to the broken layout.
-		content = f.Concat(doc.BreakParent, content)
+		p := f.Parts(2)
+		p = append(p, doc.BreakParent)
+		p = append(p, content)
+		content = f.Concat(p...)
 	}
 
 	return f.GroupID(bodyID, content)
@@ -122,7 +125,10 @@ func (f *formatter) bracedEnumBody(values []*syntax.EnumValue, open, close int, 
 		f.emitTokens(close, close, emitOpts{trailing: closeTrailing}),
 	)
 	if len(values) > 0 && (f.opts.Break.Get(ConstructEnum) || sepForcesBreak(sepsOfValues(values), f.opts.Separator.Get(ConstructEnum))) {
-		content = f.Concat(doc.BreakParent, content)
+		p := f.Parts(2)
+		p = append(p, doc.BreakParent)
+		p = append(p, content)
+		content = f.Concat(p...)
 	}
 
 	return f.GroupID(bodyID, content)
@@ -149,7 +155,10 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 		parts = append(parts, f.function(fn))
 	}
 
-	inner := f.Concat(f.Concat(parts...), f.Concat(f.ownLineComments(close)...))
+	p := f.Parts(2)
+	p = append(p, f.Concat(parts...))
+	p = append(p, f.Concat(f.ownLineComments(close)...))
+	inner := f.Concat(p...)
 	if len(v.Functions) > 0 {
 		// The first function starts its own line; the closing trivia
 		// provides the break before it for empty bodies, so the blank
@@ -158,7 +167,10 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 	} else if !f.hasOwnLineComments(close) && f.token(close).BlankLinesBefore > 0 {
 		// Empty body with blank lines before the close and no comments:
 		// the blanks round-trip through the close's own line.
-		inner = f.Concat(f.Concat(f.blankLineDocs(f.token(close).BlankLinesBefore, doc.HardLine)...), inner)
+		p := f.Parts(2)
+		p = append(p, f.Concat(f.blankLineDocs(f.token(close).BlankLinesBefore, doc.HardLine)...))
+		p = append(p, inner)
+		inner = f.Concat(p...)
 	}
 
 	openComments := f.sameLineComments(open)
@@ -241,7 +253,10 @@ func (f *formatter) functionBody(v *syntax.Function) doc.Doc {
 func (f *formatter) parenGroup(fields []*syntax.Field, open, close int, forced bool, sepMode SeparatorMode) doc.Doc {
 	broken := f.brokenParens(fields, open, close, sepMode)
 	if forced {
-		broken = f.Concat(broken, doc.BreakParent)
+		p := f.Parts(2)
+		p = append(p, broken)
+		p = append(p, doc.BreakParent)
+		broken = f.Concat(p...)
 	}
 
 	flat := append([]doc.Doc{f.Text("(")}, f.sameLineComments(open)...)
@@ -258,7 +273,10 @@ func (f *formatter) parenGroup(fields []*syntax.Field, open, close int, forced b
 func (f *formatter) throwsGroup(v *syntax.Function) doc.Doc {
 	forced := f.fieldsForcedBroken(v.Throws.Fields) || sepForcesBreak(sepsOfFields(v.Throws.Fields), f.opts.Separator.Get(ConstructThrows)) || f.opts.Break.Get(ConstructThrows)
 
-	return f.Concat(f.Text(" throws "), f.parenGroup(v.Throws.Fields, v.Throws.TokStart(), v.Throws.TokEnd(), forced, f.opts.Separator.Get(ConstructThrows)))
+	p := f.Parts(2)
+	p = append(p, f.Text(" throws "))
+	p = append(p, f.parenGroup(v.Throws.Fields, v.Throws.TokStart(), v.Throws.TokEnd(), forced, f.opts.Separator.Get(ConstructThrows)))
+	return f.Concat(p...)
 }
 
 // parenClose returns the close paren index matching the open paren at
