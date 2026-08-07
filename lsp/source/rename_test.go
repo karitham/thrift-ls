@@ -173,6 +173,42 @@ const UserKind kind = "1"
 			assertion: assert.NoError,
 		},
 		{
+			name: "case type reference",
+			args: args{
+				ctx:  t.Context(),
+				ss:   ss,
+				file: "file:///tmp/api.thrift",
+				pos: protocol.Position{
+					Line:      2,
+					Character: 7, // 'T' of user.Test
+				},
+			},
+			wantRes: &protocol.Range{
+				Start: protocol.Position{
+					Line:      2,
+					Character: 2,
+				},
+				End: protocol.Position{
+					Line:      2,
+					Character: 11,
+				},
+			},
+			assertion: assert.NoError,
+		},
+		{
+			name: "case basic type reference",
+			args: args{
+				ctx:  t.Context(),
+				ss:   ss,
+				file: "file:///tmp/api.thrift",
+				pos: protocol.Position{
+					Line:      3,
+					Character: 68, // 's' of string
+				},
+			},
+			assertion: assert.Error,
+		},
+		{
 			name: "typedef",
 			args: args{
 				ctx:  t.Context(),
@@ -449,6 +485,21 @@ const UserKind kind = "1"
 								},
 							},
 							NewText: "user.newtext",
+						},
+						{
+							// The enum-qualified value reference: only the
+							// enum segment is rewritten.
+							Range: protocol.Range{
+								Start: protocol.Position{
+									Line:      3,
+									Character: 55,
+								},
+								End: protocol.Position{
+									Line:      3,
+									Character: 60,
+								},
+							},
+							NewText: "newtext",
 						},
 					},
 				},

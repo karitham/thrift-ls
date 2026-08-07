@@ -218,7 +218,7 @@ func initializeResult() *protocol.InitializeResult {
 				MoreTriggerCharacter:  []string{},
 			},
 			RenameProvider: &protocol.RenameOptions{
-				PrepareProvider: new(false),
+				PrepareProvider: new(true),
 			},
 			ExecuteCommandProvider: protocol.ExecuteCommandOptions{
 				Commands: []string{},

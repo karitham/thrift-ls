@@ -88,13 +88,6 @@ func IsBasicType(t string) bool {
 	return ok
 }
 
-// IsContainerType reports whether t is a container keyword.
-func IsContainerType(t string) bool {
-	_, ok := containerType[t]
-
-	return ok
-}
-
 // typeReferenceName returns the referenced type name of a FieldType, or ""
 // for base types and containers.
 func typeReferenceName(ft *syntax.FieldType) string {
@@ -132,12 +125,6 @@ var basicType = map[string]struct{}{
 	"binary": {},
 	"slist":  {},
 	"uuid":   {},
-}
-
-var containerType = map[string]struct{}{
-	"list": {},
-	"map":  {},
-	"set":  {},
 }
 
 // definitionMatches reports whether the node has the expected definition

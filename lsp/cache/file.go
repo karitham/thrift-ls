@@ -177,11 +177,6 @@ func (m *FilesMap) copyOnWrite() {
 	m.shared = false
 }
 
-func (m *FilesMap) Destroy() {
-	m.files = nil
-	m.overlays = nil
-}
-
 type FileChangeType string
 
 const (
@@ -204,13 +199,15 @@ func (f *FileChange) FullContent(base []byte) []byte {
 	return f.Content
 }
 
+// FileChangeFromLSPDidChange converts a didChange payload into file
+// changes. The server advertises whole-document sync, so whole-document
+// events map one-to-one; incremental (partial) events are a client
+// protocol violation and are skipped.
 func FileChangeFromLSPDidChange(params *protocol.DidChangeTextDocumentParams) []*FileChange {
 	changes := make([]*FileChange, 0, len(params.ContentChanges))
 	for i := range params.ContentChanges {
 		event, ok := params.ContentChanges[i].(*protocol.TextDocumentContentChangeWholeDocument)
 		if !ok {
-			// Incremental changes are not supported; fall back to full reload
-			// semantics using the current full content.
 			continue
 		}
 

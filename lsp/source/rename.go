@@ -25,6 +25,17 @@ func PrepareRename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos pr
 		rg := nodeRange(pf, target.node)
 
 		return &rg, nil
+	case TargetTypeName:
+		// Rename supports type references; basic types are the only
+		// position it rejects, so prepare must reject them too.
+		ft := target.parent.(*syntax.FieldType)
+		if typeReferenceName(ft) == "" || IsBasicType(typeReferenceName(ft)) {
+			return nil, fmt.Errorf("rename not supported for basic types")
+		}
+
+		rg := nodeRange(pf, target.node)
+
+		return &rg, nil
 	}
 
 	return nil, fmt.Errorf("rename not supported at this position")

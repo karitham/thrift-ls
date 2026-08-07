@@ -156,7 +156,25 @@ func searchDefinitionReferences(ctx context.Context, ss *cache.Snapshot, file ur
 
 	typeName := fmt.Sprintf("%s.%s", includeNameOf(file), id.Text)
 
-	return searchIdentifierReferences(ctx, ss, file, typeName, kind)
+	typeRefs, err := searchIdentifierReferences(ctx, ss, file, typeName, kind)
+	if err != nil {
+		return res, err
+	}
+
+	res = append(res, typeRefs...)
+
+	// Enum renames also touch value positions: identifiers like
+	// songs.Song.FUWA_FUWA_TIME reference the enum by name.
+	if kind == DefinitionEnum {
+		valueRefs, err := searchEnumQualifiedValueReferences(ctx, ss, file, id.Text)
+		if err != nil {
+			return res, err
+		}
+
+		res = append(res, valueRefs...)
+	}
+
+	return res, err
 }
 
 func grandparent(path []syntax.Node) syntax.Node {
@@ -475,42 +493,120 @@ func searchConstValueIdentifierReference(ctx context.Context, ss *cache.Snapshot
 		return res, err
 	}
 
-	jumpValue := func(v *syntax.ConstValue) {
-		if v != nil && v.Kind == syntax.ValueIdent && bareName(v.Text) == bareName(valueName) {
+	walkValueIdentifiers(pf.AST(), func(v *syntax.ConstValue) {
+		if v.Kind == syntax.ValueIdent && bareName(v.Text) == bareName(valueName) {
 			res = append(res, referenceHit{loc: jump(file, pf, v), text: v.Text})
 		}
+	})
+
+	return res, err
+}
+
+// searchEnumQualifiedValueReferences finds references to an enum in value
+// positions: field defaults and const values qualified with the enum name,
+// e.g. songs.Song.FUWA_FUWA_TIME or Song.FUWA_FUWA_TIME. Each hit covers
+// only the enum segment of the identifier, so the rename rewrites the
+// qualifier and keeps the value.
+func searchEnumQualifiedValueReferences(ctx context.Context, ss *cache.Snapshot, file uri.URI, enumName string) (res []referenceHit, err error) {
+	locations, err := searchEnumQualifiedValueReference(ctx, ss, file, enumName)
+	if err != nil {
+		return nil, err
 	}
-	processStructLike := func(fields []*syntax.Field) {
-		for _, field := range fields {
-			jumpValue(field.Value)
+
+	res = append(res, locations...)
+
+	for _, referenceFile := range referenceFiles(ss, file) {
+		locations, err := searchEnumQualifiedValueReference(ctx, ss, referenceFile, enumName)
+		if err != nil {
+			return nil, err
 		}
+
+		res = append(res, locations...)
 	}
 
-	for _, st := range pf.AST().Structs() {
-		processStructLike(st.Fields)
+	return res, err
+}
+
+func searchEnumQualifiedValueReference(ctx context.Context, ss *cache.Snapshot, file uri.URI, enumName string) (res []referenceHit, err error) {
+	pf, err := ss.Parse(ctx, file)
+	if err != nil || pf.AST() == nil {
+		return res, err
 	}
 
-	for _, st := range pf.AST().Unions() {
-		processStructLike(st.Fields)
+	// qualifier returns the enum segment of a value identifier and its
+	// byte offset within the identifier, when the identifier is
+	// <enum>.<value> or <include>.<enum>.<value> with the enum name.
+	qualifier := func(text string) (seg string, off int, ok bool) {
+		items := strings.Split(text, ".")
+		if len(items) == 2 && items[0] == enumName {
+			return items[0], 0, true
+		}
+
+		if len(items) == 3 && items[1] == enumName {
+			return items[1], len(items[0]) + 1, true
+		}
+
+		return "", 0, false
 	}
 
-	for _, st := range pf.AST().Exceptions() {
-		processStructLike(st.Fields)
-	}
+	walkValueIdentifiers(pf.AST(), func(v *syntax.ConstValue) {
+		if v.Kind != syntax.ValueIdent {
+			return
+		}
 
-	for _, cst := range pf.AST().Consts() {
-		jumpValue(cst.Value)
-	}
+		seg, off, ok := qualifier(v.Text)
+		if !ok {
+			return
+		}
 
-	for _, svc := range pf.AST().Services() {
-		for _, fn := range svc.Functions {
-			processStructLike(fn.Args)
+		start, _ := pf.AST().Range(v)
+		segStart := toLSPPosition(pf, syntax.Position{Line: start.Line, Col: start.Col, Offset: start.Offset + off})
+		segEnd := toLSPPosition(pf, syntax.Position{Line: start.Line, Col: start.Col, Offset: start.Offset + off + len(seg)})
 
-			if fn.Throws != nil {
-				processStructLike(fn.Throws.Fields)
+		res = append(res, referenceHit{
+			loc:  protocol.Location{URI: file, Range: protocol.Range{Start: segStart, End: segEnd}},
+			text: seg,
+		})
+	})
+
+	return res, err
+}
+
+// walkValueIdentifiers visits every constant value in a value position:
+// field defaults, const values, and service argument and throws defaults.
+// Positions without a default are skipped.
+func walkValueIdentifiers(doc *syntax.Document, fn func(v *syntax.ConstValue)) {
+	process := func(fields []*syntax.Field) {
+		for _, field := range fields {
+			if field.Value != nil {
+				fn(field.Value)
 			}
 		}
 	}
 
-	return res, err
+	for _, st := range doc.Structs() {
+		process(st.Fields)
+	}
+
+	for _, st := range doc.Unions() {
+		process(st.Fields)
+	}
+
+	for _, st := range doc.Exceptions() {
+		process(st.Fields)
+	}
+
+	for _, cst := range doc.Consts() {
+		fn(cst.Value)
+	}
+
+	for _, svc := range doc.Services() {
+		for _, fnx := range svc.Functions {
+			process(fnx.Args)
+
+			if fnx.Throws != nil {
+				process(fnx.Throws.Fields)
+			}
+		}
+	}
 }

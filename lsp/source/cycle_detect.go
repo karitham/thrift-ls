@@ -60,18 +60,43 @@ type CyclePair struct {
 	include Include
 }
 
+// cycleDetect returns every include edge that closes a cycle: the pair
+// (file, include file->Y) is reported when Y transitively includes file.
+// Cycles of any length are caught, including self-includes.
 func cycleDetect(includesMap *map[uri.URI][]Include) []CyclePair {
+	// reaches reports whether from can reach target via include edges,
+	// cycle-safe via the seen set.
+	var reaches func(from, target uri.URI, seen map[uri.URI]bool) bool
+
+	reaches = func(from, target uri.URI, seen map[uri.URI]bool) bool {
+		if from == target {
+			return true
+		}
+
+		if seen[from] {
+			return false
+		}
+
+		seen[from] = true
+
+		for _, inc := range (*includesMap)[from] {
+			if reaches(inc.file, target, seen) {
+				return true
+			}
+		}
+
+		return false
+	}
+
 	cyclePairs := make([]CyclePair, 0)
 
-	for uri, includes := range *includesMap {
-		for _, incI := range includes {
-			for _, incJ := range (*includesMap)[incI.file] {
-				if uri == incJ.file {
-					cyclePairs = append(cyclePairs, CyclePair{
-						file:    uri,
-						include: incI,
-					})
-				}
+	for file, includes := range *includesMap {
+		for _, inc := range includes {
+			if reaches(inc.file, file, make(map[uri.URI]bool)) {
+				cyclePairs = append(cyclePairs, CyclePair{
+					file:    file,
+					include: inc,
+				})
 			}
 		}
 	}

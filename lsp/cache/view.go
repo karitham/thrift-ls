@@ -28,16 +28,11 @@ type View struct {
 
 	includePaths []string
 
-	// Track the latest snapshot via the snapshot field, guarded by snapshotMu.
-	//
-	// Invariant: whenever the snapshot field is overwritten, destroy(snapshot)
-	// is called on the previous (overwritten) snapshot while snapshotMu is held,
-	// incrementing snapshotWG. During shutdown the final snapshot is
-	// overwritten with nil and destroyed, guaranteeing that all observed
-	// snapshots have been destroyed via the destroy method, and snapshotWG may
-	// be waited upon to let these destroy operations complete.
+	// Track the latest snapshot via the snapshot field, guarded by
+	// snapshotMu. The swap in FileChange releases the previous snapshot's
+	// ref under the same lock.
 	snapshotMu      sync.Mutex
-	snapshot        *Snapshot // latest snapshot; nil after shutdown has been called
+	snapshot        *Snapshot // latest snapshot
 	snapshotRelease func()
 }
 
@@ -131,10 +126,12 @@ func (v *View) FileChange(ctx context.Context, changes []*FileChange, postFns ..
 	v.snapshotMu.Lock()
 	newSnapshot, release := v.snapshot.clone()
 	v.snapshotRelease()
+
 	v.snapshot = newSnapshot
 	for _, change := range changes {
 		newSnapshot.ForgetFile(change.URI)
 	}
+
 	v.snapshotRelease = release
 	v.snapshotMu.Unlock()
 

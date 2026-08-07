@@ -98,15 +98,6 @@ func Test_cycleDetectN(t *testing.T) {
 		club = "/clubroom.thrift"
 	)
 
-	include := func(from uri.URI, tos ...uri.URI) map[uri.URI][]Include {
-		m := make(map[uri.URI][]Include, len(tos))
-		for _, to := range tos {
-			m[from] = append(m[from], Include{file: to})
-		}
-
-		return m
-	}
-
 	tests := []struct {
 		name  string
 		graph map[uri.URI][]Include
@@ -183,7 +174,9 @@ func Test_cycleDetectN(t *testing.T) {
 				{file: club, include: Include{file: git}},
 				{file: tea, include: Include{file: bass}},
 				{file: git, include: Include{file: drum}},
+				{file: bass, include: Include{file: drum}},
 				{file: bass, include: Include{file: club}},
+				{file: drum, include: Include{file: tea}},
 			},
 		},
 	}

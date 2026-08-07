@@ -310,6 +310,21 @@ const UserKind kind = "1"
 						},
 					},
 				},
+				{
+					// The enum-qualified value reference in the default
+					// value position.
+					URI: "file:///tmp/api.thrift",
+					Range: protocol.Range{
+						Start: protocol.Position{
+							Line:      3,
+							Character: 55,
+						},
+						End: protocol.Position{
+							Line:      3,
+							Character: 60,
+						},
+					},
+				},
 			},
 			assertion: assert.NoError,
 		},
