@@ -6,8 +6,6 @@ import (
 	"strings"
 
 	"go.lsp.dev/protocol"
-
-	"github.com/karitham/thrift-ls/lsp/constants"
 )
 
 // ListDirAndFiles lists the entries matching the typed include path prefix,
@@ -56,7 +54,7 @@ func ListDirAndFiles(dir string, includePaths []string, prefix string) []Candida
 			switch {
 			case e.IsDir():
 				text = filepath.Join(dirPart, name) + "/"
-			case strings.HasSuffix(name, constants.ThriftExtension):
+			case strings.HasSuffix(name, ".thrift"):
 				text = filepath.Join(dirPart, name)
 			default:
 				continue
