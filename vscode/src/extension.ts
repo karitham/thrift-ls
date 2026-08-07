@@ -1,5 +1,4 @@
 import { spawnSync } from 'child_process';
-import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
@@ -16,10 +15,19 @@ import {
   LanguageClientOptions,
   ServerOptions,
 } from 'vscode-languageclient/node';
+import { assetName, findOnPath, parseChecksums, sha256Hex } from './platform';
 
 const REPO = 'karitham/thrift-ls';
 const RELEASES_URL = `https://github.com/${REPO}/releases`;
 const DOWNLOAD_URL = `${RELEASES_URL}/latest/download`;
+
+// The release asset and its checksum file for the running platform, or
+// undefined when no prebuilt binary exists for it.
+interface ReleaseTarget {
+  name: string;
+  url: string;
+  checksumUrl: string;
+}
 
 let client: LanguageClient | undefined;
 
@@ -55,6 +63,12 @@ function deactivate(): Thenable<void> | undefined {
   return client?.stop();
 }
 
+/**
+ * resolveBinary returns the path of a usable thrift-ls binary: the
+ * configured path, then PATH, then a cached download, then a prompt that
+ * offers to download the release binary. Undefined means no server this
+ * session.
+ */
 async function resolveBinary(context: ExtensionContext): Promise<string | undefined> {
   const configured = workspace.getConfiguration('thrift-ls').get<string>('path');
   if (configured) {
@@ -67,12 +81,27 @@ async function resolveBinary(context: ExtensionContext): Promise<string | undefi
     return configured;
   }
 
-  const onPath = findOnPath();
+  const onPath = findOnPath({
+    platform: process.platform,
+    pathEnv: process.env.PATH,
+    pathext: process.env.PATHEXT,
+    sep: path.sep,
+    delimiter: path.delimiter,
+    exists: fs.existsSync,
+  });
   if (onPath) {
     return onPath;
   }
 
-  const cached = cachedBinaryPath(context);
+  const target = releaseTarget();
+  if (!target) {
+    window.showErrorMessage(
+      `thrift-ls publishes no binary for ${process.platform}/${process.arch}. Install from source or set thrift-ls.path.`
+    );
+    return undefined;
+  }
+
+  const cached = cachedBinaryPath(context, target);
   if (fs.existsSync(cached)) {
     makeExecutable(cached);
     return cached;
@@ -92,23 +121,7 @@ async function resolveBinary(context: ExtensionContext): Promise<string | undefi
     return undefined;
   }
 
-  return downloadBinary(context);
-}
-
-function findOnPath(): string | undefined {
-  const exts = process.platform === 'win32'
-    ? (process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
-    : [''];
-  const dirs = (process.env.PATH ?? '').split(path.delimiter).filter(Boolean);
-  for (const dir of dirs) {
-    for (const ext of exts) {
-      const candidate = path.join(dir, `thrift-ls${ext.toLowerCase()}`);
-      if (fs.existsSync(candidate)) {
-        return candidate;
-      }
-    }
-  }
-  return undefined;
+  return downloadBinary(context, target);
 }
 
 async function reinstall(context: ExtensionContext): Promise<void> {
@@ -119,7 +132,16 @@ async function reinstall(context: ExtensionContext): Promise<void> {
     );
     return;
   }
-  const bin = await downloadBinary(context, true);
+
+  const target = releaseTarget();
+  if (!target) {
+    window.showErrorMessage(
+      `thrift-ls publishes no binary for ${process.platform}/${process.arch}.`
+    );
+    return;
+  }
+
+  const bin = await downloadBinary(context, target, true);
   if (!bin) {
     return;
   }
@@ -132,11 +154,17 @@ async function reinstall(context: ExtensionContext): Promise<void> {
   }
 }
 
+/**
+ * downloadBinary fetches, verifies, and installs the release binary,
+ * replacing a previously downloaded copy. Returns the installed path, or
+ * undefined on failure (an error message is shown).
+ */
 async function downloadBinary(
   context: ExtensionContext,
+  target: ReleaseTarget,
   force = false
 ): Promise<string | undefined> {
-  const dest = cachedBinaryPath(context);
+  const dest = cachedBinaryPath(context, target);
   if (!force && fs.existsSync(dest)) {
     return dest;
   }
@@ -148,59 +176,58 @@ async function downloadBinary(
       cancellable: false,
     },
     async () => {
-      let name: string;
       try {
-        name = binaryName();
+        // Gather (impure): fetch the checksum and the binary.
+        const bytes = await fetchVerified(target);
+        // Commit (impure): write and atomically replace.
+        await installBinary(bytes, target.name, dest);
       } catch (err) {
         window.showErrorMessage(
-          `Cannot download thrift-ls: ${err instanceof Error ? err.message : String(err)}. See ${RELEASES_URL}`
+          `Failed to download thrift-ls: ${errMessage(err)}. See ${RELEASES_URL}`
         );
         return undefined;
       }
 
-      const url = `${DOWNLOAD_URL}/${name}`;
-
-      try {
-        const expected = await fetchChecksum(`${DOWNLOAD_URL}/checksums.txt`, name);
-        const bytes = await fetchBytes(url);
-        if (expected) {
-          const actual = crypto.createHash('sha256').update(bytes).digest('hex');
-          if (actual !== expected) {
-            throw new Error(
-              `checksum mismatch for ${name} (got ${actual.slice(0, 12)}…, want ${expected.slice(0, 12)}…)`
-            );
-          }
-        }
-
-        await fs.promises.mkdir(path.dirname(dest), { recursive: true });
-        const tmp = `${dest}.tmp-${process.pid}`;
-        await fs.promises.writeFile(tmp, bytes);
-        makeExecutable(tmp);
-        try {
-          await fs.promises.rename(tmp, dest);
-        } catch (err) {
-          await fs.promises.rm(tmp, { force: true }).catch(() => undefined);
-          if (process.platform === 'win32') {
-            throw new Error(
-              `could not replace ${name}: the previous copy may still be in use by a running server. Reload the window and retry (${err instanceof Error ? err.message : String(err)})`
-            );
-          }
-          throw err;
-        }
-
-        const version = versionOf(dest);
-        window.showInformationMessage(
-          `thrift-ls${version ? ` ${version}` : ''} installed to ${dest}`
-        );
-        return dest;
-      } catch (err) {
-        window.showErrorMessage(
-          `Failed to download thrift-ls: ${err instanceof Error ? err.message : String(err)}. See ${RELEASES_URL}`
-        );
-        return undefined;
-      }
+      const version = versionOf(dest);
+      window.showInformationMessage(
+        `thrift-ls${version ? ` ${version}` : ''} installed to ${dest}`
+      );
+      return dest;
     }
   );
+}
+
+/** fetchVerified downloads the binary and aborts on checksum mismatch. */
+async function fetchVerified(target: ReleaseTarget): Promise<Buffer> {
+  const expected = await fetchChecksum(target.checksumUrl, target.name);
+  const bytes = await fetchBytes(target.url);
+  if (expected && sha256Hex(bytes) !== expected) {
+    throw new Error(
+      `checksum mismatch for ${target.name} (want ${expected.slice(0, 12)}…)`
+    );
+  }
+  return bytes;
+}
+
+/** installBinary writes the binary to dest, replacing any previous copy. */
+async function installBinary(bytes: Buffer, name: string, dest: string): Promise<void> {
+  await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+  const tmp = `${dest}.tmp-${process.pid}`;
+  await fs.promises.writeFile(tmp, bytes);
+  makeExecutable(tmp);
+  try {
+    await fs.promises.rename(tmp, dest);
+  } catch (err) {
+    await fs.promises.rm(tmp, { force: true }).catch(() => undefined);
+    if (process.platform === 'win32') {
+      // Windows cannot replace a file that is in use; the previous copy is
+      // the running server process.
+      throw new Error(
+        `could not replace ${name}: the previous copy may still be in use by a running server. Reload the window and retry (${errMessage(err)})`
+      );
+    }
+    throw err;
+  }
 }
 
 async function fetchChecksum(checksumUrl: string, name: string): Promise<string | undefined> {
@@ -211,14 +238,7 @@ async function fetchChecksum(checksumUrl: string, name: string): Promise<string 
   if (!res.ok) {
     throw new Error(`HTTP ${res.status} for ${checksumUrl}`);
   }
-  const text = await res.text();
-  for (const line of text.split('\n')) {
-    const parts = line.trim().split(/\s+/);
-    if (parts[1] === name) {
-      return parts[0];
-    }
-  }
-  return undefined;
+  return parseChecksums(await res.text()).get(name);
 }
 
 async function fetchBytes(url: string): Promise<Buffer> {
@@ -235,42 +255,30 @@ function versionOf(bin: string): string | undefined {
   return text || undefined;
 }
 
-function cachedBinaryPath(context: ExtensionContext): string {
-  return path.join(context.globalStorageUri.fsPath, 'bin', binaryName());
-}
-
-function binaryName(): string {
-  return `thrift-ls-${osName()}-${archName()}${process.platform === 'win32' ? '.exe' : ''}`;
-}
-
-function osName(): string {
-  switch (process.platform) {
-    case 'win32':
-      return 'windows';
-    case 'darwin':
-      return 'darwin';
-    case 'linux':
-      return 'linux';
-    default:
-      throw new Error(`unsupported platform: ${process.platform}`);
+function releaseTarget(): ReleaseTarget | undefined {
+  const name = assetName(process.platform, process.arch);
+  if (!name) {
+    return undefined;
   }
+  return {
+    name,
+    url: `${DOWNLOAD_URL}/${name}`,
+    checksumUrl: `${DOWNLOAD_URL}/checksums.txt`,
+  };
 }
 
-function archName(): string {
-  switch (process.arch) {
-    case 'x64':
-      return 'amd64';
-    case 'arm64':
-      return 'arm64';
-    default:
-      throw new Error(`unsupported architecture: ${process.arch}`);
-  }
+function cachedBinaryPath(context: ExtensionContext, target: ReleaseTarget): string {
+  return path.join(context.globalStorageUri.fsPath, 'bin', target.name);
 }
 
 function makeExecutable(file: string): void {
   if (process.platform !== 'win32') {
     fs.chmodSync(file, 0o755);
   }
+}
+
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 export { deactivate };
