@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"context"
+	"encoding/json"
 	"io/fs"
 	"log/slog"
 	"path/filepath"
@@ -67,7 +68,51 @@ func (s *Server) initialize(ctx context.Context, params *protocol.InitializePara
 		}()
 	})
 
+	s.registerFileWatcher(ctx)
+
 	return initializeResult(), nil
+}
+
+// registerFileWatcher subscribes the client to disk events for thrift files,
+// so files created or changed outside the editor (git pull, a terminal)
+// reach the server and re-run diagnostics for their dependents. Without the
+// registration, a new include created on disk is invisible until the editor
+// opens it.
+func (s *Server) registerFileWatcher(ctx context.Context) {
+	if s.client == nil {
+		return
+	}
+
+	options, err := json.Marshal(protocol.DidChangeWatchedFilesRegistrationOptions{
+		Watchers: []protocol.FileSystemWatcher{
+			{
+				GlobPattern: protocol.Pattern("**/*.thrift"),
+				Kind:        protocol.WatchKindCreate | protocol.WatchKindChange | protocol.WatchKindDelete,
+			},
+		},
+	})
+	if err != nil {
+		slog.Error("file watcher registration failed", "err", err)
+
+		return
+	}
+
+	err = s.client.RegisterCapability(ctx, &protocol.RegistrationParams{
+		Registrations: []protocol.Registration{
+			{
+				ID:              "thrift-ls.watcher",
+				Method:          protocol.MethodWorkspaceDidChangeWatchedFiles,
+				RegisterOptions: protocol.LSPAny(options),
+			},
+		},
+	})
+	if err != nil {
+		slog.Error("file watcher registration failed", "err", err)
+
+		return
+	}
+
+	slog.Debug("file watcher registered")
 }
 
 func (s *Server) walkFoldersThriftFile(folder uri.URI) {
