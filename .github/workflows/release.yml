@@ -21,11 +21,14 @@ jobs:
         with:
           go-version-file: go.mod
       - name: build
+        env:
+          VERSION: ${{ github.ref_name }}
         run: |
           ext=""
           [ "${{ matrix.goos }}" = "windows" ] && ext=".exe"
           CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
-            go build -trimpath -ldflags "-s -w" \
+            go build -trimpath \
+            -ldflags "-s -w -X github.com/karitham/thrift-ls/lsp.ServerVersion=${VERSION#v}" \
             -o "dist/thrift-ls-${{ matrix.goos }}-${{ matrix.goarch }}$ext" .
       - uses: actions/upload-artifact@v4
         with:
@@ -62,6 +65,10 @@ jobs:
         run: |
           npm ci
           npm run test
+          [ "$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME#v}" ] || {
+            echo "vsix version does not match tag $GITHUB_REF_NAME"
+            exit 1
+          }
           npm run package
       - uses: actions/upload-artifact@v4
         with:

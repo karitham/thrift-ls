@@ -358,6 +358,24 @@ Controls logging verbosity (the server logs to `$TMPDIR/thrift-ls.log`):
 - 5: debug
 - 6: trace
 
+## Releasing
+
+A `v*` tag triggers the release workflow: it builds the six `thrift-ls`
+binaries (linux/darwin/windows × amd64/arm64), a `checksums.txt`, and the
+VS Code `.vsix`, and attaches them to the GitHub release. The workflow
+injects the tag into the binary (`--version`), and fails if the vsix version
+doesn't match the tag.
+
+Before tagging, make sure the versions agree:
+
+- `vscode/package.json` `version`
+- `flake.nix` `version` and the `ServerVersion` ldflag (the workflow enforces
+  the vsix; the flake is manual)
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
 ## Development
 
 ```bash

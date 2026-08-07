@@ -16,12 +16,15 @@
         pkgs:
         pkgs.buildGoModule {
           pname = "thrift-ls";
-          version = "0.1";
+          # Keep in sync with the release tag: the binary reports this
+          # version and the release workflow injects the same value.
+          version = "0.1.0";
           src = nixpkgs.lib.cleanSource ./.;
           vendorHash = "sha256-zWy0x3yktLA8dtcbwzue3aB7a+SlqwWO86G3ZP8DgOQ=";
           ldflags = [
             "-s"
             "-w"
+            "-X github.com/karitham/thrift-ls/lsp.ServerVersion=0.1.0"
           ];
           meta = {
             description = "A Thrift language server and formatter";
