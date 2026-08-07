@@ -73,7 +73,7 @@ func (c *FieldIDCheck) diagnostic(ctx context.Context, ss *cache.Snapshot, file 
 			if fieldID < 1 || fieldID > 32767 {
 				for _, field := range set {
 					ret = append(ret, protocol.Diagnostic{
-						Range:    tokenRange(pf.AST(), field.FieldID),
+						Range:    tokenRange(pf, field.FieldID),
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
 						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
@@ -87,7 +87,7 @@ func (c *FieldIDCheck) diagnostic(ctx context.Context, ss *cache.Snapshot, file 
 
 			for _, field := range set {
 				ret = append(ret, protocol.Diagnostic{
-					Range:    tokenRange(pf.AST(), field.FieldID),
+					Range:    tokenRange(pf, field.FieldID),
 					Severity: protocol.DiagnosticSeverityError,
 					Source:   protocol.NewOptional("thrift-ls"),
 					Message:  protocol.String("field id conflict"),

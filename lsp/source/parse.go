@@ -29,7 +29,7 @@ func (p *Parse) Diagnostic(ctx context.Context, ss *cache.Snapshot, changeFiles 
 
 		for _, err := range parseRes.Errors() {
 			slog.Debug("diagnostic parse failed", "err", err)
-			res[uri] = append(res[uri], syntaxErrorToDiagnostic(err))
+			res[uri] = append(res[uri], syntaxErrorToDiagnostic(parseRes, err))
 		}
 	}
 
@@ -46,22 +46,18 @@ func (p *Parse) Name() string {
 
 // syntaxErrorToDiagnostic converts a syntax error or warning to an LSP
 // diagnostic.
-func syntaxErrorToDiagnostic(err syntax.Error) protocol.Diagnostic {
+func syntaxErrorToDiagnostic(pf *cache.ParsedFile, err syntax.Error) protocol.Diagnostic {
 	severity := protocol.DiagnosticSeverityError
 	if err.Severity == syntax.SeverityWarning {
 		severity = protocol.DiagnosticSeverityWarning
 	}
 
+	pos := toLSPPosition(pf, syntax.Position{Line: err.Line, Col: err.Col, Offset: err.Offset})
+
 	return protocol.Diagnostic{
 		Range: protocol.Range{
-			Start: protocol.Position{
-				Line:      uint32(err.Line - 1),
-				Character: uint32(err.Col - 1),
-			},
-			End: protocol.Position{
-				Line:      uint32(err.Line - 1),
-				Character: uint32(err.Col - 1),
-			},
+			Start: pos,
+			End:   pos,
 		},
 		Severity: severity,
 		Source:   protocol.NewOptional("thrift-ls"),

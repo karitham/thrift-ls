@@ -40,7 +40,7 @@ func cycleToDiagnosticItems(pairs []CyclePair) DiagnosticResult {
 
 func cyclePairToDiagnostic(pair CyclePair) protocol.Diagnostic {
 	res := protocol.Diagnostic{
-		Range:    nodeRange(pair.include.doc, pair.include.include),
+		Range:    nodeRange(pair.include.pf, pair.include.include),
 		Severity: protocol.DiagnosticSeverityWarning,
 		Source:   protocol.NewOptional("thrift-ls"),
 		Message:  protocol.String(fmt.Sprintf("cycle dependency in %s", pair.include.file)),
@@ -52,7 +52,7 @@ func cyclePairToDiagnostic(pair CyclePair) protocol.Diagnostic {
 type Include struct {
 	file    uri.URI
 	include *syntax.Include
-	doc     *syntax.Document
+	pf      *cache.ParsedFile
 }
 
 type CyclePair struct {
@@ -105,7 +105,7 @@ func getIncludes(ctx context.Context, ss *cache.Snapshot, file uri.URI, includes
 		(*includesMap)[file] = append((*includesMap)[file], Include{
 			file:    includeURI,
 			include: includes[i],
-			doc:     pf.AST(),
+			pf:      pf,
 		})
 
 		if _, ok := (*includesMap)[includeURI]; ok {

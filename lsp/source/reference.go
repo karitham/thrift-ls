@@ -68,7 +68,7 @@ func Highlight(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protoc
 	// search already includes it when the cursor sits on a usage, so the
 	// set dedups.
 	if id := target.identifier(); id != nil {
-		add(nodeRange(pf.AST(), id))
+		add(nodeRange(pf, id))
 	}
 
 	for _, r := range refs {
@@ -288,7 +288,7 @@ func searchServiceDefinitionReferences(ctx context.Context, ss *cache.Snapshot, 
 			continue
 		}
 
-		res = append(res, referenceHit{loc: jump(file, pf.AST(), svc.Extends), text: svc.Extends.Text})
+		res = append(res, referenceHit{loc: jump(file, pf, svc.Extends), text: svc.Extends.Text})
 	}
 
 	return res, err
@@ -344,7 +344,7 @@ func searchDefinitionIdentifierReferences(ctx context.Context, ss *cache.Snapsho
 			return
 		}
 
-		res = append(res, referenceHit{loc: jump(file, pf.AST(), ft.Ident), text: ft.Ident.Text})
+		res = append(res, referenceHit{loc: jump(file, pf, ft.Ident), text: ft.Ident.Text})
 	}
 
 	var searchFieldType func(ft *syntax.FieldType)
@@ -477,7 +477,7 @@ func searchConstValueIdentifierReference(ctx context.Context, ss *cache.Snapshot
 
 	jumpValue := func(v *syntax.ConstValue) {
 		if v != nil && v.Kind == syntax.ValueIdent && bareName(v.Text) == bareName(valueName) {
-			res = append(res, referenceHit{loc: jump(file, pf.AST(), v), text: v.Text})
+			res = append(res, referenceHit{loc: jump(file, pf, v), text: v.Text})
 		}
 	}
 	processStructLike := func(fields []*syntax.Field) {

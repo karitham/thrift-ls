@@ -22,7 +22,7 @@ func PrepareRename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos pr
 
 	switch target.kind {
 	case TargetDefinition, TargetConstValue, TargetService:
-		rg := nodeRange(pf.AST(), target.node)
+		rg := nodeRange(pf, target.node)
 
 		return &rg, nil
 	}
@@ -98,7 +98,7 @@ func Rename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.
 	refs = append(refs, referenceHit{
 		loc: protocol.Location{
 			URI:   file,
-			Range: nodeRange(pf.AST(), target.node),
+			Range: nodeRange(pf, target.node),
 		},
 		text: "",
 	})

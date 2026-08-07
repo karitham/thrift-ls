@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/syntax"
 )
 
 func Test_cycleDetect(t *testing.T) {
@@ -231,31 +231,28 @@ include "./test/address.thrift"`
 		},
 	})
 
-	// Expected includes, built by parsing the same sources.
-	parseFor := func(uriStr, src string) *syntax.Document {
-		doc, errs := syntax.Parse([]byte(src))
-		for _, e := range errs {
-			if e.Severity == syntax.SeverityError {
-				t.Fatal(e)
-			}
-		}
+	// Expected includes, parsed through the same snapshot so the ParsedFile
+	// pointers match the ones getIncludes stores.
+	pfFor := func(uriStr string) *cache.ParsedFile {
+		pf, err := ss.Parse(t.Context(), uri.URI(uriStr))
+		require.NoError(t, err)
 
-		return doc
+		return pf
 	}
-	userDoc := parseFor("file:///tmp/user.thrift", file1)
-	goodsDoc := parseFor("file:///tmp/test/goods.thrift", file2)
-	addressDoc := parseFor("file:///tmp/test/address.thrift", file3)
+	userPf := pfFor("file:///tmp/user.thrift")
+	goodsPf := pfFor("file:///tmp/test/goods.thrift")
+	addressPf := pfFor("file:///tmp/test/address.thrift")
 
 	expectIncludeMap := map[uri.URI][]Include{
 		"file:///tmp/user.thrift": {
-			Include{file: "file:///tmp/test/goods.thrift", include: userDoc.Includes()[0], doc: userDoc},
-			Include{file: "file:///tmp/test/address.thrift", include: userDoc.Includes()[1], doc: userDoc},
+			Include{file: "file:///tmp/test/goods.thrift", include: userPf.AST().Includes()[0], pf: userPf},
+			Include{file: "file:///tmp/test/address.thrift", include: userPf.AST().Includes()[1], pf: userPf},
 		},
 		"file:///tmp/test/goods.thrift": {
-			Include{file: "file:///tmp/user.thrift", include: goodsDoc.Includes()[0], doc: goodsDoc},
+			Include{file: "file:///tmp/user.thrift", include: goodsPf.AST().Includes()[0], pf: goodsPf},
 		},
 		"file:///tmp/test/address.thrift": {
-			Include{file: "file:///tmp/user.thrift", include: addressDoc.Includes()[0], doc: addressDoc},
+			Include{file: "file:///tmp/user.thrift", include: addressPf.AST().Includes()[0], pf: addressPf},
 		},
 	}
 

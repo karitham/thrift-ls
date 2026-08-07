@@ -39,7 +39,7 @@ func Links(ctx context.Context, ss *cache.Snapshot, file uri.URI) []protocol.Doc
 
 		target := resolver.ResolveInclude(file, text)
 		out = append(out, protocol.DocumentLink{
-			Range:  tokenRange(doc, path),
+			Range:  tokenRange(pf, path),
 			Target: &target,
 		})
 	}

@@ -25,7 +25,7 @@ func DocumentSymbols(ctx context.Context, ss *cache.Snapshot, file uri.URI) []*p
 
 	doc := pf.AST()
 	for _, node := range doc.Nodes {
-		child := nodeSymbol(doc, node)
+		child := nodeSymbol(pf, node)
 		if child != nil {
 			res = append(res, child)
 		}
@@ -37,60 +37,51 @@ func DocumentSymbols(ctx context.Context, ss *cache.Snapshot, file uri.URI) []*p
 //go:fix inline
 
 // nameRange returns the LSP range of an identifier.
-func nameRange(doc *syntax.Document, id *syntax.Identifier) protocol.Range {
+func nameRange(pf *cache.ParsedFile, id *syntax.Identifier) protocol.Range {
 	if id == nil {
 		return protocol.Range{}
 	}
 
-	start, end := doc.Range(id)
+	start, end := pf.AST().Range(id)
 
-	return protocol.Range{
-		Start: protocol.Position{
-			Line:      uint32(start.Line - 1),
-			Character: uint32(start.Col - 1),
-		},
-		End: protocol.Position{
-			Line:      uint32(end.Line - 1),
-			Character: uint32(end.Col - 1),
-		},
-	}
+	return toLSPRange(pf, start, end)
 }
 
 // nodeSymbol builds the symbol for a top-level definition.
-func nodeSymbol(doc *syntax.Document, node syntax.Node) *protocol.DocumentSymbol {
+func nodeSymbol(pf *cache.ParsedFile, node syntax.Node) *protocol.DocumentSymbol {
 	switch v := node.(type) {
 	case *syntax.Typedef:
-		return typedefSymbol(doc, v)
+		return typedefSymbol(pf, v)
 	case *syntax.Const:
-		return constSymbol(doc, v)
+		return constSymbol(pf, v)
 	case *syntax.Struct:
 		switch v.Kind {
 		case syntax.StructDecl:
-			return structSymbol(doc, v, "Struct", protocol.SymbolKindStruct)
+			return structSymbol(pf, v, "Struct", protocol.SymbolKindStruct)
 		case syntax.UnionDecl:
-			return structSymbol(doc, v, "Union", protocol.SymbolKindInterface)
+			return structSymbol(pf, v, "Union", protocol.SymbolKindInterface)
 		case syntax.ExceptionDecl:
-			return structSymbol(doc, v, "Exception", protocol.SymbolKindClass)
+			return structSymbol(pf, v, "Exception", protocol.SymbolKindClass)
 		}
 	case *syntax.Enum:
-		return enumSymbol(doc, v)
+		return enumSymbol(pf, v)
 	case *syntax.Service:
-		return serviceSymbol(doc, v)
+		return serviceSymbol(pf, v)
 	}
 
 	return nil
 }
 
-func structSymbol(doc *syntax.Document, st *syntax.Struct, detail string, kind protocol.SymbolKind) *protocol.DocumentSymbol {
+func structSymbol(pf *cache.ParsedFile, st *syntax.Struct, detail string, kind protocol.SymbolKind) *protocol.DocumentSymbol {
 	res := &protocol.DocumentSymbol{
 		Name:           st.Name.Text,
 		Detail:         &detail,
 		Kind:           kind,
-		Range:          nameRange(doc, st.Name),
-		SelectionRange: nameRange(doc, st.Name),
+		Range:          nameRange(pf, st.Name),
+		SelectionRange: nameRange(pf, st.Name),
 	}
 	for _, field := range st.Fields {
-		child := fieldSymbol(doc, field)
+		child := fieldSymbol(pf, field)
 		if child != nil {
 			res.Children = append(res.Children, *child)
 		}
@@ -99,20 +90,20 @@ func structSymbol(doc *syntax.Document, st *syntax.Struct, detail string, kind p
 	return res
 }
 
-func enumSymbol(doc *syntax.Document, enum *syntax.Enum) *protocol.DocumentSymbol {
+func enumSymbol(pf *cache.ParsedFile, enum *syntax.Enum) *protocol.DocumentSymbol {
 	res := &protocol.DocumentSymbol{
 		Name:           enum.Name.Text,
 		Detail:         new("Enum"),
 		Kind:           protocol.SymbolKindEnum,
-		Range:          nameRange(doc, enum.Name),
-		SelectionRange: nameRange(doc, enum.Name),
+		Range:          nameRange(pf, enum.Name),
+		SelectionRange: nameRange(pf, enum.Name),
 	}
 	for _, value := range enum.Values {
 		child := &protocol.DocumentSymbol{
 			Name:           value.Name.Text,
 			Kind:           protocol.SymbolKindEnumMember,
-			Range:          nameRange(doc, value.Name),
-			SelectionRange: nameRange(doc, value.Name),
+			Range:          nameRange(pf, value.Name),
+			SelectionRange: nameRange(pf, value.Name),
 		}
 		res.Children = append(res.Children, *child)
 	}
@@ -120,19 +111,19 @@ func enumSymbol(doc *syntax.Document, enum *syntax.Enum) *protocol.DocumentSymbo
 	return res
 }
 
-func serviceSymbol(doc *syntax.Document, svc *syntax.Service) *protocol.DocumentSymbol {
+func serviceSymbol(pf *cache.ParsedFile, svc *syntax.Service) *protocol.DocumentSymbol {
 	res := &protocol.DocumentSymbol{
 		Name:           svc.Name.Text,
 		Kind:           protocol.SymbolKindInterface,
-		Range:          nameRange(doc, svc.Name),
-		SelectionRange: nameRange(doc, svc.Name),
+		Range:          nameRange(pf, svc.Name),
+		SelectionRange: nameRange(pf, svc.Name),
 	}
 	for _, fn := range svc.Functions {
 		child := &protocol.DocumentSymbol{
 			Name:           fn.Name.Text,
 			Kind:           protocol.SymbolKindFunction,
-			Range:          nameRange(doc, fn.Name),
-			SelectionRange: nameRange(doc, fn.Name),
+			Range:          nameRange(pf, fn.Name),
+			SelectionRange: nameRange(pf, fn.Name),
 		}
 		res.Children = append(res.Children, *child)
 	}
@@ -140,31 +131,31 @@ func serviceSymbol(doc *syntax.Document, svc *syntax.Service) *protocol.Document
 	return res
 }
 
-func fieldSymbol(doc *syntax.Document, field *syntax.Field) *protocol.DocumentSymbol {
+func fieldSymbol(pf *cache.ParsedFile, field *syntax.Field) *protocol.DocumentSymbol {
 	return &protocol.DocumentSymbol{
 		Name:           field.Name.Text,
 		Kind:           protocol.SymbolKindField,
-		Range:          nameRange(doc, field.Name),
-		SelectionRange: nameRange(doc, field.Name),
+		Range:          nameRange(pf, field.Name),
+		SelectionRange: nameRange(pf, field.Name),
 	}
 }
 
-func typedefSymbol(doc *syntax.Document, td *syntax.Typedef) *protocol.DocumentSymbol {
+func typedefSymbol(pf *cache.ParsedFile, td *syntax.Typedef) *protocol.DocumentSymbol {
 	return &protocol.DocumentSymbol{
 		Name:           td.Name.Text,
 		Detail:         new("Typedef"),
 		Kind:           protocol.SymbolKindTypeParameter,
-		Range:          nameRange(doc, td.Name),
-		SelectionRange: nameRange(doc, td.Name),
+		Range:          nameRange(pf, td.Name),
+		SelectionRange: nameRange(pf, td.Name),
 	}
 }
 
-func constSymbol(doc *syntax.Document, cst *syntax.Const) *protocol.DocumentSymbol {
+func constSymbol(pf *cache.ParsedFile, cst *syntax.Const) *protocol.DocumentSymbol {
 	return &protocol.DocumentSymbol{
 		Name:           cst.Name.Text,
 		Detail:         new("Const"),
 		Kind:           protocol.SymbolKindConstant,
-		Range:          nameRange(doc, cst.Name),
-		SelectionRange: nameRange(doc, cst.Name),
+		Range:          nameRange(pf, cst.Name),
+		SelectionRange: nameRange(pf, cst.Name),
 	}
 }

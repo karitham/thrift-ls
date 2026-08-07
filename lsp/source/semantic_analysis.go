@@ -67,7 +67,7 @@ func (s *SemanticAnalysis) checkDefineConflict(ctx context.Context, pf *cache.Pa
 			field := fields[i]
 			if _, exist := fieldMap[field.Name.Text]; exist {
 				ret = append(ret, protocol.Diagnostic{
-					Range:    nodeRange(pf.AST(), field.Name),
+					Range:    nodeRange(pf, field.Name),
 					Severity: protocol.DiagnosticSeverityError,
 					Source:   protocol.NewOptional("thrift-ls"),
 					Message:  protocol.String("field name conflict with other field"),
@@ -83,7 +83,7 @@ func (s *SemanticAnalysis) checkDefineConflict(ctx context.Context, pf *cache.Pa
 	processDefinition := func(name string, node syntax.Node, kind string) {
 		if previous, exist := definitionNameMap[name]; exist {
 			ret = append(ret, protocol.Diagnostic{
-				Range:    nodeRange(pf.AST(), node),
+				Range:    nodeRange(pf, node),
 				Severity: protocol.DiagnosticSeverityError,
 				Source:   protocol.NewOptional("thrift-ls"),
 				Message:  protocol.String(fmt.Sprintf("%s name conflict with other %s", kind, previous)),
@@ -127,7 +127,7 @@ func (s *SemanticAnalysis) checkDefineConflict(ctx context.Context, pf *cache.Pa
 		for _, fn := range svc.Functions {
 			if _, exist := fnMap[fn.Name.Text]; exist {
 				ret = append(ret, protocol.Diagnostic{
-					Range:    nodeRange(pf.AST(), fn.Name),
+					Range:    nodeRange(pf, fn.Name),
 					Severity: protocol.DiagnosticSeverityWarning,
 					Source:   protocol.NewOptional("thrift-ls"),
 					Message:  protocol.String("function name conflict with other function"),
@@ -216,7 +216,7 @@ func (s *SemanticAnalysis) checkConstValueExist(ctx context.Context, ss *cache.S
 	_, id, err := FindConstValueDefinition(ctx, ss, file, pf.AST(), cst)
 	if err != nil || id == nil {
 		res = append(res, protocol.Diagnostic{
-			Range:    nodeRange(pf.AST(), cst),
+			Range:    nodeRange(pf, cst),
 			Severity: protocol.DiagnosticSeverityError,
 			Source:   protocol.NewOptional("thrift-ls"),
 			Message:  protocol.String("default value doesn't exist"),
@@ -238,13 +238,13 @@ func (s *SemanticAnalysis) checkConstValueMatchType(pf *cache.ParsedFile, field 
 	switch valueKind {
 	case syntax.ValueList, syntax.ValueMap, syntax.ValueString, syntax.ValueDouble:
 		if !sameKind(expect, valueKind) {
-			return mismatchDiagnostic(pf.AST(), field, expect, kindName(valueKind))
+			return mismatchDiagnostic(pf, field, expect, kindName(valueKind))
 		}
 	case syntax.ValueInt:
 		// true/false lex as int constants but are bools.
 		if value.Text == "true" || value.Text == "false" {
 			if expect != "bool" {
-				return mismatchDiagnostic(pf.AST(), field, expect, "bool")
+				return mismatchDiagnostic(pf, field, expect, "bool")
 			}
 
 			return nil
@@ -253,11 +253,11 @@ func (s *SemanticAnalysis) checkConstValueMatchType(pf *cache.ParsedFile, field 
 		switch expect {
 		case "i8", "i16", "i32", "i64":
 		default:
-			return mismatchDiagnostic(pf.AST(), field, expect, "i64")
+			return mismatchDiagnostic(pf, field, expect, "i64")
 		}
 	case syntax.ValueIdent:
 		if expect == "bool" {
-			return mismatchDiagnostic(pf.AST(), field, expect, "identifier")
+			return mismatchDiagnostic(pf, field, expect, "identifier")
 		}
 	}
 
@@ -298,9 +298,9 @@ func kindName(kind syntax.ConstValueKind) string {
 	return "unknown"
 }
 
-func mismatchDiagnostic(doc *syntax.Document, field *syntax.Field, expect, got string) *protocol.Diagnostic {
+func mismatchDiagnostic(pf *cache.ParsedFile, field *syntax.Field, expect, got string) *protocol.Diagnostic {
 	return &protocol.Diagnostic{
-		Range:    nodeRange(doc, field.Value),
+		Range:    nodeRange(pf, field.Value),
 		Severity: protocol.DiagnosticSeverityError,
 		Source:   protocol.NewOptional("thrift-ls"),
 		Message:  protocol.String(fmt.Sprintf("expect %s but got %s", expect, got)),
@@ -346,7 +346,7 @@ func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, ss *cache.Snapsho
 		_, id, _, err := FindTypeDefinition(ctx, ss, file, pf.AST(), ft)
 		if err != nil || id == nil {
 			res = append(res, protocol.Diagnostic{
-				Range:    nodeRange(pf.AST(), ft.Ident),
+				Range:    nodeRange(pf, ft.Ident),
 				Severity: protocol.DiagnosticSeverityError,
 				Source:   protocol.NewOptional("thrift-ls"),
 				Message:  protocol.String("field type doesn't exist"),

@@ -30,14 +30,14 @@ func Ranges(ctx context.Context, ss *cache.Snapshot, file uri.URI) []protocol.Fo
 	for _, node := range doc.Nodes {
 		switch v := node.(type) {
 		case *syntax.Struct, *syntax.Enum, *syntax.Service:
-			if r, ok := bracedRange(doc, node); ok {
+			if r, ok := bracedRange(pf, node); ok {
 				ranges = append(ranges, r)
 			}
 		case *syntax.Const:
 			if v.Value != nil {
 				switch v.Value.Kind {
 				case syntax.ValueList, syntax.ValueMap:
-					if r, ok := spanRange(doc, v.Value.TokStart(), v.Value.TokEnd()); ok {
+					if r, ok := spanRange(pf, v.Value.TokStart(), v.Value.TokEnd()); ok {
 						ranges = append(ranges, r)
 					}
 				}
@@ -47,13 +47,13 @@ func Ranges(ctx context.Context, ss *cache.Snapshot, file uri.URI) []protocol.Fo
 
 	if ann := nodeAnnotations(doc, doc.Nodes); len(ann) > 0 {
 		for _, a := range ann {
-			if r, ok := spanRange(doc, a.TokStart(), a.TokEnd()); ok {
+			if r, ok := spanRange(pf, a.TokStart(), a.TokEnd()); ok {
 				ranges = append(ranges, r)
 			}
 		}
 	}
 
-	ranges = append(ranges, commentBlocks(doc)...)
+	ranges = append(ranges, commentBlocks(pf)...)
 
 	sort.Slice(ranges, func(i, j int) bool {
 		if ranges[i].StartLine != ranges[j].StartLine {
@@ -77,11 +77,11 @@ func startChar(r protocol.FoldingRange) uint32 {
 
 // bracedRange returns the fold range of a brace-delimited body: from the
 // opening brace to the closing one.
-func bracedRange(doc *syntax.Document, n syntax.Node) (protocol.FoldingRange, bool) {
+func bracedRange(pf *cache.ParsedFile, n syntax.Node) (protocol.FoldingRange, bool) {
 	open := -1
 
 	for i := n.TokStart(); i <= n.TokEnd(); i++ {
-		if doc.Tokens[i].Kind == syntax.TokenLBrace {
+		if pf.AST().Tokens[i].Kind == syntax.TokenLBrace {
 			open = i
 
 			break
@@ -94,14 +94,14 @@ func bracedRange(doc *syntax.Document, n syntax.Node) (protocol.FoldingRange, bo
 
 	close := open
 	for i := n.TokEnd(); i > open; i-- {
-		if doc.Tokens[i].Kind == syntax.TokenRBrace {
+		if pf.AST().Tokens[i].Kind == syntax.TokenRBrace {
 			close = i
 
 			break
 		}
 	}
 
-	return spanRange(doc, open, close)
+	return spanRange(pf, open, close)
 }
 
 // nodeAnnotations collects the annotations of every top-level node, in
@@ -139,7 +139,8 @@ func nodeAnnotation(n syntax.Node) *syntax.Annotations {
 
 // spanRange converts the token span [start, end] into a folding range.
 // Degenerate single-line spans yield no range.
-func spanRange(doc *syntax.Document, start, end int) (protocol.FoldingRange, bool) {
+func spanRange(pf *cache.ParsedFile, start, end int) (protocol.FoldingRange, bool) {
+	doc := pf.AST()
 	s := doc.TokenPosition(start)
 	e := doc.TokenEndPosition(end)
 
@@ -147,17 +148,20 @@ func spanRange(doc *syntax.Document, start, end int) (protocol.FoldingRange, boo
 		return protocol.FoldingRange{}, false
 	}
 
+	startPos := toLSPPosition(pf, s)
+	endPos := toLSPPosition(pf, e)
+
 	return protocol.FoldingRange{
-		StartLine:      uint32(s.Line - 1),
-		StartCharacter: new(uint32(s.Col - 1)),
-		EndLine:        uint32(e.Line - 1),
-		EndCharacter:   new(uint32(e.Col - 1)),
+		StartLine:      startPos.Line,
+		StartCharacter: new(uint32(startPos.Character)),
+		EndLine:        endPos.Line,
+		EndCharacter:   new(uint32(endPos.Character)),
 	}, true
 }
 
 // commentSpanRange is spanRange for comment folds.
-func commentSpanRange(doc *syntax.Document, start, end int) (protocol.FoldingRange, bool) {
-	r, ok := spanRange(doc, start, end)
+func commentSpanRange(pf *cache.ParsedFile, start, end int) (protocol.FoldingRange, bool) {
+	r, ok := spanRange(pf, start, end)
 	if ok {
 		r.Kind = protocol.FoldingRangeKindComment
 	}
@@ -167,9 +171,10 @@ func commentSpanRange(doc *syntax.Document, start, end int) (protocol.FoldingRan
 
 // blockCommentSpan folds a multi-line block comment. The token records
 // only its start position, so the end line is derived from the text.
-func blockCommentSpan(doc *syntax.Document, idx int) (protocol.FoldingRange, bool) {
+func blockCommentSpan(pf *cache.ParsedFile, idx int) (protocol.FoldingRange, bool) {
+	doc := pf.AST()
 	tok := doc.Tokens[idx]
-	start := doc.TokenPosition(idx)
+	startPos := toLSPPosition(pf, doc.TokenPosition(idx))
 
 	lines := strings.Count(tok.Text, "\n")
 	if lines == 0 {
@@ -179,9 +184,9 @@ func blockCommentSpan(doc *syntax.Document, idx int) (protocol.FoldingRange, boo
 	last := tok.Text[strings.LastIndex(tok.Text, "\n")+1:]
 
 	return protocol.FoldingRange{
-		StartLine:      uint32(start.Line - 1),
-		StartCharacter: new(uint32(start.Col - 1)),
-		EndLine:        uint32(start.Line - 1 + lines),
+		StartLine:      startPos.Line,
+		StartCharacter: new(uint32(startPos.Character)),
+		EndLine:        startPos.Line + uint32(lines),
 		EndCharacter:   new(uint32(len(last))),
 		Kind:           protocol.FoldingRangeKindComment,
 	}, true
@@ -189,14 +194,15 @@ func blockCommentSpan(doc *syntax.Document, idx int) (protocol.FoldingRange, boo
 
 // commentBlocks folds consecutive same-line comments on consecutive
 // source lines, and multi-line block comments, into comment fold ranges.
-func commentBlocks(doc *syntax.Document) []protocol.FoldingRange {
+func commentBlocks(pf *cache.ParsedFile) []protocol.FoldingRange {
 	var ranges []protocol.FoldingRange
 
+	doc := pf.AST()
 	for i := 0; i < len(doc.Tokens); i++ {
 		tok := doc.Tokens[i]
 		if !isLineComment(tok.Kind) {
 			if tok.Kind == syntax.TokenBlockComment || tok.Kind == syntax.TokenDocComment {
-				if r, ok := blockCommentSpan(doc, i); ok {
+				if r, ok := blockCommentSpan(pf, i); ok {
 					ranges = append(ranges, r)
 				}
 			}
@@ -211,7 +217,7 @@ func commentBlocks(doc *syntax.Document) []protocol.FoldingRange {
 		}
 
 		if i > start {
-			if r, ok := commentSpanRange(doc, start, i); ok {
+			if r, ok := commentSpanRange(pf, start, i); ok {
 				ranges = append(ranges, r)
 			}
 		}

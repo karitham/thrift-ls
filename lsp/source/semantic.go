@@ -66,8 +66,22 @@ func Tokens(ctx context.Context, ss *cache.Snapshot, file uri.URI) ([]uint32, er
 			continue
 		}
 
-		line := tok.Line - 1
-		char := tok.Col - 1
+		// The token span in UTF-16 code units: lengths and columns are
+		// byte- and rune-based in the lexer, so non-ASCII content (e.g.
+		// astral chars in comments or string literals) shifts them.
+		start, err := pf.Mapper().OffsetToLSPPosition(tok.Offset)
+		if err != nil {
+			continue
+		}
+
+		end, err := pf.Mapper().OffsetToLSPPosition(tok.Offset + len(tok.Text))
+		if err != nil {
+			continue
+		}
+
+		line := int(start.Line)
+		char := int(start.Character)
+		length := int(end.Character - start.Character)
 
 		deltaChar := char
 		if line == prevLine {
@@ -77,7 +91,7 @@ func Tokens(ctx context.Context, ss *cache.Snapshot, file uri.URI) ([]uint32, er
 		data = append(data,
 			uint32(line-prevLine),
 			uint32(deltaChar),
-			uint32(len(tok.Text)),
+			uint32(length),
 			uint32(typ),
 			0, // no token modifiers
 		)
