@@ -8,7 +8,6 @@ import (
 
 	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/lsp/memoize"
 )
 
 type StreamServer struct {
@@ -22,10 +21,8 @@ type Options struct {
 }
 
 func NewStreamServer(opts *Options) *StreamServer {
-	store := &memoize.Store{}
-
 	return &StreamServer{
-		cache:      cache.New(store, opts.IncludePaths),
+		cache:      cache.New(opts.IncludePaths),
 		formatOpts: opts.Format,
 	}
 }

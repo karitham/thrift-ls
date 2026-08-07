@@ -9,7 +9,6 @@ import (
 
 	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/lsp/memoize"
 )
 
 func Test_DidOpen(t *testing.T) {
@@ -33,8 +32,7 @@ struct Test {
 		},
 	}
 
-	store := &memoize.Store{}
-	cache := cache.New(store, nil)
+	cache := cache.New(nil)
 	srv := NewServer(cache, nil, formatter.Options{})
 	err = srv.DidOpen(ctx, params)
 	assert.NoError(t, err)
@@ -92,8 +90,7 @@ struct Test {
 		},
 	}
 
-	store := &memoize.Store{}
-	cache := cache.New(store, nil)
+	cache := cache.New(nil)
 	srv := NewServer(cache, nil, formatter.Options{})
 
 	err = srv.DidOpen(ctx, openParams)
@@ -155,8 +152,7 @@ struct Test {
 				},
 			}
 
-			store := &memoize.Store{}
-			cache := cache.New(store, nil)
+			cache := cache.New(nil)
 			srv := NewServer(cache, nil, formatter.Options{})
 			err = srv.DidOpen(ctx, openParams)
 			assert.NoError(t, err)
@@ -253,8 +249,7 @@ struct Test {
 				},
 			}
 
-			store := &memoize.Store{}
-			cache := cache.New(store, []string{"/tmp"})
+			cache := cache.New([]string{"/tmp"})
 			srv := NewServer(cache, nil, formatter.Options{})
 
 			err = srv.DidOpen(ctx, baseParams)
@@ -360,8 +355,7 @@ struct Other {
 				},
 			}
 
-			store := &memoize.Store{}
-			cache := cache.New(store, nil)
+			cache := cache.New(nil)
 			srv := NewServer(cache, nil, formatter.Options{})
 
 			err = srv.DidOpen(ctx, file1Params)

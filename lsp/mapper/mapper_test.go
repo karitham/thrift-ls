@@ -213,3 +213,38 @@ func Test_utf16Count(t *testing.T) {
 		})
 	}
 }
+
+func TestGetLSPEndPosition(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    types.Position
+	}{
+		{
+			name:    "single line",
+			content: "struct Gundam {}",
+			want:    types.Position{Line: 0, Character: 16},
+		},
+		{
+			name:    "multiline without trailing newline",
+			content: "enum ZeonForces {\n  ZAKU_I\n}",
+			want:    types.Position{Line: 2, Character: 1},
+		},
+		{
+			name:    "trailing newline has an empty last line",
+			content: "struct Gundam {\n}\n",
+			want:    types.Position{Line: 2, Character: 0},
+		},
+		{
+			name:    "non-ascii on the last line",
+			content: `const string s = "モビルスーツ"`,
+			want:    types.Position{Line: 0, Character: 25},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := NewMapper("file:///tmp/test.thrift", []byte(tt.content))
+			assert.Equal(t, tt.want, m.GetLSPEndPosition())
+		})
+	}
+}

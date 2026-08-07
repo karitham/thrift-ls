@@ -40,9 +40,14 @@ func (n *IncludeNode) OutDegree() []uri.URI {
 	return n.outdegree
 }
 
+// IncludeGraph tracks include edges between files. Snapshots share the
+// underlying mapper (Clone is O(1)); the first structural change after a
+// clone deep-copies the graph, so edits that do not change include edges
+// never pay for the copy.
 type IncludeGraph struct {
 	mu     sync.RWMutex
 	mapper map[uri.URI]*IncludeNode
+	shared bool
 }
 
 func NewIncludeGraph() *IncludeGraph {
@@ -78,35 +83,31 @@ func (g *IncludeGraph) Set(file uri.URI, includes []*syntax.Include, resolve fun
 		return includeURIs[i] < includeURIs[j]
 	})
 
-	node, ok := g.mapper[file]
-	if ok {
-		if len(includeURIs) == len(node.outdegree) {
-			sort.SliceStable(node.outdegree, func(i, j int) bool {
-				return node.outdegree[i] < node.outdegree[j]
-			})
+	// Unchanged edges: nothing to write, so a shared snapshot graph is
+	// left untouched (no copy).
+	if node, ok := g.mapper[file]; ok && sameOutdegree(node, includeURIs) {
+		return
+	}
 
-			equal := true
+	g.detach()
+	g.removeWithoutLock(file)
 
-			for i := range includeURIs {
-				if includeURIs[i] != node.outdegree[i] {
-					equal = false
-
-					break
-				}
-			}
-
-			if equal {
-				return
-			}
-		}
-
-		g.removeWithoutLock(file)
-	} else {
+	node := g.mapper[file]
+	if node == nil {
 		node = &IncludeNode{}
 	}
 
 	for _, inc := range includeURIs {
 		node.outdegree = append(node.outdegree, inc)
+
+		if inc == file {
+			// Self-include: the target node is this node. Appending to a
+			// fresh node would be overwritten by g.mapper[file] below and
+			// the edge lost.
+			node.indegree = append(node.indegree, file)
+
+			continue
+		}
 
 		outNode, exist := g.mapper[inc]
 		if !exist {
@@ -120,23 +121,62 @@ func (g *IncludeGraph) Set(file uri.URI, includes []*syntax.Include, resolve fun
 	g.mapper[file] = node
 }
 
+// sameOutdegree reports whether the node's outdegree equals includeURIs.
+// The node's slice is not modified.
+func sameOutdegree(node *IncludeNode, includeURIs []uri.URI) bool {
+	if len(node.outdegree) != len(includeURIs) {
+		return false
+	}
+
+	out := make([]uri.URI, len(node.outdegree))
+	copy(out, node.outdegree)
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i] < out[j]
+	})
+
+	for i := range includeURIs {
+		if out[i] != includeURIs[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (g *IncludeGraph) Remove(file uri.URI) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
+	g.detach()
 	g.removeWithoutLock(file)
 }
 
+// Clone returns a view sharing the same mapper. The clone and the original
+// both become copy-on-write: the next structural change deep-copies.
 func (g *IncludeGraph) Clone() *IncludeGraph {
-	g.mu.RLock()
-	defer g.mu.RUnlock()
+	g.mu.Lock()
+	defer g.mu.Unlock()
 
-	newG := NewIncludeGraph()
-	for i := range g.mapper {
-		newG.mapper[i] = g.mapper[i].Clone()
+	g.shared = true
+
+	return &IncludeGraph{mapper: g.mapper, shared: true}
+}
+
+// detach deep-copies the mapper before the first structural change after a
+// clone, so the shared parent snapshot is never mutated. Callers must hold
+// mu.
+func (g *IncludeGraph) detach() {
+	if !g.shared {
+		return
 	}
 
-	return newG
+	mapper := make(map[uri.URI]*IncludeNode, len(g.mapper)+1)
+	for file, node := range g.mapper {
+		mapper[file] = node.Clone()
+	}
+
+	g.mapper = mapper
+	g.shared = false
 }
 
 func (g *IncludeGraph) removeWithoutLock(file uri.URI) {

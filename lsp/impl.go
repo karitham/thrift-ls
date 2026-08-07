@@ -59,15 +59,7 @@ func (s *Server) openFile(ctx context.Context, change *cache.FileChange) error {
 	}
 
 	view, _ := s.session.ViewOf(change.URI)
-	view.FileChange(ctx, []*cache.FileChange{change}, func() {
-		ss, release := view.Snapshot()
-		defer release()
-
-		err := s.diagnostic(ctx, ss, change)
-		if err != nil {
-			slog.Error("diagnostic error", "err", err)
-		}
-	})
+	view.FileChange(ctx, []*cache.FileChange{change}, s.postDiagnostics(ctx, view))
 
 	return nil
 }
@@ -86,19 +78,115 @@ func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDo
 		return err
 	}
 
-	view.FileChange(ctx, changes, func() {
+	view.FileChange(ctx, changes, s.postDiagnostics(ctx, view))
+
+	return nil
+}
+
+func (s *Server) didClose(ctx context.Context, params *protocol.DidCloseTextDocumentParams) error {
+	fileURI := params.TextDocument.URI
+
+	view, err := s.session.ViewOf(fileURI)
+	if err != nil {
+		return err
+	}
+
+	change := &cache.FileChange{URI: fileURI, From: cache.FileChangeTypeDidClose}
+
+	if err := s.session.UpdateOverlayFS(ctx, []*cache.FileChange{change}); err != nil {
+		return err
+	}
+
+	view.FileChange(ctx, []*cache.FileChange{change}, s.postDiagnostics(ctx, view))
+
+	return nil
+}
+
+func (s *Server) didChangeWatchedFiles(ctx context.Context, params *protocol.DidChangeWatchedFilesParams) error {
+	byView := make(map[*cache.View][]*cache.FileChange)
+
+	for _, event := range params.Changes {
+		if s.session.HasOverlay(event.URI) {
+			// The editor overlay is authoritative for open documents; disk
+			// events for them are ignored.
+			continue
+		}
+
+		change, err := s.watchedFileChange(ctx, event)
+		if err != nil {
+			return err
+		}
+
+		view, err := s.session.ViewOf(event.URI)
+		if err != nil {
+			continue
+		}
+
+		byView[view] = append(byView[view], change)
+	}
+
+	for view, changes := range byView {
+		view.FileChange(ctx, changes, s.postDiagnostics(ctx, view))
+	}
+
+	return nil
+}
+
+// watchedFileChange builds a FileChange from a disk event, reading the
+// current content through the memoized file source. Deleted files are
+// reported as a close change.
+func (s *Server) watchedFileChange(ctx context.Context, event protocol.FileEvent) (*cache.FileChange, error) {
+	if event.Type == protocol.FileChangeTypeDeleted {
+		return &cache.FileChange{URI: event.URI, From: cache.FileChangeTypeDidClose}, nil
+	}
+
+	fh, err := s.session.ReadFile(ctx, event.URI)
+	if err != nil {
+		return nil, err
+	}
+
+	content, err := fh.Content()
+	if err != nil {
+		return nil, err
+	}
+
+	return &cache.FileChange{
+		URI:     event.URI,
+		Version: int(fh.Version()),
+		Content: content,
+		From:    cache.FileChangeTypeDidChange,
+	}, nil
+}
+
+// postDiagnostics returns a FileChange postFn that publishes diagnostics for
+// every affected file (changed files plus their transitive dependents) on the
+// view's current snapshot. Diagnostics run in the background (FileChange
+// invokes postFns asynchronously); if a newer change lands while the analysis
+// runs, the results are dropped — the newer change publishes its own.
+func (s *Server) postDiagnostics(ctx context.Context, view *cache.View) func([]uri.URI) {
+	// The request context dies when the LSP request returns; the
+	// diagnostics goroutine outlives it.
+	ctx = context.WithoutCancel(ctx)
+
+	return func(affected []uri.URI) {
 		ss, release := view.Snapshot()
 		defer release()
 
-		for i := range changes {
-			err := s.diagnostic(ctx, ss, changes[i])
-			if err != nil {
-				slog.Error("diagnostic error", "err", err)
-			}
+		if !view.IsCurrent(ss) {
+			return
 		}
-	})
 
-	return nil
+		s.diagnose(ctx, ss, affected)
+	}
+}
+
+// diagnose publishes diagnostics for every affected file.
+func (s *Server) diagnose(ctx context.Context, ss *cache.Snapshot, affected []uri.URI) {
+	for i := range affected {
+		if err := s.diagnostic(ctx, ss, affected[i]); err != nil {
+			slog.Error("diagnostic error", "err", err)
+		}
+	}
 }
 
 func (s *Server) completion(ctx context.Context, params *protocol.CompletionParams) (*protocol.CompletionList, error) {
@@ -108,7 +196,7 @@ func (s *Server) completion(ctx context.Context, params *protocol.CompletionPara
 	}
 	defer release()
 
-	items, rng, err := completion.DefaultTokenCompletion.Completion(ctx, snapshot, &completion.CompletionRequest{
+	items, rng, truncated, err := completion.DefaultTokenCompletion.Completion(ctx, snapshot, &completion.CompletionRequest{
 		TriggerKind: 0,
 		Pos: types.Position{
 			Line:      params.Position.Line,
@@ -120,12 +208,12 @@ func (s *Server) completion(ctx context.Context, params *protocol.CompletionPara
 		return nil, err
 	}
 
-	return toLspCompletionList(items, rng), nil
+	return toLspCompletionList(items, rng, truncated), nil
 }
 
-func toLspCompletionList(items []*completion.CompletionItem, rng protocol.Range) *protocol.CompletionList {
+func toLspCompletionList(items []*completion.CompletionItem, rng protocol.Range, truncated bool) *protocol.CompletionList {
 	list := &protocol.CompletionList{
-		IsIncomplete: true,
+		IsIncomplete: truncated,
 	}
 
 	for i := range items {

@@ -50,9 +50,16 @@ func (fs *overlayFS) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, err
 	return fs.delegate.ReadFile(ctx, uri)
 }
 
-// Update only updates overlays
+// Update applies changes to the overlay set. DidClose changes remove the
+// overlay; all other types create or replace it.
 func (fs *overlayFS) Update(ctx context.Context, changes []*FileChange) error {
 	for _, change := range changes {
+		if change.From == FileChangeTypeDidClose {
+			fs.Forget(change.URI)
+
+			continue
+		}
+
 		var base []byte
 
 		if change.From == FileChangeTypeDidChange {
@@ -77,6 +84,24 @@ func (fs *overlayFS) Update(ctx context.Context, changes []*FileChange) error {
 	}
 
 	return nil
+}
+
+// HasOverlay reports whether uri has an open overlay.
+func (fs *overlayFS) HasOverlay(uri uri.URI) bool {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	_, ok := fs.overlays[uri]
+
+	return ok
+}
+
+// Forget drops the overlay for uri, falling back to disk content.
+func (fs *overlayFS) Forget(uri uri.URI) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	delete(fs.overlays, uri)
 }
 
 // An Overlay is a file open in the editor. It may have unsaved edits.

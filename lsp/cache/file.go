@@ -102,11 +102,14 @@ type FileSource interface {
 	ReadFile(ctx context.Context, uri uri.URI) (FileHandle, error)
 }
 
-// FilesMap holds files on disk and overlay files
+// FilesMap holds files on disk and overlay files. Snapshots share the
+// underlying maps (Clone is O(1)); the first write after a clone copies
+// copy-on-write.
 type FilesMap struct {
 	mu       sync.RWMutex
 	files    map[uri.URI]FileHandle
 	overlays map[uri.URI]*Overlay
+	shared   bool
 }
 
 func (m *FilesMap) Get(key uri.URI) (FileHandle, bool) {
@@ -122,6 +125,8 @@ func (m *FilesMap) Set(key uri.URI, file FileHandle) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	m.copyOnWrite()
+
 	m.files[key] = file
 	if o, ok := file.(*Overlay); ok {
 		m.overlays[key] = o
@@ -132,27 +137,47 @@ func (m *FilesMap) Forget(key uri.URI) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	m.copyOnWrite()
+
 	delete(m.files, key)
 	delete(m.overlays, key)
 }
 
+// Clone returns a view sharing the same entries. The clone and the original
+// both become copy-on-write.
 func (m *FilesMap) Clone() *FilesMap {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	newMap := &FilesMap{
-		files:    make(map[uri.URI]FileHandle),
-		overlays: make(map[uri.URI]*Overlay),
+	m.shared = true
+
+	return &FilesMap{
+		files:    m.files,
+		overlays: m.overlays,
+		shared:   true,
 	}
-	for key := range m.files {
-		newMap.files[key] = m.files[key]
+}
+
+// copyOnWrite detaches the maps from a shared parent before the first write.
+// Callers must hold mu.
+func (m *FilesMap) copyOnWrite() {
+	if !m.shared {
+		return
 	}
 
-	for key := range m.overlays {
-		newMap.overlays[key] = m.overlays[key]
+	files := make(map[uri.URI]FileHandle, len(m.files)+1)
+	for k, v := range m.files {
+		files[k] = v
 	}
 
-	return newMap
+	overlays := make(map[uri.URI]*Overlay, len(m.overlays)+1)
+	for k, v := range m.overlays {
+		overlays[k] = v
+	}
+
+	m.files = files
+	m.overlays = overlays
+	m.shared = false
 }
 
 func (m *FilesMap) Destroy() {
@@ -167,6 +192,7 @@ const (
 	FileChangeTypeDidOpen    FileChangeType = "DidOpen"
 	FileChangeTypeDidChange  FileChangeType = "DidChange"
 	FileChangeTypeDidSave    FileChangeType = "DidSave"
+	FileChangeTypeDidClose   FileChangeType = "DidClose"
 )
 
 type FileChange struct {

@@ -3,23 +3,19 @@ package completion
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"path/filepath"
 	"sort"
 	"strings"
-	"unicode"
 
 	"go.lsp.dev/protocol"
-	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/syntax"
 )
 
 var DefaultTokenCompletion Interface = &TokenCompletion{}
 
-// TokenCompletion is token based completion. It generates completion list
-// based on identifiers in the AST.
+// TokenCompletion is the slot-based completion entry point. It resolves the
+// grammar slot at the cursor, asks the providers for that slot, then
+// filters, sorts, and caps the candidates.
 type TokenCompletion struct{}
 
 var keywords = map[string]protocol.InsertTextFormat{
@@ -48,175 +44,134 @@ var keywords = map[string]protocol.InsertTextFormat{
 	"typedef $1 $2":         protocol.InsertTextFormatSnippet,
 }
 
+// maxCandidates caps the completion list; the server reports the list as
+// incomplete when the cap truncates.
+const maxCandidates = 10
+
+// Candidate is a single completion entry before LSP conversion.
 type Candidate struct {
 	showText   string
 	insertText string
 	format     protocol.InsertTextFormat
 }
 
-func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cmp *CompletionRequest) ([]*CompletionItem, protocol.Range, error) {
-	rng := protocol.Range{
-		Start: protocol.Position{
-			Line:      cmp.Pos.Line,
-			Character: cmp.Pos.Character,
-		},
-		End: protocol.Position{
-			Line:      cmp.Pos.Line,
-			Character: cmp.Pos.Character,
-		},
-	}
-
+// Completion resolves the grammar slot at the cursor and returns the
+// candidates for that slot, the edit range, and whether the list was
+// truncated by the cap.
+func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cmp *CompletionRequest) ([]*CompletionItem, protocol.Range, bool, error) {
 	parsedFile, err := ss.Parse(ctx, cmp.Fh.URI())
 	if err != nil {
-		return nil, rng, err
+		return nil, protocol.Range{}, false, err
 	}
 
 	if parsedFile.AST() == nil {
-		return nil, rng, fmt.Errorf("parser ast failed")
+		return nil, protocol.Range{}, false, fmt.Errorf("parser ast failed")
 	}
 
 	pos, err := parsedFile.Mapper().LSPPosToParserPosition(cmp.Pos)
 	if err != nil {
-		return nil, rng, err
+		return nil, protocol.Range{}, false, err
 	}
 
-	tokens := ss.TokensForFile(cmp.Fh.URI())
+	cc := ResolveContext(parsedFile.AST(), pos)
 
-	slog.Debug("all tokens", "tokens", tokens)
+	// A trailing dot (enum-qualified value position, e.g. "ZeonForces.|")
+	// means the user is about to type the member: filter on everything
+	// after the dots, insert after them, and strip the qualifier from
+	// inserted names so the result is "ZeonForces.ZAKU_I", not
+	// "ZeonForces.ZeonForces.ZAKU_I". The lexer drops a trailing dot, so
+	// detect it from the raw content, not the token stream.
+	qualified := strings.HasSuffix(cc.Prefix, ".")
 
-	candidates := make([]Candidate, 0)
-
-	slog.Debug("parser pos", "pos", pos)
-
-	// Include completion: the cursor is inside an include path literal.
-	includePos := pos
-	includePos.Col--
-
-	includePath := parsedFile.AST().SearchNodePathByPosition(includePos)
-	if items, includeRng, err := c.includeCompletion(ss, cmp.Fh.URI(), parsedFile.AST(), includePath); err == nil {
-		candidates = append(candidates, items...)
-		if len(items) > 0 {
-			rng = includeRng
-
-			slog.Debug("include completion candidates", "candidates", candidates)
+	if !qualified && cc.Offset > 0 {
+		if content, err := cmp.Fh.Content(); err == nil && cc.Offset <= len(content) && content[cc.Offset-1] == '.' {
+			qualified = true
+			cc.Kind = CtxFieldValue
+			cc.Prefix = ""
 		}
 	}
 
-	if len(candidates) == 0 {
-		content, err := cmp.Fh.Content()
-		if err != nil {
-			return nil, rng, err
-		}
+	filterPrefix := cc.Prefix
 
-		var prefix []byte
-		// get prefix by pos
-		for i := pos.Offset - 1; i >= 0; i-- {
-			if unicode.IsSpace(rune(content[i])) || content[i] == '.' || content[i] == '\'' || content[i] == '"' {
-				prefix = content[i+1 : pos.Offset]
-				rng.Start.Character = rng.Start.Character - uint32(len(prefix))
-
-				break
-			}
-		}
-
-		if len(prefix) == 0 {
-			// prefix is empty, set prefix to content
-			prefix = content
-			rng.Start.Character = rng.Start.Character - uint32(len(prefix))
-		}
-
-		searchCandidate := func(token string, format protocol.InsertTextFormat) {
-			if len(token) > len(prefix) && strings.HasPrefix(token, string(prefix)) {
-				candidates = append(candidates, Candidate{
-					showText:   token,
-					insertText: token,
-					format:     format,
-				})
-			}
-		}
-
-		// Semantic completion: context-aware candidates for type and
-		// constant value positions; fall back to keywords and all
-		// identifiers otherwise.
-		semantic := semanticCandidates(ctx, ss, cmp.Fh.URI(), parsedFile, pos)
-		if len(semantic) > 0 {
-			for _, cand := range semantic {
-				searchCandidate(cand.showText, cand.format)
-			}
-		} else {
-			for i := range keywords {
-				searchCandidate(i, keywords[i])
-			}
-
-			for i := range tokens {
-				searchCandidate(i, protocol.InsertTextFormatPlainText)
-			}
-		}
-
-		// Sort candidates: prefix matches first (by length, shorter first), then alphabetically
-		sort.Slice(candidates, func(i, j int) bool {
-			a, b := candidates[i].showText, candidates[j].showText
-			aStarts := strings.HasPrefix(a, string(prefix))
-
-			bStarts := strings.HasPrefix(b, string(prefix))
-			if aStarts != bStarts {
-				return aStarts
-			}
-
-			if len(a) != len(b) {
-				return len(a) < len(b)
-			}
-
-			return a < b
-		})
-
-		if len(candidates) > 10 {
-			candidates = candidates[:10]
-		}
-
-		slog.Debug("token prefix", "prefix", string(prefix), "candidates", candidates)
+	editStart := cc.EditStart
+	if qualified {
+		filterPrefix = strings.TrimRight(cc.Prefix, ".")
+		editStart = cc.Offset
 	}
 
-	res := make([]*CompletionItem, 0, len(candidates))
-	for i := range candidates {
-		res = append(res, BuildCompletionItem(candidates[i]))
+	var candidates []Candidate
+	for _, p := range providersFor(cc.Kind) {
+		candidates = append(candidates, p.Candidates(ctx, ss, cmp.Fh.URI(), cc)...)
 	}
 
-	return res, rng, nil
-}
+	// Shared pipeline: prefix filter, dedupe, sort, cap.
+	filtered := candidates[:0]
+	seen := make(map[string]struct{}, len(candidates))
+	for _, cand := range candidates {
+		// Echo suppression: a candidate identical to the typed text adds
+		// nothing (the client already shows it).
+		if filterPrefix != "" && cand.showText == filterPrefix {
+			continue
+		}
 
-// includeCompletion completes include path literals by listing the
-// directory of the current file.
-func (c *TokenCompletion) includeCompletion(ss *cache.Snapshot, file uri.URI, doc *syntax.Document, path []syntax.Node) (res []Candidate, rng protocol.Range, err error) {
-	if len(path) == 0 {
-		return res, rng, err
+		if !strings.HasPrefix(cand.showText, filterPrefix) {
+			continue
+		}
+
+		// Providers may yield the same name (e.g. a type defined in the
+		// file is both a type candidate and an identifier token).
+		if _, ok := seen[cand.showText]; ok {
+			continue
+		}
+		seen[cand.showText] = struct{}{}
+
+		filtered = append(filtered, cand)
 	}
 
-	include, ok := path[len(path)-1].(*syntax.Include)
-	if !ok || include.Path == nil {
-		return res, rng, err
+	if qualified {
+		for i := range filtered {
+			if j := strings.LastIndex(filtered[i].showText, "."); j >= 0 {
+				filtered[i].insertText = filtered[i].showText[j+1:]
+			}
+		}
 	}
 
-	pathPrefix := include.Path.Text
-	start, end := doc.TokenRange(include.Path)
-	rng = protocol.Range{
-		Start: protocol.Position{
-			Line:      uint32(start.Line - 1),
-			Character: uint32(start.Col - 1),
-		},
-		End: protocol.Position{
-			Line:      uint32(end.Line - 1),
-			Character: uint32(end.Col - 1),
-		},
+	sort.Slice(filtered, func(i, j int) bool {
+		a, b := filtered[i].showText, filtered[j].showText
+		aStarts := strings.HasPrefix(a, filterPrefix)
+
+		bStarts := strings.HasPrefix(b, filterPrefix)
+		if aStarts != bStarts {
+			return aStarts
+		}
+
+		if len(a) != len(b) {
+			return len(a) < len(b)
+		}
+
+		return a < b
+	})
+
+	truncated := false
+
+	if len(filtered) > maxCandidates {
+		filtered = filtered[:maxCandidates]
+		truncated = true
 	}
 
-	currentDir := filepath.Dir(file.Path())
+	cursor := protocol.Position{Line: cmp.Pos.Line, Character: cmp.Pos.Character}
 
-	slog.Debug("searching prefix in path", "prefix", pathPrefix, "dir", currentDir)
+	rng := protocol.Range{End: cursor}
+	if start, err := parsedFile.Mapper().OffsetToLSPPosition(editStart); err == nil {
+		rng.Start = protocol.Position{Line: start.Line, Character: start.Character}
+	} else {
+		rng.Start = cursor
+	}
 
-	res, err = ListDirAndFiles(currentDir, pathPrefix)
+	res := make([]*CompletionItem, 0, len(filtered))
+	for i := range filtered {
+		res = append(res, BuildCompletionItem(filtered[i]))
+	}
 
-	slog.Debug("include completion", "res", res, "err", err)
-
-	return res, rng, err
+	return res, rng, truncated, nil
 }

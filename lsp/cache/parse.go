@@ -12,10 +12,14 @@ import (
 	"github.com/karitham/thrift-ls/syntax"
 )
 
+// ParseCaches maps URIs to parsed files. Snapshots share the underlying map
+// (Clone is O(1)); the first write after a clone copies the map
+// copy-on-write, so cloning per keystroke is cheap while old snapshots stay
+// immutable.
 type ParseCaches struct {
 	mu     sync.RWMutex
 	caches map[uri.URI]*ParsedFile
-	tokens map[string]struct{}
+	shared bool
 }
 
 func NewParseCaches() *ParseCaches {
@@ -26,9 +30,11 @@ func NewParseCaches() *ParseCaches {
 
 func (c *ParseCaches) Set(filePath uri.URI, res *ParsedFile) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.copyOnWrite()
+
 	c.caches[filePath] = res
-	c.tokens = nil
-	c.mu.Unlock()
 }
 
 func (c *ParseCaches) Get(filePath uri.URI) *ParsedFile {
@@ -42,44 +48,41 @@ func (c *ParseCaches) Forget(filePath uri.URI) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	c.copyOnWrite()
+
 	delete(c.caches, filePath)
-	c.tokens = nil
 }
 
+// Clone returns a view sharing the same entries. The clone and the original
+// both become copy-on-write.
 func (c *ParseCaches) Clone() *ParseCaches {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	clone := make(map[uri.URI]*ParsedFile)
-	for i := range c.caches {
-		clone[i] = c.caches[i]
-	}
+	c.shared = true
 
-	return &ParseCaches{caches: clone}
+	return &ParseCaches{caches: c.caches, shared: true}
 }
 
-func (c *ParseCaches) Tokens() map[string]struct{} {
-	if len(c.tokens) > 0 {
-		return c.tokens
+// copyOnWrite detaches caches from a shared parent before the first write.
+// Callers must hold mu.
+func (c *ParseCaches) copyOnWrite() {
+	if !c.shared {
+		return
 	}
 
-	tokens := make(map[string]struct{})
-
-	for _, parsed := range c.caches {
-		if parsed.ast == nil {
-			continue
-		}
-
-		collectTokens(parsed.ast, tokens)
+	caches := make(map[uri.URI]*ParsedFile, len(c.caches)+1)
+	for k, v := range c.caches {
+		caches[k] = v
 	}
 
-	c.tokens = tokens
-
-	return tokens
+	c.caches = caches
+	c.shared = false
 }
 
 // TokensForFile returns tokens for the given file and its transitively
-// included files.
+// included files. Each file's token set is computed once per parse and
+// reused, so typing does not re-walk the include closure's ASTs.
 func (c *ParseCaches) TokensForFile(file uri.URI, getIncludes func(uri.URI) []uri.URI) map[string]struct{} {
 	tokens := make(map[string]struct{})
 	visited := make(map[uri.URI]bool)
@@ -93,9 +96,10 @@ func (c *ParseCaches) TokensForFile(file uri.URI, getIncludes func(uri.URI) []ur
 
 		visited[f] = true
 
-		pf := c.Get(f)
-		if pf != nil && pf.ast != nil {
-			collectTokens(pf.ast, tokens)
+		if pf := c.Get(f); pf != nil {
+			for token := range pf.Tokens() {
+				tokens[token] = struct{}{}
+			}
 		}
 
 		for _, inc := range getIncludes(f) {
@@ -209,6 +213,9 @@ type ParsedFile struct {
 
 	// errs hold all ast parsing errors
 	errs []syntax.Error
+
+	// tokens is the identifier set of ast, computed lazily once per parse.
+	tokens map[string]struct{}
 }
 
 func (p *ParsedFile) Mapper() *mapper.Mapper {
@@ -221,6 +228,24 @@ func (p *ParsedFile) AST() *syntax.Document {
 
 func (p *ParsedFile) Errors() []syntax.Error {
 	return p.errs
+}
+
+// Tokens returns the identifier tokens of the file, computed once and
+// reused. A re-parse replaces the whole ParsedFile, so the cache never
+// goes stale.
+func (p *ParsedFile) Tokens() map[string]struct{} {
+	if p.tokens != nil {
+		return p.tokens
+	}
+
+	tokens := make(map[string]struct{})
+	if p.ast != nil {
+		collectTokens(p.ast, tokens)
+	}
+
+	p.tokens = tokens
+
+	return tokens
 }
 
 func (p *ParsedFile) AggregatedError() error {

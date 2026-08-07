@@ -119,7 +119,9 @@ func initializeResult() *protocol.InitializeResult {
 				 * present `console` besides others as a completion item. Characters that
 				 * make up identifiers don't need to be listed here.
 				 */
-				TriggerCharacters: []string{"."},
+				// "." for enum-qualified values (Color.|), "\"" for include
+				// path literals, "(" for annotation keys.
+				TriggerCharacters: []string{".", "\"", "("},
 			},
 			HoverProvider: &protocol.HoverOptions{
 				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{

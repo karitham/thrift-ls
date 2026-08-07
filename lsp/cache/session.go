@@ -55,7 +55,7 @@ func (s *Session) Initialize(fn func()) {
 }
 
 func (s *Session) CreateView(folder uri.URI) {
-	view := NewView(folder.Path(), folder, s.overlayFS, s.cache.store, s.cache.IncludePaths)
+	view := NewView(folder.Path(), folder, s.overlayFS, s.cache.IncludePaths)
 	s.views = append(s.views, view)
 }
 

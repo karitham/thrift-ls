@@ -110,7 +110,7 @@ func (s *Server) DidChangeConfiguration(ctx context.Context, params *protocol.Di
 }
 
 func (s *Server) DidChangeWatchedFiles(ctx context.Context, params *protocol.DidChangeWatchedFilesParams) (err error) {
-	return nil
+	return s.didChangeWatchedFiles(ctx, params)
 }
 
 func (s *Server) DidChangeWorkspaceFolders(ctx context.Context, params *protocol.DidChangeWorkspaceFoldersParams) (err error) {
@@ -118,7 +118,7 @@ func (s *Server) DidChangeWorkspaceFolders(ctx context.Context, params *protocol
 }
 
 func (s *Server) DidClose(ctx context.Context, params *protocol.DidCloseTextDocumentParams) (err error) {
-	return nil
+	return s.didClose(ctx, params)
 }
 
 func (s *Server) DidOpen(ctx context.Context, params *protocol.DidOpenTextDocumentParams) (err error) {

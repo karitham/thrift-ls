@@ -149,3 +149,34 @@ func resolveWithPaths(includePaths []string) func(uri.URI, string) uri.URI {
 		return uri.File(r.Resolve(cur.Path(), includePath))
 	}
 }
+
+// Test_SnapshotParseIncludeCycles exercises include cycles through the full
+// snapshot parse path: parsing registers edges via Context.Register, and the
+// graph must settle without infinite recursion.
+func Test_SnapshotParseIncludeCycles(t *testing.T) {
+	dir := t.TempDir()
+	char := uri.File(filepath.Join(dir, "char.thrift"))
+	amuro := uri.File(filepath.Join(dir, "amuro.thrift"))
+	self := uri.File(filepath.Join(dir, "side_effect.thrift"))
+
+	files := []*FileChange{
+		{URI: char, Content: []byte(`include "amuro.thrift"`), From: FileChangeTypeDidOpen},
+		{URI: amuro, Content: []byte(`include "char.thrift"`), From: FileChangeTypeDidOpen},
+		{URI: self, Content: []byte(`include "side_effect.thrift"`), From: FileChangeTypeDidOpen},
+	}
+
+	ss := BuildSnapshotForTest(files)
+
+	// both directions of the mutual cycle are recorded
+	node := ss.Graph().Get(char)
+	assert.NotNil(t, node)
+	assert.Equal(t, []uri.URI{amuro}, node.OutDegree())
+	assert.Equal(t, []uri.URI{amuro}, node.InDegree())
+
+	// dependents terminate on the cycle and include both files
+	assert.Equal(t, []uri.URI{amuro, char}, ss.Dependents(char))
+	assert.Equal(t, []uri.URI{amuro, char}, ss.Dependents(amuro))
+
+	// self-include: the file is its own dependent, and settles
+	assert.Equal(t, []uri.URI{self}, ss.Dependents(self))
+}

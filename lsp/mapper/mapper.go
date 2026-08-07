@@ -48,16 +48,17 @@ func (m *Mapper) initLineStart() {
 	})
 }
 
+// GetLSPEndPosition returns the position immediately after the last
+// character of the document: the last line (0-based) at the UTF-16 length
+// of its content. A document ending with a newline has an empty last line.
 func (m *Mapper) GetLSPEndPosition() types.Position {
 	m.initLineStart()
 	lastLineStart := m.lineStart[len(m.lineStart)-1]
 	lastLine := m.content[lastLineStart:]
 
-	utf16Len := utf16Count(lastLine)
-
 	return types.Position{
-		Line:      uint32(len(m.lineStart)),
-		Character: uint32(utf16Len) - 1,
+		Line:      uint32(len(m.lineStart) - 1),
+		Character: uint32(utf16Count(lastLine)),
 	}
 }
 

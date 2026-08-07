@@ -9,12 +9,11 @@ import (
 )
 
 type Interface interface {
-	Completion(ctx context.Context, ss *cache.Snapshot, cmp *CompletionRequest) ([]*CompletionItem, protocol.Range, error)
+	// Completion returns the completion items for the request, the edit
+	// range, and whether the list was truncated by the item cap (the LSP
+	// isIncomplete flag).
+	Completion(ctx context.Context, ss *cache.Snapshot, cmp *CompletionRequest) ([]*CompletionItem, protocol.Range, bool, error)
 }
-
-// SemanticBasedCompletion generates completion list based on semantic. It is more precisely than token based completion
-// TODO(jpf)
-type SemanticBasedCompletion struct{}
 
 func BuildCompletionItem(candidate Candidate) *CompletionItem {
 	return &CompletionItem{

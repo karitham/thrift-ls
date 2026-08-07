@@ -10,7 +10,6 @@ import (
 
 	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/lsp/memoize"
 )
 
 func TestServerRangeFormatting(t *testing.T) {
@@ -28,8 +27,7 @@ struct B {
 struct C { 3: i64 c }
 `
 
-	store := &memoize.Store{}
-	srv := NewServer(cache.New(store, nil), nil, formatter.Options{})
+	srv := NewServer(cache.New(nil), nil, formatter.Options{})
 
 	err = srv.DidOpen(ctx, &protocol.DidOpenTextDocumentParams{
 		TextDocument: protocol.TextDocumentItem{

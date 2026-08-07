@@ -9,7 +9,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/lsp/memoize"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -175,13 +174,12 @@ include "./test/address.thrift"`
 }
 
 func buildSnapshotForTest(t *testing.T, files []*cache.FileChange) *cache.Snapshot {
-	store := &memoize.Store{}
-	c := cache.New(store, nil)
+	c := cache.New(nil)
 	fs := cache.NewOverlayFS(c)
 	_ = fs.Update(t.Context(), files)
 
-	view := cache.NewView("test", "file:///tmp", fs, store, nil)
-	ss := cache.NewSnapshot(view, store, nil)
+	view := cache.NewView("test", "file:///tmp", fs, nil)
+	ss := cache.NewSnapshot(view, nil)
 
 	return ss
 }

@@ -13,7 +13,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/lsputils"
-	"github.com/karitham/thrift-ls/lsp/memoize"
 	"github.com/karitham/thrift-ls/resolver"
 	"github.com/karitham/thrift-ls/syntax"
 )
@@ -158,22 +157,20 @@ type Snapshot struct {
 
 	files *FilesMap
 
-	store *memoize.Store
-
-	graph       *IncludeGraph
+	context     *Context
 	parsedCache *ParseCaches
 
 	includePaths []string
 }
 
-func NewSnapshot(view *View, store *memoize.Store, includePaths []string) *Snapshot {
+func NewSnapshot(view *View, includePaths []string) *Snapshot {
 	snapshot := &Snapshot{
-		id:          rand.Int63(),
-		view:        view,
-		store:       store,
+		id:   rand.Int63(),
+		view: view,
+
 		ctx:         context.Background(),
 		refCount:    sync.WaitGroup{},
-		graph:       NewIncludeGraph(),
+		context:     NewContext(),
 		parsedCache: NewParseCaches(),
 		files: &FilesMap{
 			files:    make(map[uri.URI]FileHandle),
@@ -195,7 +192,13 @@ func (s *Snapshot) Initialize(ctx context.Context) {
 }
 
 func (s *Snapshot) Graph() *IncludeGraph {
-	return s.graph
+	return s.context.graph
+}
+
+// Dependents returns the transitive dependents of uri: every file that
+// directly or transitively includes it, in this snapshot.
+func (s *Snapshot) Dependents(uri uri.URI) []uri.URI {
+	return s.context.Dependents(uri)
 }
 
 // Resolver returns a new Resolver instance for this snapshot.
@@ -224,12 +227,18 @@ func (s *Snapshot) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, error
 	return fh, nil
 }
 
-// ForgetFile is called when file changed or removed
-// it remove file cache and parsed cache
+// ForgetFile is called when file changed or removed. It removes file's
+// include edges and drops the parse and file caches for file and every
+// transitive dependent of file: their derived data is rebuilt lazily on the
+// next request, while their content survives on disk (or in the overlay).
 func (s *Snapshot) ForgetFile(uri uri.URI) {
 	s.files.Forget(uri)
-	s.graph.Remove(uri)
 	s.parsedCache.Forget(uri)
+
+	for _, dependent := range s.context.Forget(uri) {
+		s.files.Forget(dependent)
+		s.parsedCache.Forget(dependent)
+	}
 }
 
 func (s *Snapshot) Parse(ctx context.Context, uri uri.URI) (*ParsedFile, error) {
@@ -254,7 +263,7 @@ func (s *Snapshot) Parse(ctx context.Context, uri uri.URI) (*ParsedFile, error) 
 	}
 
 	if pf.AST() != nil {
-		s.graph.Set(uri, pf.AST().Includes(), s.Resolver().ResolveInclude)
+		s.context.Register(uri, pf.AST().Includes(), s.Resolver().ResolveInclude)
 	}
 
 	s.parsedCache.Set(uri, pf)
@@ -262,13 +271,11 @@ func (s *Snapshot) Parse(ctx context.Context, uri uri.URI) (*ParsedFile, error) 
 	return pf, nil
 }
 
-func (s *Snapshot) Tokens() map[string]struct{} {
-	return s.parsedCache.Tokens()
-}
-
+// TokensForFile returns the identifier tokens of file and its transitively
+// included files.
 func (s *Snapshot) TokensForFile(file uri.URI) map[string]struct{} {
 	return s.parsedCache.TokensForFile(file, func(f uri.URI) []uri.URI {
-		node := s.graph.Get(f)
+		node := s.context.graph.Get(f)
 		if node == nil {
 			return nil
 		}
@@ -288,7 +295,7 @@ func (s *Snapshot) clone() (*Snapshot, func()) {
 		// 	files:    make(map[uri.URI]FileHandle),
 		// 	overlays: make(map[uri.URI]*Overlay),
 		// },
-		graph:        s.graph.Clone(),
+		context:      s.context.Clone(),
 		parsedCache:  s.parsedCache.Clone(),
 		includePaths: s.includePaths,
 	}
@@ -303,13 +310,12 @@ func BuildSnapshotForTest(files []*FileChange) *Snapshot {
 // BuildSnapshotForTestWithPaths is BuildSnapshotForTest with configured
 // include paths, for cross-project include resolution tests.
 func BuildSnapshotForTestWithPaths(includePaths []string, files []*FileChange) *Snapshot {
-	store := &memoize.Store{}
-	c := New(store, includePaths)
+	c := New(includePaths)
 	fs := NewOverlayFS(c)
 	_ = fs.Update(context.TODO(), files)
 
-	view := NewView("test", "file:///tmp", fs, store, includePaths)
-	ss := NewSnapshot(view, store, includePaths)
+	view := NewView("test", "file:///tmp", fs, includePaths)
+	ss := NewSnapshot(view, includePaths)
 
 	for _, f := range files {
 		_, _ = ss.Parse(context.TODO(), f.URI)

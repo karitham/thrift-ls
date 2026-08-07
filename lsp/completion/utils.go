@@ -1,8 +1,7 @@
 package completion
 
 import (
-	"io/fs"
-	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -11,61 +10,71 @@ import (
 	"github.com/karitham/thrift-ls/lsp/constants"
 )
 
-func ListDirAndFiles(dir, prefix string) (res []Candidate, err error) {
-	// handle prefix list ../../us
-	prefixClean := prefix
-	if len(prefix) > 0 {
-		prefixClean = filepath.Clean(prefix)
+// ListDirAndFiles lists the entries matching the typed include path prefix,
+// one level deep, under the current file's directory and every configured
+// include path root. Directories are returned with a trailing slash; only
+// .thrift files are returned. Results are deduplicated across roots.
+func ListDirAndFiles(dir string, includePaths []string, prefix string) []Candidate {
+	prefix = strings.Trim(prefix, "'\"")
+
+	roots := make([]string, 0, 1+len(includePaths))
+	if dir != "" {
+		roots = append(roots, dir)
 	}
 
-	if prefix == "." {
-		prefix = prefix + "/"
+	for _, p := range includePaths {
+		if p != "" {
+			roots = append(roots, p)
+		}
 	}
 
-	up := strings.Count(prefixClean, "../")
-
-	pathItems := strings.Split(dir, "/")
-	if len(pathItems) < up {
-		return res, err
+	// Split the typed prefix into the directory part (resolved per root)
+	// and the file prefix.
+	dirPart, filePrefix := "", prefix
+	if i := strings.LastIndex(prefix, "/"); i >= 0 {
+		dirPart, filePrefix = prefix[:i+1], prefix[i+1:]
 	}
 
-	pathItems = pathItems[0 : len(pathItems)-up]
+	seen := make(map[string]struct{})
 
-	dir, filePrefix := filepath.Split(strings.TrimPrefix(prefixClean, "../"))
-	filePrefix = strings.TrimPrefix(filePrefix, "./")
-	baseDir := strings.Join(pathItems, "/") + "/" + dir
-	prefix = strings.TrimSuffix(prefix, filePrefix)
+	var res []Candidate
 
-	slog.Debug("include completion walk dir", "dir", baseDir, "prefix", prefix, "filePrefix", filePrefix)
-	_ = filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || baseDir == path {
-			return nil
+	for _, root := range roots {
+		entries, err := os.ReadDir(filepath.Join(root, dirPart))
+		if err != nil {
+			continue
 		}
 
-		slog.Debug("include completion name", "name", d.Name(), "prefix", filePrefix)
-
-		if strings.HasPrefix(d.Name(), filePrefix) {
-			if d.IsDir() {
-				res = append(res, Candidate{
-					showText:   prefix + d.Name() + "/",
-					insertText: prefix + d.Name() + "/",
-					format:     protocol.InsertTextFormatPlainText,
-				})
-			} else if strings.HasSuffix(d.Name(), constants.ThriftExtension) {
-				res = append(res, Candidate{
-					showText:   prefix + d.Name(),
-					insertText: prefix + d.Name(),
-					format:     protocol.InsertTextFormatPlainText,
-				})
+		for _, e := range entries {
+			name := e.Name()
+			if !strings.HasPrefix(name, filePrefix) {
+				continue
 			}
+
+			var text string
+
+			switch {
+			case e.IsDir():
+				text = filepath.Join(dirPart, name) + "/"
+			case strings.HasSuffix(name, constants.ThriftExtension):
+				text = filepath.Join(dirPart, name)
+			default:
+				continue
+			}
+
+			if _, ok := seen[text]; ok {
+				continue
+			}
+
+			seen[text] = struct{}{}
+
+			res = append(res, Candidate{
+				showText:   text,
+				insertText: text,
+				format:     protocol.InsertTextFormatPlainText,
+			})
 		}
+	}
 
-		if d.IsDir() {
-			return filepath.SkipDir
-		}
-
-		return nil
-	})
-
-	return res, err
+	return res
 }

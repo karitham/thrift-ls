@@ -4,12 +4,11 @@ import (
 	"context"
 	"log/slog"
 	"math/rand"
+	"sort"
 	"strings"
 	"sync"
 
 	"go.lsp.dev/uri"
-
-	"github.com/karitham/thrift-ls/lsp/memoize"
 )
 
 type View struct {
@@ -42,7 +41,7 @@ type View struct {
 	snapshotRelease func()
 }
 
-func NewView(name string, folder uri.URI, fs FileSource, store *memoize.Store, includePaths []string) *View {
+func NewView(name string, folder uri.URI, fs FileSource, includePaths []string) *View {
 	view := &View{
 		id:           rand.Int63(),
 		name:         name,
@@ -52,7 +51,7 @@ func NewView(name string, folder uri.URI, fs FileSource, store *memoize.Store, i
 		includePaths: includePaths,
 	}
 
-	view.snapshot = NewSnapshot(view, store, includePaths)
+	view.snapshot = NewSnapshot(view, includePaths)
 
 	view.snapshotRelease = view.snapshot.Acquire()
 
@@ -102,14 +101,18 @@ func (v *View) FileKnown(uri uri.URI) bool {
 	return v.knownFiles[uri]
 }
 
-func (v *View) FileChange(ctx context.Context, changes []*FileChange, postFns ...func()) {
+// FileChange applies changes to the view: it swaps in a new snapshot (an
+// O(1) copy-on-write clone) and re-parses the changed files, then runs the
+// postFns asynchronously with the affected URIs (changed files plus their
+// transitive dependents). The request thread never blocks on postFns, so
+// diagnostics-heavy work (semantic analysis) does not stall the editor.
+func (v *View) FileChange(ctx context.Context, changes []*FileChange, postFns ...func(affected []uri.URI)) {
 	for _, change := range changes {
 		v.MarkFileKnown(change.URI)
 	}
 
-	// snapshot clone
+	// Swap in the new snapshot.
 	newSnapshot, release := v.snapshot.clone()
-	// release previous snapshot
 	v.snapshotRelease()
 	v.snapshotMu.Lock()
 
@@ -121,30 +124,65 @@ func (v *View) FileChange(ctx context.Context, changes []*FileChange, postFns ..
 	v.snapshotRelease = release
 
 	asyncRelease := v.snapshot.Acquire()
-	// handle current snapshot
 
-	// TODO(jpf): 异步 parse 和 completion 的顺序问题
-	// go func() {
-	defer asyncRelease()
-
-	uris := make(map[uri.URI]struct{})
+	// Re-parse the changed files so the snapshot's include edges and
+	// parsed caches reflect the change before any request observes it.
+	// Parse is lazy and cached, so requests racing ahead of this loop
+	// simply parse on demand.
+	uris := make([]uri.URI, 0, len(changes))
 	for _, change := range changes {
-		uris[change.URI] = struct{}{}
+		uris = append(uris, change.URI)
 	}
+	sort.Slice(uris, func(i, j int) bool { return uris[i] < uris[j] })
 
-	for uri := range uris {
-		v.snapshotMu.Lock()
-		_, err := v.snapshot.Parse(ctx, uri)
-		v.snapshotMu.Unlock()
-
-		if err != nil {
+	for _, uri := range uris {
+		if _, err := v.snapshot.Parse(ctx, uri); err != nil {
 			slog.Error("parse error", "err", err)
 		}
 	}
 
-	for i := range postFns {
-		postFns[i]()
+	affected := v.affectedFiles(changes)
+
+	go func() {
+		defer asyncRelease()
+
+		for i := range postFns {
+			postFns[i](affected)
+		}
+	}()
+}
+
+// affectedFiles returns the changed URIs plus the transitive dependents of
+// each, deduped. Dependents are computed on the current snapshot, after the
+// changes were applied and re-parsed, so the edges reflect the change.
+// Changes come first, in order; dependents follow, sorted by URI.
+func (v *View) affectedFiles(changes []*FileChange) []uri.URI {
+	affected := make([]uri.URI, 0, len(changes))
+	seen := make(map[uri.URI]struct{}, len(changes))
+
+	for _, change := range changes {
+		if _, ok := seen[change.URI]; ok {
+			continue
+		}
+
+		seen[change.URI] = struct{}{}
+		affected = append(affected, change.URI)
+
+		v.snapshotMu.Lock()
+		deps := v.snapshot.Dependents(change.URI)
+		v.snapshotMu.Unlock()
+
+		for _, dep := range deps {
+			if _, ok := seen[dep]; ok {
+				continue
+			}
+
+			seen[dep] = struct{}{}
+			affected = append(affected, dep)
+		}
 	}
+
+	return affected
 }
 
 func (v *View) Snapshot() (*Snapshot, func()) {
@@ -153,4 +191,13 @@ func (v *View) Snapshot() (*Snapshot, func()) {
 
 	// The snapshot is created in NewView and only set to nil on shutdown.
 	return v.snapshot, v.snapshot.Acquire()
+}
+
+// IsCurrent reports whether ss is the view's latest snapshot. Used by
+// asynchronous work to drop results that a newer change superseded.
+func (v *View) IsCurrent(ss *Snapshot) bool {
+	v.snapshotMu.Lock()
+	defer v.snapshotMu.Unlock()
+
+	return v.snapshot == ss
 }

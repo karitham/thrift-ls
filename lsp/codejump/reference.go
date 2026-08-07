@@ -201,6 +201,8 @@ func searchServiceReferences(ctx context.Context, ss *cache.Snapshot, file uri.U
 	res = append(res, locations...)
 
 	for _, referenceFile := range referenceFiles(ss, file) {
+		// References in including files may use the bare name or the
+		// include-qualified name; the match function accepts both.
 		locations, err := searchServiceDefinitionReferences(ctx, ss, referenceFile, svcName)
 		if err != nil {
 			return nil, err
@@ -238,7 +240,12 @@ func searchServiceDefinitionReferences(ctx context.Context, ss *cache.Snapshot, 
 	}
 
 	for _, svc := range pf.AST().Services() {
-		if svc.Extends == nil || svc.Extends.Text != svcName {
+		if svc.Extends == nil {
+			continue
+		}
+
+		// Accept both the bare name and the include-qualified literal.
+		if bareName(svc.Extends.Text) != bareName(svcName) {
 			continue
 		}
 
@@ -260,6 +267,8 @@ func searchIdentifierReferences(ctx context.Context, ss *cache.Snapshot, file ur
 	res = append(res, locations...)
 
 	for _, referenceFile := range referenceFiles(ss, file) {
+		// References in including files may use the bare name or the
+		// include-qualified name; the match function accepts both.
 		locations, err := searchDefinitionIdentifierReferences(ctx, ss, referenceFile, typeName, definitionType)
 		if err != nil {
 			return nil, err
@@ -285,7 +294,14 @@ func searchDefinitionIdentifierReferences(ctx context.Context, ss *cache.Snapsho
 	}
 
 	jumpFieldType := func(ft *syntax.FieldType) {
-		if ft == nil || typeReferenceName(ft) != typeName {
+		if ft == nil {
+			return
+		}
+
+		// Accept every reference form of the same definition: bare
+		// ("Test"), include-name-qualified ("user.Test"), and
+		// file-base-qualified ("user.thrift.Test").
+		if bareName(typeReferenceName(ft)) != bareName(typeName) {
 			return
 		}
 
@@ -397,6 +413,8 @@ func searchConstValueIdentifierReferences(ctx context.Context, ss *cache.Snapsho
 	res = append(res, locations...)
 
 	for _, referenceFile := range referenceFiles(ss, file) {
+		// References in including files may use the bare name or the
+		// include-qualified name; the match function accepts both.
 		locations, err := searchConstValueIdentifierReference(ctx, ss, referenceFile, valueName)
 		if err != nil {
 			return nil, err
@@ -419,7 +437,7 @@ func searchConstValueIdentifierReference(ctx context.Context, ss *cache.Snapshot
 	}
 
 	jumpValue := func(v *syntax.ConstValue) {
-		if v != nil && v.Kind == syntax.ValueIdent && v.Text == valueName {
+		if v != nil && v.Kind == syntax.ValueIdent && bareName(v.Text) == bareName(valueName) {
 			res = append(res, referenceHit{loc: jump(file, pf.AST(), v), text: v.Text})
 		}
 	}

@@ -10,7 +10,6 @@ import (
 
 	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/lsp/memoize"
 )
 
 // TestServerIncludePathsFlow verifies that include paths configured on the
@@ -23,7 +22,7 @@ func TestServerIncludePathsFlow(t *testing.T) {
 	shared := filepath.Join(includeDir, "shared.thrift")
 	assert.NoError(t, os.WriteFile(shared, []byte("struct Shared {}"), 0o644))
 
-	c := cache.New(&memoize.Store{}, []string{includeDir})
+	c := cache.New([]string{includeDir})
 	srv := NewServer(c, nil, formatter.DefaultOptions())
 
 	// Views are created per workspace folder at initialization.

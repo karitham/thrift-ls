@@ -1,17 +1,12 @@
 package cache
 
 import (
-	"reflect"
 	"strconv"
 	"sync/atomic"
-
-	"github.com/karitham/thrift-ls/lsp/memoize"
 )
 
 type Cache struct {
 	id string
-
-	store *memoize.Store
 
 	IncludePaths []string
 
@@ -20,16 +15,11 @@ type Cache struct {
 
 var cacheIndex int64
 
-func New(store *memoize.Store, includePaths []string) *Cache {
+func New(includePaths []string) *Cache {
 	index := atomic.AddInt64(&cacheIndex, 1)
-
-	if store == nil {
-		store = &memoize.Store{}
-	}
 
 	c := &Cache{
 		id:           strconv.FormatInt(index, 10),
-		store:        store,
 		IncludePaths: includePaths,
 		memoizedFS:   &memoizedFS{filesByID: map[FileID][]*DiskFile{}},
 	}
@@ -37,5 +27,4 @@ func New(store *memoize.Store, includePaths []string) *Cache {
 	return c
 }
 
-func (c *Cache) ID() string                     { return c.id }
-func (c *Cache) MemStats() map[reflect.Type]int { return c.store.Stats() }
+func (c *Cache) ID() string { return c.id }

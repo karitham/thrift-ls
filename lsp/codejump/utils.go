@@ -28,8 +28,9 @@ const (
 
 // definitionFiles returns the files to search for a definition, in order.
 // A qualified name ("base.User") resolves to the include file; an
-// unqualified name searches the current file first, then each included
-// file.
+// unqualified name searches the current file first, then every file
+// transitively included, so a type visible through a multi-hop include
+// chain (A includes B includes C) is found.
 func definitionFiles(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *syntax.Document, name string) []uri.URI {
 	include, _ := lsputils.ParseIdent(file, ast.Includes(), name)
 	if include != "" {
@@ -45,13 +46,37 @@ func definitionFiles(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast 
 	}
 
 	files := []uri.URI{file}
+	seen := map[uri.URI]bool{file: true}
 	resolver := ss.Resolver()
 
-	for _, inc := range ast.Includes() {
-		if path := lsputils.IncludePathText(inc); path != "" {
-			files = append(files, resolver.ResolveInclude(file, path))
+	var visit func(f uri.URI)
+
+	visit = func(f uri.URI) {
+		doc := ast
+		if f != file {
+			pf, err := ss.Parse(ctx, f)
+			if err != nil || pf.AST() == nil {
+				return
+			}
+
+			doc = pf.AST()
+		}
+
+		for _, inc := range doc.Includes() {
+			if path := lsputils.IncludePathText(inc); path != "" {
+				incFile := resolver.ResolveInclude(f, path)
+				if seen[incFile] {
+					continue
+				}
+
+				seen[incFile] = true
+				files = append(files, incFile)
+				visit(incFile)
+			}
 		}
 	}
+
+	visit(file)
 
 	return files
 }
@@ -285,4 +310,15 @@ func typeReferenceName(ft *syntax.FieldType) string {
 	}
 
 	return ""
+}
+
+// bareName strips the include qualifier from a name: "base.User" becomes
+// "User". References in files that include the definition file use the bare
+// name, so qualified literals must match against it too.
+func bareName(name string) string {
+	if i := strings.LastIndexByte(name, '.'); i >= 0 {
+		return name[i+1:]
+	}
+
+	return name
 }

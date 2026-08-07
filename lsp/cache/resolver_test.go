@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/memoize"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -29,13 +28,12 @@ func TestResolver(t *testing.T) {
 	err = os.WriteFile(sharedThrift, []byte(""), 0o644)
 	assert.NoError(t, err)
 
-	store := &memoize.Store{}
-	c := New(store, nil)
+	c := New(nil)
 	fs := NewOverlayFS(c)
 
-	view := NewView("test", uri.File(tmpDir), fs, store, nil)
+	view := NewView("test", uri.File(tmpDir), fs, nil)
 	includePaths := []string{sharedDir}
-	ss := NewSnapshot(view, store, includePaths)
+	ss := NewSnapshot(view, includePaths)
 
 	resolver := ss.Resolver()
 
