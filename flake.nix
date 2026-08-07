@@ -18,7 +18,7 @@
           pname = "thriftls";
           version = "0.1";
           src = nixpkgs.lib.cleanSource ./.;
-          vendorHash = "sha256-5xOCOOr6/zc0d8BcTdBApsdnSiQtjpR//Ux4zdorGrw=";
+          vendorHash = "sha256-zWy0x3yktLA8dtcbwzue3aB7a+SlqwWO86G3ZP8DgOQ=";
           ldflags = [
             "-s"
             "-w"
