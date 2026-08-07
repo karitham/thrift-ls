@@ -29,7 +29,7 @@ func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocume
 		From:    cache.FileChangeTypeDidOpen,
 	}
 
-	s.session.Initialize(func() {
+	s.dirWalkOnce.Do(func() {
 		file := change.URI
 
 		dirPos := strings.LastIndexByte(string(file), '/')
@@ -51,14 +51,14 @@ func (s *Server) openFile(ctx context.Context, change *cache.FileChange) error {
 		}
 	}
 
-	if _, err := s.session.ViewOf(change.URI); err != nil {
-		// create view for this folder
+	// The file's directory becomes the view when no workspace folder
+	// covers it (single-file mode); AddView dedups and is concurrency-safe.
+	view, err := s.session.ViewOf(change.URI)
+	if err != nil {
 		filename := change.URI.Path()
-		dir := uri.File(path.Dir(filename))
-		s.session.CreateView(dir)
+		view = s.session.AddView(uri.File(path.Dir(filename)))
 	}
 
-	view, _ := s.session.ViewOf(change.URI)
 	view.FileChange(ctx, []*cache.FileChange{change}, s.postDiagnostics(ctx, view))
 
 	return nil

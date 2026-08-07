@@ -214,7 +214,8 @@ type ParsedFile struct {
 	errs []syntax.Error
 
 	// tokens is the identifier set of ast, computed lazily once per parse.
-	tokens map[string]struct{}
+	tokensOnce sync.Once
+	tokens     map[string]struct{}
 
 	// defs and enumValues index the file's definitions, computed lazily
 	// once per parse. A re-parse replaces the whole ParsedFile, so the
@@ -241,18 +242,16 @@ func (p *ParsedFile) Errors() []syntax.Error {
 // reused. A re-parse replaces the whole ParsedFile, so the cache never
 // goes stale.
 func (p *ParsedFile) Tokens() map[string]struct{} {
-	if p.tokens != nil {
-		return p.tokens
-	}
+	p.tokensOnce.Do(func() {
+		tokens := make(map[string]struct{})
+		if p.ast != nil {
+			collectTokens(p.ast, tokens)
+		}
 
-	tokens := make(map[string]struct{})
-	if p.ast != nil {
-		collectTokens(p.ast, tokens)
-	}
+		p.tokens = tokens
+	})
 
-	p.tokens = tokens
-
-	return tokens
+	return p.tokens
 }
 
 // Definitions returns the file's top-level definitions indexed by name:

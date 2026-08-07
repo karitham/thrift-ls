@@ -26,7 +26,7 @@ func TestServerIncludePathsFlow(t *testing.T) {
 	srv := NewServer(c, nil, formatter.DefaultOptions())
 
 	// Views are created per workspace folder at initialization.
-	srv.session.CreateView(uri.File(dir))
+	srv.session.AddView(uri.File(dir))
 	view, err := srv.session.ViewOf(uri.File(filepath.Join(dir, "app.thrift")))
 	assert.NoError(t, err)
 

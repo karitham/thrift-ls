@@ -3,6 +3,7 @@ package lsp
 import (
 	"context"
 	"log/slog"
+	"sync"
 
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
@@ -23,6 +24,14 @@ type Server struct {
 	// walk starts on the Initialized notification so the initialize
 	// handshake never blocks on parsing the workspace.
 	folders []uri.URI
+
+	// workspaceWalkOnce and dirWalkOnce guard the two independent walks:
+	// the whole workspace on Initialized, and the opened file's directory
+	// on the first didOpen (single-file mode). They must not share a guard
+	// — a didOpen racing the Initialized notification would otherwise
+	// permanently skip the workspace walk.
+	workspaceWalkOnce sync.Once
+	dirWalkOnce       sync.Once
 }
 
 func NewServer(c *cache.Cache, client protocol.Client, formatOpts formatter.Options) *Server {
@@ -45,7 +54,7 @@ func (s *Server) Initialized(ctx context.Context, params *protocol.InitializedPa
 	// The workspace walk parses every thrift file to warm the cache; it
 	// runs once, off the request path, so the initialize handshake and
 	// early requests never block on it.
-	s.session.Initialize(func() {
+	s.workspaceWalkOnce.Do(func() {
 		go func() {
 			for _, folder := range s.folders {
 				s.walkFoldersThriftFile(folder)

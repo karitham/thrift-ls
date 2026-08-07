@@ -188,9 +188,6 @@ func (s *Snapshot) Acquire() func() {
 	return s.refCount.Done
 }
 
-func (s *Snapshot) Initialize(ctx context.Context) {
-}
-
 func (s *Snapshot) Graph() *IncludeGraph {
 	return s.context.graph
 }

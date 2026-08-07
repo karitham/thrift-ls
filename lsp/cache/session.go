@@ -12,11 +12,6 @@ import (
 type Session struct {
 	id int64
 
-	// indicates whether initialized with initialize params
-	// if initialize params doesn't contain any folder. this is false
-	initializedMu sync.Mutex
-	initialized   bool
-
 	// cache is shared global
 	cache *Cache
 
@@ -39,24 +34,6 @@ func NewSession(cache *Cache) *Session {
 	}
 
 	return sess
-}
-
-func (s *Session) Initialize(fn func()) {
-	s.initializedMu.Lock()
-	defer s.initializedMu.Unlock()
-
-	if s.initialized {
-		return
-	}
-
-	s.initialized = true
-
-	fn()
-}
-
-func (s *Session) CreateView(folder uri.URI) {
-	view := NewView(folder.Path(), folder, s.overlayFS, s.cache.IncludePaths)
-	s.views = append(s.views, view)
 }
 
 // AddView registers a view for the workspace folder, returning the

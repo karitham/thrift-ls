@@ -56,11 +56,18 @@ func NewIncludeGraph() *IncludeGraph {
 	}
 }
 
+// Get returns a copy of file's node. The graph's nodes are mutated in place
+// by Set and removeWithoutLock, so a live node must never escape the lock.
 func (g *IncludeGraph) Get(file uri.URI) *IncludeNode {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
-	return g.mapper[file]
+	node := g.mapper[file]
+	if node == nil {
+		return nil
+	}
+
+	return node.Clone()
 }
 
 // Set records the include edges of file. resolve maps an include path text

@@ -55,15 +55,6 @@ func NewView(name string, folder uri.URI, fs FileSource, includePaths []string) 
 
 	view.snapshotRelease = view.snapshot.Acquire()
 
-	asyncRelease := view.snapshot.Acquire()
-	go func() {
-		defer asyncRelease()
-
-		view.snapshotMu.Lock()
-		view.snapshot.Initialize(context.Background())
-		view.snapshotMu.Unlock()
-	}()
-
 	return view
 }
 
@@ -132,19 +123,22 @@ func (v *View) FileChange(ctx context.Context, changes []*FileChange, postFns ..
 		v.MarkFileKnown(change.URI)
 	}
 
-	// Swap in the new snapshot.
+	// Swap in the new snapshot. The pointer and its release are a single
+	// unit guarded by snapshotMu: FileChange runs concurrently (request
+	// handlers, the workspace walk), and an unlocked swap could release the
+	// same snapshot twice (negative WaitGroup panic) or let a reader see a
+	// released snapshot.
+	v.snapshotMu.Lock()
 	newSnapshot, release := v.snapshot.clone()
 	v.snapshotRelease()
-	v.snapshotMu.Lock()
-
 	v.snapshot = newSnapshot
 	for _, change := range changes {
-		v.snapshot.ForgetFile(change.URI)
+		newSnapshot.ForgetFile(change.URI)
 	}
-	v.snapshotMu.Unlock()
 	v.snapshotRelease = release
+	v.snapshotMu.Unlock()
 
-	asyncRelease := v.snapshot.Acquire()
+	asyncRelease := newSnapshot.Acquire()
 
 	// Re-parse the changed files so the snapshot's include edges and
 	// parsed caches reflect the change before any request observes it.
@@ -158,12 +152,12 @@ func (v *View) FileChange(ctx context.Context, changes []*FileChange, postFns ..
 	slices.Sort(uris)
 
 	for _, uri := range uris {
-		if _, err := v.snapshot.Parse(ctx, uri); err != nil {
+		if _, err := newSnapshot.Parse(ctx, uri); err != nil {
 			slog.Error("parse error", "err", err)
 		}
 	}
 
-	affected := v.affectedFiles(changes)
+	affected := v.affectedFiles(changes, newSnapshot)
 
 	go func() {
 		defer asyncRelease()
@@ -175,10 +169,10 @@ func (v *View) FileChange(ctx context.Context, changes []*FileChange, postFns ..
 }
 
 // affectedFiles returns the changed URIs plus the transitive dependents of
-// each, deduped. Dependents are computed on the current snapshot, after the
-// changes were applied and re-parsed, so the edges reflect the change.
+// each, deduped. Dependents are computed on ss, the snapshot the changes
+// were applied to, so the edges reflect the change.
 // Changes come first, in order; dependents follow, sorted by URI.
-func (v *View) affectedFiles(changes []*FileChange) []uri.URI {
+func (v *View) affectedFiles(changes []*FileChange, ss *Snapshot) []uri.URI {
 	affected := make([]uri.URI, 0, len(changes))
 	seen := make(map[uri.URI]struct{}, len(changes))
 
@@ -190,9 +184,7 @@ func (v *View) affectedFiles(changes []*FileChange) []uri.URI {
 		seen[change.URI] = struct{}{}
 		affected = append(affected, change.URI)
 
-		v.snapshotMu.Lock()
-		deps := v.snapshot.Dependents(change.URI)
-		v.snapshotMu.Unlock()
+		deps := ss.Dependents(change.URI)
 
 		for _, dep := range deps {
 			if _, ok := seen[dep]; ok {
