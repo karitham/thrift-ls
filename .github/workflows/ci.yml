@@ -1,0 +1,88 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Only the latest run per branch matters: a new push supersedes the
+# previous commit's checks and dev release.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Build every supported target so cross-compilation breaks land on the PR,
+  # not on the release.
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: build
+        env:
+          VERSION: ${{ github.sha }}
+        run: |
+          ext=""
+          [ "${{ matrix.goos }}" = "windows" ] && ext=".exe"
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -trimpath \
+            -ldflags "-s -w -X github.com/karitham/thrift-ls/lsp.ServerVersion=dev-${VERSION:0:7}" \
+            -o "dist/thrift-ls-${{ matrix.goos }}-${{ matrix.goarch }}$ext" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: thrift-ls-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/
+
+  vsix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: package
+        working-directory: vscode
+        env:
+          VERSION: ${{ github.sha }}
+        run: |
+          npm ci
+          npm run test
+          npm version "0.1.0-dev.${VERSION:0:7}" --no-git-tag-version
+          npm run package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: vscode/*.vsix
+
+  # Per-commit prerelease: every main push gets binaries + vsix attached to
+  # a release tagged with the commit SHA. Prereleases never become
+  # `releases/latest`, so the extension's downloader keeps serving tagged
+  # releases.
+  dev-release:
+    needs: [build, vsix]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: checksums
+        run: |
+          cd artifacts
+          sha256sum * > checksums.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.sha }}
+          name: "dev build ${{ github.sha }}"
+          prerelease: true
+          files: artifacts/*

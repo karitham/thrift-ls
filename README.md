@@ -362,9 +362,14 @@ Controls logging verbosity (the server logs to `$TMPDIR/thrift-ls.log`):
 
 A `v*` tag triggers the release workflow: it builds the six `thrift-ls`
 binaries (linux/darwin/windows × amd64/arm64), a `checksums.txt`, and the
-VS Code `.vsix`, and attaches them to the GitHub release. The workflow
-injects the tag into the binary (`--version`), and fails if the vsix version
-doesn't match the tag.
+VS Code `.vsix`, attached to the GitHub release. The workflow injects the
+tag into the binary (`--version`), and fails if the vsix version doesn't
+match the tag.
+
+Every push to `main` also publishes a **prerelease** per commit (tagged with
+the commit SHA, binaries report `dev-<sha>`). Prereleases never become
+`releases/latest`, so the extension's downloader keeps serving tagged
+releases.
 
 Before tagging, make sure the versions agree:
 
