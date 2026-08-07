@@ -178,8 +178,7 @@ func initializeResult() *protocol.InitializeResult {
 				Label: new("thriftls"),
 			},
 			CodeActionProvider: &protocol.CodeActionOptions{
-				// TODO(jpf): should support code actions
-				CodeActionKinds: []protocol.CodeActionKind{},
+				CodeActionKinds: []protocol.CodeActionKind{protocol.CodeActionKindSourceFixAll},
 				ResolveProvider: new(false),
 			},
 			CodeLensProvider: &protocol.CodeLensOptions{

@@ -77,7 +77,7 @@ func (s *Server) SetTrace(ctx context.Context, params *protocol.SetTraceParams) 
 }
 
 func (s *Server) CodeAction(ctx context.Context, params *protocol.CodeActionParams) (result []protocol.CommandOrCodeAction, err error) {
-	return []protocol.CommandOrCodeAction{}, nil
+	return s.codeAction(ctx, params)
 }
 
 func (s *Server) CodeLens(ctx context.Context, params *protocol.CodeLensParams) (result []protocol.CodeLens, err error) {
