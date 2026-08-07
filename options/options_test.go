@@ -163,7 +163,7 @@ func TestFindConfig(t *testing.T) {
 	}
 
 	// Config in an ancestor directory is found walking up.
-	cfgPath := filepath.Join(dir, "thriftls.json")
+	cfgPath := filepath.Join(dir, "thrift-ls.json")
 	if err := os.WriteFile(cfgPath, []byte("{}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestFindConfig(t *testing.T) {
 	}
 
 	// A nearer config wins.
-	near := filepath.Join(dir, "a", "thriftls.json")
+	near := filepath.Join(dir, "a", "thrift-ls.json")
 	if err := os.WriteFile(near, []byte("{}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestFindConfig(t *testing.T) {
 
 func TestLoadAndEffective(t *testing.T) {
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "thriftls.json")
+	cfgPath := filepath.Join(dir, "thrift-ls.json")
 
 	content := `{
   "printWidth": 100,
@@ -239,7 +239,7 @@ func TestLoadRejectsUnknownOverrideKeys(t *testing.T) {
 	// Config files written for the old overrides feature should fail loudly
 	// rather than silently ignoring per-file settings.
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "thriftls.json")
+	cfgPath := filepath.Join(dir, "thrift-ls.json")
 
 	content := `{
   "printWidth": 100,

@@ -24,7 +24,7 @@ import (
 
 func main() {
 	cmd := &cli.Command{
-		Name:    "thriftls",
+		Name:    "thrift-ls",
 		Usage:   "Thrift language server and formatter",
 		Version: lsp.ServerVersion,
 		Flags:   lspFlags(),
@@ -69,7 +69,7 @@ func main() {
 	}
 
 	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		fmt.Fprintln(os.Stderr, "thriftls:", err)
+		fmt.Fprintln(os.Stderr, "thrift-ls:", err)
 		os.Exit(1)
 	}
 }
@@ -83,7 +83,7 @@ func lspFlags() []cli.Flag {
 		},
 		&cli.StringFlag{
 			Name:  "config",
-			Usage: "path to a thriftls.json config file",
+			Usage: "path to a thrift-ls.json config file",
 		},
 		&cli.StringSliceFlag{
 			Name:  "I",
@@ -132,7 +132,7 @@ func formatFlags() []cli.Flag {
 		},
 		&cli.StringFlag{
 			Name:  "config",
-			Usage: "path to a thriftls.json config file",
+			Usage: "path to a thrift-ls.json config file",
 		},
 		&cli.StringSliceFlag{
 			Name:  "I",
@@ -213,7 +213,7 @@ func formatAction(ctx context.Context, cmd *cli.Command) error {
 func dumpAction(ctx context.Context, cmd *cli.Command) error {
 	file := cmd.Args().First()
 	if file == "" {
-		return errors.New("must specify a thrift file to dump, e.g. thriftls dump file.thrift")
+		return errors.New("must specify a thrift file to dump, e.g. thrift-ls dump file.thrift")
 	}
 
 	src, err := os.ReadFile(file)
@@ -353,7 +353,7 @@ func loadConfig(path, dir string) *options.Patch {
 }
 
 func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "thriftls:", err)
+	fmt.Fprintln(os.Stderr, "thrift-ls:", err)
 	os.Exit(1)
 }
 
@@ -361,7 +361,7 @@ func fatal(err error) {
 // self-validate, and write, diff, or print.
 func formatFile(file string, write, diffOut bool, configPath string, cli options.Patch) error {
 	if file == "" {
-		return errors.New("must specify a thrift file to format, e.g. thriftls format file.thrift")
+		return errors.New("must specify a thrift file to format, e.g. thrift-ls format file.thrift")
 	}
 
 	src, err := os.ReadFile(file)

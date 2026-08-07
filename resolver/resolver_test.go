@@ -18,7 +18,7 @@ import (
 func TestConfigRelativeIncludePaths(t *testing.T) {
 	dir := t.TempDir()
 
-	cfgPath := filepath.Join(dir, "thriftls.json")
+	cfgPath := filepath.Join(dir, "thrift-ls.json")
 	if err := os.WriteFile(cfgPath, []byte(`{"includePaths": ["project/base"]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func (f *absMapFile) Close() error               { return nil }
 // TestConfigAbsoluteIncludePaths keeps absolute paths as-is.
 func TestConfigAbsoluteIncludePaths(t *testing.T) {
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "thriftls.json")
+	cfgPath := filepath.Join(dir, "thrift-ls.json")
 
 	abs := filepath.Join(dir, "elsewhere")
 	if err := os.WriteFile(cfgPath, []byte(`{"includePaths": ["`+abs+`"]}`), 0o644); err != nil {

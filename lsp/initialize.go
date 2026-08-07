@@ -154,7 +154,7 @@ func initializeResult() *protocol.InitializeResult {
 					DocumentSelector: thriftSelector,
 				},
 				StaticRegistrationOptions: protocol.StaticRegistrationOptions{
-					ID: new("thriftls"),
+					ID: new("thrift-ls"),
 				},
 			},
 			DefinitionProvider: &protocol.DefinitionOptions{
@@ -172,7 +172,7 @@ func initializeResult() *protocol.InitializeResult {
 					},
 				},
 				StaticRegistrationOptions: protocol.StaticRegistrationOptions{
-					ID: new("thriftls"),
+					ID: new("thrift-ls"),
 				},
 			},
 			ReferencesProvider: &protocol.ReferenceOptions{
@@ -185,7 +185,7 @@ func initializeResult() *protocol.InitializeResult {
 				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
 					WorkDoneProgress: new(true),
 				},
-				Label: new("thriftls"),
+				Label: new("thrift-ls"),
 			},
 			CodeActionProvider: &protocol.CodeActionOptions{
 				CodeActionKinds: []protocol.CodeActionKind{protocol.CodeActionKindSourceFixAll},
@@ -243,7 +243,7 @@ func initializeResult() *protocol.InitializeResult {
 					Range: protocol.Boolean(false),
 				},
 				StaticRegistrationOptions: protocol.StaticRegistrationOptions{
-					ID: new("thriftls"),
+					ID: new("thrift-ls"),
 				},
 			},
 			Workspace: &protocol.WorkspaceOptions{

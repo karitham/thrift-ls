@@ -1,7 +1,7 @@
 package lsp
 
 const (
-	ServerName    = "thriftls"
+	ServerName    = "thrift-ls"
 	ServerVersion = "0.1"
 
 	LanguageIDThrift = "thrift"

@@ -14,18 +14,15 @@
       # The language server / formatter binary for this module.
       thriftls =
         pkgs:
-        pkgs.buildGoModule.override { go = pkgs.go_1_26; } {
+        pkgs.buildGoModule {
           pname = "thriftls";
-          version = "0.1";
+          version = "0.1.0";
           src = nixpkgs.lib.cleanSource ./.;
           vendorHash = "sha256-zWy0x3yktLA8dtcbwzue3aB7a+SlqwWO86G3ZP8DgOQ=";
           ldflags = [
             "-s"
             "-w"
           ];
-          postInstall = ''
-            mv "$out/bin/thrift-ls" "$out/bin/thriftls"
-          '';
           meta = {
             description = "A Thrift language server and formatter";
             homepage = "https://github.com/karitham/thrift-ls";

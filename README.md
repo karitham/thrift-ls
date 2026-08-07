@@ -19,33 +19,33 @@ Fork of https://github.com/joyme123/thrift-ls, parser + lexer + formatter rewrit
 go install github.com/karitham/thrift-ls@latest
 ```
 
-This installs the `thriftls` binary. It speaks LSP over stdio and doubles as
+This installs the `thrift-ls` binary. It speaks LSP over stdio and doubles as
 a CLI formatter.
 
 ## Usage
 
 ```
-thriftls [flags]            run the language server (default)
-thriftls lsp [flags]        run the language server
-thriftls format [flags] <file>   format a thrift file
-thriftls dump [--ir] <file>      dump the parse tree and formatter IR
+thrift-ls [flags]            run the language server (default)
+thrift-ls lsp [flags]        run the language server
+thrift-ls format [flags] <file>   format a thrift file
+thrift-ls dump [--ir] <file>      dump the parse tree and formatter IR
 ```
 
-Run `thriftls --help` or `thriftls format --help` for the full flag list.
+Run `thrift-ls --help` or `thrift-ls format --help` for the full flag list.
 
 ### As a language server
 
-`thriftls` is a plain LSP server speaking JSON-RPC over stdio. No editor
+`thrift-ls` is a plain LSP server speaking JSON-RPC over stdio. No editor
 extension is required: any LSP client can attach to the binary directly.
 
 ```bash
-thriftls
+thrift-ls
 ```
 
 or, explicitly:
 
 ```bash
-thriftls lsp
+thrift-ls lsp
 ```
 
 #### helix
@@ -54,36 +54,36 @@ Helix ships a thrift language definition, so only the server and the
 attachment are needed in `~/.config/helix/languages.toml`:
 
 ```toml
-[language-server.thriftls]
-command = "thriftls"
+[language-server.thrift-ls]
+command = "thrift-ls"
 
 [[language]]
 name = "thrift"
-language-servers = ["thriftls"]
+language-servers = ["thrift-ls"]
 # optional: format on save via the LSP
 auto-format = true
 ```
 
-`thriftls` must be on `PATH`, or use an absolute path as `command`. The
-server logs to `$TMPDIR/thriftls.log`; raise verbosity with `-logLevel`.
+`thrift-ls` must be on `PATH`, or use an absolute path as `command`. The
+server logs to `$TMPDIR/thrift-ls.log`; raise verbosity with `-logLevel`.
 
 #### neovim
 
-Install `thriftls` with [mason](https://github.com/williamboman/mason.nvim)
-(`MasonInstall thriftls`), then enable it via
+Install `thrift-ls` with [mason](https://github.com/williamboman/mason.nvim)
+(`MasonInstall thrift-ls`), then enable it via
 [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig), which ships a
-`thriftls` config:
+`thrift-ls` config:
 
 ```lua
-vim.lsp.enable("thriftls")
+vim.lsp.enable("thrift-ls")
 ```
 
 #### vim
 
-Use `thriftls` as the LSP provider for thrift files:
+Use `thrift-ls` as the LSP provider for thrift files:
 
 ```vim
-let g:lsp_settings = { 'thrift': { 'cmd': ['thriftls'] } }
+let g:lsp_settings = { 'thrift': { 'cmd': ['thrift-ls'] } }
 ```
 
 #### vscode
@@ -96,16 +96,16 @@ at your own binary.
 
 ```bash
 # print the formatted file to stdout
-thriftls format path/to/file.thrift
+thrift-ls format path/to/file.thrift
 
 # overwrite the file in place
-thriftls format -w path/to/file.thrift
+thrift-ls format -w path/to/file.thrift
 
 # print a diff instead
-thriftls format -d path/to/file.thrift
+thrift-ls format -d path/to/file.thrift
 
 # batch-format a tree
-find . -name "*.thrift" | xargs -n 1 thriftls format -w
+find . -name "*.thrift" | xargs -n 1 thrift-ls format -w
 ```
 
 Formatting flags:
@@ -119,20 +119,20 @@ Formatting flags:
 | `--align`              | `field`, `assign`, or `disable`                                                                    |
 | `--<construct>-separator` | Separators per construct (`struct`, `union`, `exception`, `enum`, `argument`, `throws`, `list`, `map`): `comma`, `semicolon`, `none`, or `preserve` (keep as written) |
 | `--break-<construct>`  | Always break the construct's bodies onto multiple lines (same constructs)                          |
-| `--config`             | Path to a `thriftls.json` config file                                                              |
+| `--config`             | Path to a `thrift-ls.json` config file                                                              |
 | `-I`                   | Additional include path, like the thrift compiler's `-I` (repeatable)                              |
 
 Flags override the config file.
 
 ### Debugging: `dump`
 
-`thriftls dump` prints the parse tree — every token with its position,
+`thrift-ls dump` prints the parse tree — every token with its position,
 blank-line count, and attached comment trivia, plus the node spans — which
 is useful to understand how the lexer attached a comment or why the
 formatter moved something:
 
 ```bash
-thriftls dump path/to/file.thrift
+thrift-ls dump path/to/file.thrift
 ```
 
 With `--ir`, it also builds the formatter's document IR, prints it (which
@@ -140,7 +140,7 @@ records the layout decisions on the groups), and dumps the IR tree showing
 which groups broke and which stayed flat:
 
 ```bash
-thriftls dump --ir --printWidth 100 path/to/file.thrift
+thrift-ls dump --ir --printWidth 100 path/to/file.thrift
 ```
 
 ## Formatter behavior
@@ -214,9 +214,9 @@ Trailing comments may overflow their line without affecting alignment.
 
 ## Configuration
 
-Configuration lives in a `thriftls.json` file, discovered by walking up from
+Configuration lives in a `thrift-ls.json` file, discovered by walking up from
 the file being formatted or the workspace root (like Biome). Set the
-`THRIFTLS_CONFIG` env var to point at an explicit config file.
+`THRIFT_LS_CONFIG` env var to point at an explicit config file.
 
 ```json
 {
@@ -331,7 +331,7 @@ to the current file's directory. If not found, it searches each path in
 
 ### logLevel
 
-Controls logging verbosity (the server logs to `$TMPDIR/thriftls.log`):
+Controls logging verbosity (the server logs to `$TMPDIR/thrift-ls.log`):
 
 - 1: fatal
 - 2: error
@@ -354,7 +354,7 @@ printer, LSP offset mapper, and range formatting each have their own fuzz
 targets; the corpus entries under `testdata/fuzz` are permanent regression
 tests.
 
-`thriftls dump` (see above) is the debugging companion: it shows the parse
+`thrift-ls dump` (see above) is the debugging companion: it shows the parse
 tree and the formatter's document IR with the layout decisions, so a
 formatting issue can be pinned to the parser, the IR construction, or the
 printer.

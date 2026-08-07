@@ -3,8 +3,8 @@
 // sources can be layered — defaults, a JSON config file, CLI flags, and LSP
 // workspace settings — each overriding the previous.
 //
-// The config file is thriftls.json, discovered by walking up from the file
-// being formatted, like Biome's config discovery. THRIFTLS_CONFIG overrides
+// The config file is thrift-ls.json, discovered by walking up from the file
+// being formatted, like Biome's config discovery. THRIFT_LS_CONFIG overrides
 // the search with an explicit path.
 package options
 
@@ -22,7 +22,7 @@ import (
 )
 
 // ConfigFileName is the JSON config file name.
-const ConfigFileName = "thriftls.json"
+const ConfigFileName = "thrift-ls.json"
 
 // Separators configures trailing separators per construct. A nil value is
 // unset. It is an alias of the formatter's per-construct container, so
@@ -326,11 +326,11 @@ func Load(path string) (*Patch, error) {
 	return &p, nil
 }
 
-// FindConfig returns the config file path for dir: THRIFTLS_CONFIG when set,
-// otherwise the nearest thriftls.json walking up from dir. It returns an
+// FindConfig returns the config file path for dir: THRIFT_LS_CONFIG when set,
+// otherwise the nearest thrift-ls.json walking up from dir. It returns an
 // empty path when no config exists.
 func FindConfig(dir string) (string, error) {
-	if path := os.Getenv("THRIFTLS_CONFIG"); path != "" {
+	if path := os.Getenv("THRIFT_LS_CONFIG"); path != "" {
 		return path, nil
 	}
 
