@@ -33,6 +33,7 @@ func New(store *memoize.Store, includePaths []string) *Cache {
 		IncludePaths: includePaths,
 		memoizedFS:   &memoizedFS{filesByID: map[FileID][]*DiskFile{}},
 	}
+
 	return c
 }
 

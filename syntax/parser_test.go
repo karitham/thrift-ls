@@ -12,19 +12,24 @@ func isNilNode(n Node) bool {
 	if n == nil {
 		return true
 	}
+
 	v := reflect.ValueOf(n)
+
 	return v.Kind() == reflect.Pointer && v.IsNil()
 }
 
 func parseOK(t *testing.T, src string) *Document {
 	t.Helper()
+
 	doc, errs := Parse([]byte(src))
 	for _, err := range errs {
 		if err.Severity == SeverityError {
 			t.Fatalf("unexpected parse errors: %v", errs)
 		}
 	}
+
 	checkDoc(t, doc)
+
 	return doc
 }
 
@@ -32,17 +37,23 @@ func parseOK(t *testing.T, src string) *Document {
 // token range is well-formed and its scalar texts match the token stream.
 func checkDoc(t *testing.T, doc *Document) {
 	t.Helper()
+
 	var walk func(n Node)
+
 	walk = func(n Node) {
 		if isNilNode(n) {
 			return
 		}
+
 		start, end := n.TokStart(), n.TokEnd()
 		if start < 0 || end >= len(doc.Tokens) || start > end {
 			t.Errorf("node %T has invalid token range [%d, %d] of %d tokens", n, start, end, len(doc.Tokens))
+
 			return
 		}
+
 		tokText := func(i int) string { return doc.Tokens[i].Text }
+
 		switch v := n.(type) {
 		case *Identifier:
 			if got := tokText(v.TokStart()); got != v.Text {
@@ -52,9 +63,11 @@ func checkDoc(t *testing.T, doc *Document) {
 			if v.Text != "" && v.Text != tokText(v.TokStart()) {
 				t.Errorf("const value %q does not match token %q", v.Text, tokText(v.TokStart()))
 			}
+
 			for _, item := range v.List {
 				walk(item)
 			}
+
 			for _, entry := range v.Map {
 				walk(entry.Key)
 				walk(entry.Value)
@@ -75,6 +88,7 @@ func checkDoc(t *testing.T, doc *Document) {
 		case *Enum:
 			walk(v.Name)
 			walk(v.Annotations)
+
 			for _, val := range v.Values {
 				walk(val)
 			}
@@ -84,6 +98,7 @@ func checkDoc(t *testing.T, doc *Document) {
 		case *Struct:
 			walk(v.Name)
 			walk(v.Annotations)
+
 			for _, f := range v.Fields {
 				walk(f)
 			}
@@ -91,6 +106,7 @@ func checkDoc(t *testing.T, doc *Document) {
 			walk(v.Name)
 			walk(v.Extends)
 			walk(v.Annotations)
+
 			for _, f := range v.Functions {
 				walk(f)
 			}
@@ -98,9 +114,11 @@ func checkDoc(t *testing.T, doc *Document) {
 			walk(v.Type)
 			walk(v.Name)
 			walk(v.Annotations)
+
 			for _, a := range v.Args {
 				walk(a)
 			}
+
 			if v.Throws != nil {
 				for _, f := range v.Throws.Fields {
 					walk(f)
@@ -130,13 +148,16 @@ func checkDoc(t *testing.T, doc *Document) {
 // top returns the first top-level node of the given type.
 func top[T Node](t *testing.T, doc *Document) T {
 	t.Helper()
+
 	for _, n := range doc.Nodes {
 		if v, ok := n.(T); ok {
 			return v
 		}
 	}
+
 	var zero T
 	t.Fatalf("no node of type %T in document", zero)
+
 	return zero
 }
 
@@ -158,25 +179,32 @@ func TestParseStructs(t *testing.T) {
 				if s.Kind != StructDecl {
 					t.Errorf("kind = %v, want struct", s.Kind)
 				}
+
 				if got := s.Name.Text; got != "User" {
 					t.Errorf("name = %q", got)
 				}
+
 				if len(s.Fields) != 3 {
 					t.Fatalf("fields = %d, want 3", len(s.Fields))
 				}
+
 				f := s.Fields[0]
 				if f.FieldID == nil || f.FieldID.Text != "1" {
 					t.Errorf("field 0 id = %v", f.FieldID)
 				}
+
 				if f.Req != TokenRequired {
 					t.Errorf("field 0 req = %v", f.Req)
 				}
+
 				if f.Type.Kind != TypeBase || f.Type.Base != TokenI64 {
 					t.Errorf("field 0 type = %+v", f.Type)
 				}
+
 				if f.Name.Text != "id" {
 					t.Errorf("field 0 name = %q", f.Name.Text)
 				}
+
 				if s.Fields[2].Type.Kind != TypeList || s.Fields[2].Type.ValueType.Base != TokenI32 {
 					t.Errorf("field 2 type = %+v", s.Fields[2].Type)
 				}
@@ -194,9 +222,11 @@ func TestParseStructs(t *testing.T) {
 				if s.Fields[0].FieldID != nil {
 					t.Errorf("implicit id should be nil, got %v", s.Fields[0].FieldID)
 				}
+
 				if s.Fields[1].Value.Kind != ValueString || s.Fields[1].Value.Text != `"x"` {
 					t.Errorf("field 1 value = %+v", s.Fields[1].Value)
 				}
+
 				if s.Fields[2].Value.Kind != ValueInt || s.Fields[2].Value.Text != "42" {
 					t.Errorf("field 2 value = %+v", s.Fields[2].Value)
 				}
@@ -225,6 +255,7 @@ func TestParseStructs(t *testing.T) {
 				if s.Fields[0].Name.Text != "namespace" {
 					t.Errorf("field 0 name = %q", s.Fields[0].Name.Text)
 				}
+
 				if s.Fields[1].Name.Text != "cpp_include" {
 					t.Errorf("field 1 name = %q", s.Fields[1].Name.Text)
 				}
@@ -240,6 +271,7 @@ func TestParseStructs(t *testing.T) {
 }`,
 			check: func(t *testing.T, doc *Document) {
 				s := top[*Struct](t, doc)
+
 				want := []string{"uuid", "id", "map", "string"}
 				for i, name := range want {
 					if s.Fields[i].Name.Text != name {
@@ -286,9 +318,11 @@ func TestParseStructs(t *testing.T) {
 				if s.Annotations == nil || len(s.Annotations.Items) != 1 {
 					t.Fatalf("struct annotations = %+v", s.Annotations)
 				}
+
 				if s.Annotations.Items[0].Name.Text != "struct_anno" || s.Annotations.Items[0].Value.Text != `"x"` {
 					t.Errorf("struct annotation = %+v", s.Annotations.Items[0])
 				}
+
 				if s.Fields[0].Annotations == nil {
 					t.Fatal("field annotations missing")
 				}
@@ -301,10 +335,12 @@ func TestParseStructs(t *testing.T) {
 }`,
 			check: func(t *testing.T, doc *Document) {
 				s := top[*Struct](t, doc)
+
 				ft := s.Fields[0].Type
 				if ft.Annotations == nil || ft.Annotations.Items[0].Name.Text != "tag" {
 					t.Errorf("type annotations = %+v", ft.Annotations)
 				}
+
 				if s.Fields[0].Annotations != nil {
 					t.Errorf("field annotations should be nil, got %+v", s.Fields[0].Annotations)
 				}
@@ -320,6 +356,7 @@ func TestParseStructs(t *testing.T) {
 				if s.Fields[0].Type.Annotations != nil {
 					t.Errorf("type annotations should be nil, got %+v", s.Fields[0].Type.Annotations)
 				}
+
 				if s.Fields[0].Annotations == nil || s.Fields[0].Annotations.Items[0].Name.Text != "tag" {
 					t.Errorf("field annotations = %+v", s.Fields[0].Annotations)
 				}
@@ -336,6 +373,7 @@ func TestParseStructs(t *testing.T) {
 				if s.Fields[0].Type.CPPType == nil || s.Fields[0].Type.CPPType.Text != `"std::map"` {
 					t.Errorf("map cpp_type = %v", s.Fields[0].Type.CPPType)
 				}
+
 				if s.Fields[1].Type.CPPType == nil || s.Fields[1].Type.CPPType.Text != `"std::vector"` {
 					t.Errorf("list cpp_type = %v", s.Fields[1].Type.CPPType)
 				}
@@ -355,12 +393,15 @@ exception E {
 				if u.Kind != UnionDecl {
 					t.Errorf("kind = %v, want union", u.Kind)
 				}
+
 				var e *Struct
+
 				for _, n := range doc.Nodes {
 					if s, ok := n.(*Struct); ok && s.Kind == ExceptionDecl {
 						e = s
 					}
 				}
+
 				if e == nil || e.Name.Text != "E" {
 					t.Errorf("exception missing: %+v", e)
 				}
@@ -411,10 +452,12 @@ const bool j = false`,
 				for _, n := range doc.Nodes {
 					kinds = append(kinds, n.(*Const).Value.Kind)
 				}
+
 				want := []ConstValueKind{ValueInt, ValueInt, ValueInt, ValueDouble, ValueDouble, ValueDouble, ValueString, ValueString, ValueInt, ValueInt}
 				if len(kinds) != len(want) {
 					t.Fatalf("consts = %d, want %d", len(kinds), len(want))
 				}
+
 				for i := range want {
 					if kinds[i] != want[i] {
 						t.Errorf("const %d kind = %v, want %v", i, kinds[i], want[i])
@@ -424,6 +467,7 @@ const bool j = false`,
 				if doc.Nodes[1].(*Const).Value.Text != "0xa1" {
 					t.Errorf("hex text = %q", doc.Nodes[1].(*Const).Value.Text)
 				}
+
 				if doc.Nodes[4].(*Const).Value.Text != "1.3333e11" {
 					t.Errorf("double text = %q", doc.Nodes[4].(*Const).Value.Text)
 				}
@@ -438,9 +482,11 @@ const double c = -1.5`,
 				if doc.Nodes[0].(*Const).Value.Kind != ValueIdent || doc.Nodes[0].(*Const).Value.Text != "OTHER_CONST" {
 					t.Errorf("ident value = %+v", doc.Nodes[0].(*Const).Value)
 				}
+
 				if doc.Nodes[1].(*Const).Value.Text != "-1" {
 					t.Errorf("negative int = %q", doc.Nodes[1].(*Const).Value.Text)
 				}
+
 				if doc.Nodes[2].(*Const).Value.Text != "-1.5" {
 					t.Errorf("negative double = %q", doc.Nodes[2].(*Const).Value.Text)
 				}
@@ -465,12 +511,15 @@ const list<list<i32>> c = [[1], [2, 3]]`,
 				if a.Kind != ValueList || len(a.List) != 3 {
 					t.Fatalf("list a = %+v", a)
 				}
+
 				if a.List[1].Text != "2" {
 					t.Errorf("list item = %q", a.List[1].Text)
 				}
+
 				if b := doc.Nodes[1].(*Const).Value; len(b.List) != 0 {
 					t.Errorf("empty list = %+v", b)
 				}
+
 				c := doc.Nodes[2].(*Const).Value
 				if len(c.List) != 2 || len(c.List[1].List) != 2 {
 					t.Errorf("nested list = %+v", c)
@@ -486,9 +535,11 @@ const map<i32, string> b = {}`,
 				if a.Kind != ValueMap || len(a.Map) != 2 {
 					t.Fatalf("map a = %+v", a)
 				}
+
 				if a.Map[0].Key.Text != `"x"` || a.Map[0].Value.Text != "1" {
 					t.Errorf("map entry = %+v", a.Map[0])
 				}
+
 				if b := doc.Nodes[1].(*Const).Value; len(b.Map) != 0 {
 					t.Errorf("empty map = %+v", b)
 				}
@@ -512,6 +563,7 @@ const map<i32, string> b = {}`,
 				if len(c.Value.List) != 2 {
 					t.Errorf("list = %+v", c.Value)
 				}
+
 				if c.Sep != TokenSemicolon {
 					t.Errorf("const sep = %v", c.Sep)
 				}
@@ -556,15 +608,19 @@ func TestParseEnums(t *testing.T) {
 				if len(e.Values) != 4 {
 					t.Fatalf("values = %d", len(e.Values))
 				}
+
 				if e.Values[0].Value == nil || e.Values[0].Value.Text != "1" {
 					t.Errorf("A value = %v", e.Values[0].Value)
 				}
+
 				if e.Values[1].Value != nil {
 					t.Errorf("B should auto-increment, got %v", e.Values[1].Value)
 				}
+
 				if e.Values[2].Value.Text != "0x10" {
 					t.Errorf("C value = %v", e.Values[2].Value)
 				}
+
 				if e.Values[3].Sep != 0 {
 					t.Errorf("D sep = %v", e.Values[3].Sep)
 				}
@@ -631,20 +687,25 @@ func TestParseServices(t *testing.T) {
 				if len(s.Functions) != 3 {
 					t.Fatalf("functions = %d", len(s.Functions))
 				}
+
 				f := s.Functions[0]
 				if f.Type.Kind != TypeIdent || f.Type.Ident.Text != "User" {
 					t.Errorf("getUser type = %+v", f.Type)
 				}
+
 				if f.Throws == nil || len(f.Throws.Fields) != 1 {
 					t.Fatalf("throws = %+v", f.Throws)
 				}
+
 				if f.Throws.Fields[0].Type.Ident.Text != "NotFound" {
 					t.Errorf("throws type = %+v", f.Throws.Fields[0].Type)
 				}
+
 				ping := s.Functions[1]
 				if ping.Oneway == nil || ping.Oneway.Kind != TokenOneway || ping.Void == nil {
 					t.Errorf("ping = %+v", ping)
 				}
+
 				if len(s.Functions[2].Args) != 2 {
 					t.Errorf("update args = %d", len(s.Functions[2].Args))
 				}
@@ -681,6 +742,7 @@ func TestParseServices(t *testing.T) {
 				if s.Functions[0].Annotations == nil {
 					t.Error("f annotations missing")
 				}
+
 				if s.Functions[1].Annotations == nil || s.Functions[1].Annotations.Items[0].Name.Text != "g_anno" {
 					t.Errorf("g annotations = %+v", s.Functions[1].Annotations)
 				}
@@ -722,18 +784,22 @@ namespace * global`,
 				if len(doc.Nodes) != 4 {
 					t.Fatalf("nodes = %d: %+v", len(doc.Nodes), doc.Nodes)
 				}
+
 				inc := doc.Nodes[0].(*Include)
 				if inc.Path.Text != `"shared.thrift"` {
 					t.Errorf("include path = %q", inc.Path.Text)
 				}
+
 				cpp := doc.Nodes[1].(*CPPInclude)
 				if cpp.Path.Text != `"base.h"` {
 					t.Errorf("cpp include = %q", cpp.Path.Text)
 				}
+
 				ns := doc.Nodes[2].(*Namespace)
 				if ns.Scope.Text != "java" || ns.Name.Text != "com.example" {
 					t.Errorf("namespace = %+v", ns)
 				}
+
 				if doc.Nodes[3].(*Namespace).Scope.Kind != TokenStar {
 					t.Errorf("star scope = %+v", doc.Nodes[3].(*Namespace).Scope)
 				}
@@ -774,6 +840,7 @@ typedef map<string, list<i32>> Index`,
 				if td.Type.Base != TokenI64 || td.Name.Text != "Timestamp" {
 					t.Errorf("typedef = %+v", td)
 				}
+
 				if doc.Nodes[1].(*Typedef).Type.Kind != TypeMap {
 					t.Errorf("container typedef = %+v", doc.Nodes[1].(*Typedef))
 				}
@@ -810,6 +877,7 @@ func TestParseAnnotations(t *testing.T) {
 			src:  "typedef i32 T (foo)",
 			check: func(t *testing.T, doc *Document) {
 				td := doc.Nodes[0].(*Typedef)
+
 				a := td.Annotations.Items[0]
 				if a.Name.Text != "foo" || a.Value != nil {
 					t.Errorf("bare annotation = %+v", a)
@@ -821,13 +889,16 @@ func TestParseAnnotations(t *testing.T) {
 			src:  `typedef i32 T (a = "1", b = "x", c = 'y')`,
 			check: func(t *testing.T, doc *Document) {
 				td := doc.Nodes[0].(*Typedef)
+
 				items := td.Annotations.Items
 				if len(items) != 3 {
 					t.Fatalf("items = %d", len(items))
 				}
+
 				if items[0].Value.Text != `"1"` || items[1].Value.Text != `"x"` || items[2].Value.Text != `'y'` {
 					t.Errorf("values = %v, %v, %v", items[0].Value, items[1].Value, items[2].Value)
 				}
+
 				if items[0].Sep != TokenComma || items[1].Sep != TokenComma {
 					t.Errorf("seps = %v, %v", items[0].Sep, items[1].Sep)
 				}
@@ -838,10 +909,12 @@ func TestParseAnnotations(t *testing.T) {
 			src:  "typedef i32 T (a = \"1\"; b = \"2\" c = \"3\")",
 			check: func(t *testing.T, doc *Document) {
 				td := doc.Nodes[0].(*Typedef)
+
 				items := td.Annotations.Items
 				if len(items) != 3 {
 					t.Fatalf("items = %d", len(items))
 				}
+
 				if items[0].Sep != TokenSemicolon || items[1].Sep != 0 || items[2].Sep != 0 {
 					t.Errorf("seps = %v, %v, %v", items[0].Sep, items[1].Sep, items[2].Sep)
 				}
@@ -949,15 +1022,19 @@ func TestParseErrors(t *testing.T) {
 			if doc == nil {
 				t.Fatal("parse returned nil document")
 			}
+
 			var got []string
+
 			for _, err := range errs {
 				if err.Severity == SeverityError {
 					got = append(got, err.Error())
 				}
 			}
+
 			if len(got) != len(tt.wantErrs) {
 				t.Fatalf("got %d errors (%v), want %d", len(got), got, len(tt.wantErrs))
 			}
+
 			for i, want := range tt.wantErrs {
 				if !strings.Contains(got[i], want) {
 					t.Errorf("error %d = %q, want substring %q", i, got[i], want)
@@ -993,15 +1070,19 @@ func TestParseWarnings(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, errs := Parse([]byte(tt.src))
+
 			var warns []string
+
 			for _, err := range errs {
 				if err.Severity == SeverityWarning {
 					warns = append(warns, err.Error())
 				}
 			}
+
 			if len(warns) != len(tt.wantMsg) {
 				t.Fatalf("warnings = %v, want %d", warns, len(tt.wantMsg))
 			}
+
 			for i, want := range tt.wantMsg {
 				if !strings.Contains(warns[i], want) {
 					t.Errorf("warning %d = %q, want substring %q", i, warns[i], want)

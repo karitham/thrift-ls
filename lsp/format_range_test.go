@@ -143,6 +143,7 @@ func TestFormatRangeTextSplice(t *testing.T) {
 	if gotRS != strings.Index(content, "struct B") {
 		t.Errorf("effective start = %d, want %d", gotRS, strings.Index(content, "struct B"))
 	}
+
 	if got := content[gotRE]; got != '\n' {
 		t.Errorf("effective end = %d, want a newline position (got %q)", gotRE, got)
 	}
@@ -153,10 +154,12 @@ func TestFormatRangeTextSplice(t *testing.T) {
 	if len(errs) > 0 {
 		t.Fatalf("parse errors: %v", errs)
 	}
+
 	want, err := formatter.Format(doc, opts)
 	if err != nil {
 		t.Fatalf("whole-doc format: %v", err)
 	}
+
 	if spliced != want {
 		t.Errorf("splice mismatch\n got: %q\nwant: %q", spliced, want)
 	}

@@ -26,6 +26,7 @@ func Test_cycleDetect(t *testing.T) {
 	type args struct {
 		includesMap *map[uri.URI][]Include
 	}
+
 	tests := []struct {
 		name string
 		args args
@@ -64,6 +65,7 @@ func Test_cycleDetect(t *testing.T) {
 				if tt.want[i].file == tt.want[j].file {
 					return tt.want[i].include.file < tt.want[j].include.file
 				}
+
 				return tt.want[i].file < tt.want[j].file
 			})
 
@@ -72,6 +74,7 @@ func Test_cycleDetect(t *testing.T) {
 				if got[i].file == got[j].file {
 					return got[i].include.file < got[j].include.file
 				}
+
 				return got[i].file < got[j].file
 			})
 
@@ -115,6 +118,7 @@ include "./test/address.thrift"`
 				t.Fatal(e)
 			}
 		}
+
 		return doc
 	}
 	userDoc := parseFor("file:///tmp/user.thrift", file1)
@@ -142,6 +146,7 @@ include "./test/address.thrift"`
 		file        uri.URI
 		includesMap *map[uri.URI][]Include
 	}
+
 	tests := []struct {
 		name      string
 		args      args

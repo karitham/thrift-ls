@@ -41,10 +41,13 @@ const Color defaultColor = GREEN`
 		if len(offset) > 0 {
 			idx += offset[0]
 		}
+
 		if idx < 0 {
 			t.Fatalf("marker %q not found", marker)
 		}
+
 		line, col := 0, 0
+
 		for i := 0; i < idx; i++ {
 			if file[i] == '\n' {
 				line++
@@ -53,6 +56,7 @@ const Color defaultColor = GREEN`
 				col++
 			}
 		}
+
 		return protocol.Position{Line: uint32(line), Character: uint32(col)}
 	}
 
@@ -76,6 +80,7 @@ const Color defaultColor = GREEN`
 			if err != nil {
 				t.Fatalf("Hover: %v", err)
 			}
+
 			if !strings.Contains(got, tt.want) {
 				t.Errorf("hover text %q does not contain %q", got, tt.want)
 			}
@@ -87,10 +92,12 @@ func TestHoverUnresolvable(t *testing.T) {
 	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
 		{URI: "file:///tmp/test.thrift", Version: 0, Content: []byte("struct S {\n  1: Missing x\n}"), From: cache.FileChangeTypeDidOpen},
 	})
+
 	got, err := Hover(t.Context(), ss, "file:///tmp/test.thrift", protocol.Position{Line: 1, Character: 8})
 	if err != nil {
 		t.Fatalf("Hover: %v", err)
 	}
+
 	if got != "" {
 		t.Errorf("expected empty hover for undefined type, got %q", got)
 	}

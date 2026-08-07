@@ -61,11 +61,13 @@ struct TestUUID {
 			From:    cache.FileChangeTypeDidOpen,
 		},
 	})
+
 	type args struct {
 		ctx         context.Context
 		ss          *cache.Snapshot
 		changeFiles []uri.URI
 	}
+
 	tests := []struct {
 		name      string
 		args      args

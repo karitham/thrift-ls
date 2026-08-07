@@ -73,6 +73,7 @@ const UserKind kind = "1"
 		file uri.URI
 		pos  protocol.Position
 	}
+
 	tests := []struct {
 		name      string
 		args      args
@@ -290,6 +291,7 @@ const UserKind kind = "1"
 		pos     protocol.Position
 		newText string
 	}
+
 	tests := []struct {
 		name      string
 		args      args

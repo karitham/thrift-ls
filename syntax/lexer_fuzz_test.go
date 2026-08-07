@@ -60,22 +60,28 @@ func FuzzLex(f *testing.F) {
 			if err.Offset < 0 || err.Offset > len(src) {
 				t.Fatalf("error offset %d out of range", err.Offset)
 			}
+
 			checkPos(t, srcStr, err.Offset, err.Line, err.Col, "error")
 		}
 
 		// Token and trivia invariants.
 		prevEnd := 0
+
 		for i, tok := range toks {
 			if tok.Kind == TokenInvalid {
 				t.Fatalf("token %d has invalid kind", i)
 			}
+
 			if tok.Offset < 0 || tok.Offset+len(tok.Text) > len(src) {
 				t.Fatalf("token %d (%s) spans outside the source", i, tok.Kind)
 			}
+
 			if got := src[tok.Offset : tok.Offset+len(tok.Text)]; string(got) != tok.Text {
 				t.Fatalf("token %d text %q does not match source %q", i, tok.Text, got)
 			}
+
 			checkPos(t, srcStr, tok.Offset, tok.Line, tok.Col, "token")
+
 			if tok.BlankLinesBefore < 0 {
 				t.Fatalf("token %d has negative BlankLinesBefore", i)
 			}
@@ -85,6 +91,7 @@ func FuzzLex(f *testing.F) {
 				if tr.Offset < prevEnd || tr.Offset+len(tr.Text) > tok.Offset || tr.Offset+len(tr.Text) > len(src) {
 					t.Fatalf("leading trivia %q of token %d outside the gap [%d, %d)", tr.Text, i, prevEnd, tok.Offset)
 				}
+
 				checkPos(t, srcStr, tr.Offset, tr.Line, tr.Col, "leading trivia")
 			}
 
@@ -92,7 +99,9 @@ func FuzzLex(f *testing.F) {
 				if tr.Offset < tok.Offset || tr.Offset+len(tr.Text) > len(src) {
 					t.Fatalf("trailing trivia %q of token %d outside the source", tr.Text, i)
 				}
+
 				checkPos(t, srcStr, tr.Offset, tr.Line, tr.Col, "trailing trivia")
+
 				if tr.Line != tok.Line {
 					t.Fatalf("trailing trivia %q of token %d starts on line %d, token is on line %d",
 						tr.Text, i, tr.Line, tok.Line)
@@ -114,6 +123,7 @@ func FuzzLex(f *testing.F) {
 // columns count runes.
 func checkPos(t *testing.T, src string, offset, line, col int, what string) {
 	t.Helper()
+
 	gotLine, gotCol := lineColAt(src, offset)
 	if gotLine != line || gotCol != col {
 		t.Fatalf("%s at offset %d: reported %d:%d, want %d:%d", what, offset, line, col, gotLine, gotCol)
@@ -122,6 +132,7 @@ func checkPos(t *testing.T, src string, offset, line, col int, what string) {
 
 func lineColAt(src string, offset int) (line, col int) {
 	line, col = 1, 1
+
 	for i := 0; i < offset; {
 		switch src[i] {
 		case '\n':
@@ -131,8 +142,10 @@ func lineColAt(src string, offset int) (line, col int) {
 		case '\r':
 			if i+1 < offset && src[i+1] == '\n' {
 				i++ // \r\n: the \n resets the line
+
 				continue
 			}
+
 			line++
 			col = 1
 			i++
@@ -142,5 +155,6 @@ func lineColAt(src string, offset int) (line, col int) {
 			i += size
 		}
 	}
+
 	return line, col
 }

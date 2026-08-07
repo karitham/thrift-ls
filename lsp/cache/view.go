@@ -71,7 +71,6 @@ func NewView(name string, folder uri.URI, fs FileSource, store *memoize.Store, i
 func (v *View) ContainsFile(uri uri.URI) bool {
 	// folder: file:///workdir/
 	// file: file:///workdir/file.idl
-
 	folder := v.folder.Path()
 	file := uri.Path()
 
@@ -113,6 +112,7 @@ func (v *View) FileChange(ctx context.Context, changes []*FileChange, postFns ..
 	// release previous snapshot
 	v.snapshotRelease()
 	v.snapshotMu.Lock()
+
 	v.snapshot = newSnapshot
 	for _, change := range changes {
 		v.snapshot.ForgetFile(change.URI)
@@ -126,14 +126,17 @@ func (v *View) FileChange(ctx context.Context, changes []*FileChange, postFns ..
 	// TODO(jpf): 异步 parse 和 completion 的顺序问题
 	// go func() {
 	defer asyncRelease()
+
 	uris := make(map[uri.URI]struct{})
 	for _, change := range changes {
 		uris[change.URI] = struct{}{}
 	}
+
 	for uri := range uris {
 		v.snapshotMu.Lock()
 		_, err := v.snapshot.Parse(ctx, uri)
 		v.snapshotMu.Unlock()
+
 		if err != nil {
 			slog.Error("parse error", "err", err)
 		}

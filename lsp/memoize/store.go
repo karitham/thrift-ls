@@ -37,22 +37,28 @@ type Store struct {
 // store.
 func (store *Store) Promise(key any, function Function) (*Promise, func()) {
 	store.promisesMu.Lock()
+
 	p, ok := store.promises[key]
 	if !ok {
 		p = NewPromise(reflect.TypeOf(key).String(), function)
+
 		if store.promises == nil {
 			store.promises = map[any]*Promise{}
 		}
+
 		store.promises[key] = p
 	}
+
 	p.refcount++
 	store.promisesMu.Unlock()
 
-	var released int32
+	var released atomic.Int32
+
 	release := func() {
-		if !atomic.CompareAndSwapInt32(&released, 0, 1) {
+		if !released.CompareAndSwap(0, 1) {
 			panic("release called more than once")
 		}
+
 		store.promisesMu.Lock()
 
 		p.refcount--
@@ -76,6 +82,7 @@ func (s *Store) Stats() map[reflect.Type]int {
 	for k := range s.promises {
 		result[reflect.TypeOf(k)]++
 	}
+
 	return result
 }
 

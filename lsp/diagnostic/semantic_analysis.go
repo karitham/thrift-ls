@@ -18,11 +18,13 @@ type SemanticAnalysis struct{}
 
 func (s *SemanticAnalysis) Diagnostic(ctx context.Context, ss *cache.Snapshot, changeFiles []uri.URI) (DiagnosticResult, error) {
 	res := make(DiagnosticResult)
+
 	for _, file := range changeFiles {
 		items, err := s.diagnostic(ctx, ss, file)
 		if err != nil {
 			return nil, err
 		}
+
 		res[file] = items
 	}
 
@@ -38,6 +40,7 @@ func (s *SemanticAnalysis) diagnostic(ctx context.Context, ss *cache.Snapshot, c
 	if err != nil {
 		return nil, err
 	}
+
 	if pf.AST() == nil {
 		return nil, errors.New("parse ast failed")
 	}
@@ -60,6 +63,7 @@ func (s *SemanticAnalysis) checkDefineConflict(ctx context.Context, pf *cache.Pa
 
 	processStructLike := func(fields []*syntax.Field) {
 		fieldMap := make(map[string]struct{})
+
 		for i := range fields {
 			field := fields[i]
 			if _, exist := fieldMap[field.Name.Text]; exist {
@@ -70,6 +74,7 @@ func (s *SemanticAnalysis) checkDefineConflict(ctx context.Context, pf *cache.Pa
 					Message:  protocol.String("field name conflict with other field"),
 				})
 			}
+
 			fieldMap[field.Name.Text] = struct{}{}
 		}
 	}
@@ -85,6 +90,7 @@ func (s *SemanticAnalysis) checkDefineConflict(ctx context.Context, pf *cache.Pa
 				Message:  protocol.String(fmt.Sprintf("%s name conflict with other %s", kind, previous)),
 			})
 		}
+
 		definitionNameMap[name] = kind
 	}
 
@@ -92,20 +98,25 @@ func (s *SemanticAnalysis) checkDefineConflict(ctx context.Context, pf *cache.Pa
 		processDefinition(st.Name.Text, st.Name, "struct")
 		processStructLike(st.Fields)
 	}
+
 	for _, union := range pf.AST().Unions() {
 		processDefinition(union.Name.Text, union.Name, "union")
 		processStructLike(union.Fields)
 	}
+
 	for _, excep := range pf.AST().Exceptions() {
 		processDefinition(excep.Name.Text, excep.Name, "exception")
 		processStructLike(excep.Fields)
 	}
+
 	for _, enum := range pf.AST().Enums() {
 		processDefinition(enum.Name.Text, enum.Name, "enum")
 	}
+
 	for _, cst := range pf.AST().Consts() {
 		processDefinition(cst.Name.Text, cst.Name, "const")
 	}
+
 	for _, td := range pf.AST().Typedefs() {
 		processDefinition(td.Name.Text, td.Name, "typedef")
 	}
@@ -123,8 +134,10 @@ func (s *SemanticAnalysis) checkDefineConflict(ctx context.Context, pf *cache.Pa
 					Message:  protocol.String("function name conflict with other function"),
 				})
 			}
+
 			fnMap[fn.Name.Text] = struct{}{}
 			processStructLike(fn.Args)
+
 			if fn.Throws != nil {
 				processStructLike(fn.Throws.Fields)
 			}
@@ -160,22 +173,27 @@ func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, ss *cache.S
 	for _, st := range pf.AST().Structs() {
 		processStructLike(st.Fields)
 	}
+
 	for _, union := range pf.AST().Unions() {
 		processStructLike(union.Fields)
 	}
+
 	for _, excep := range pf.AST().Exceptions() {
 		processStructLike(excep.Fields)
 	}
+
 	for _, cst := range pf.AST().Consts() {
 		items := s.checkConstValueExist(ctx, ss, file, pf, cst.Value)
 		ret = append(ret, items...)
 	}
+
 	for _, svc := range pf.AST().Services() {
 		for _, fn := range svc.Functions {
 			items := s.checkTypeExist(ctx, ss, file, pf, fn.Type)
 			ret = append(ret, items...)
 
 			processStructLike(fn.Args)
+
 			if fn.Throws != nil {
 				processStructLike(fn.Throws.Fields)
 			}
@@ -213,6 +231,7 @@ func (s *SemanticAnalysis) checkConstValueMatchType(pf *cache.ParsedFile, field 
 	if field.Value == nil {
 		return nil
 	}
+
 	expect := typeName(field.Type)
 	value := field.Value
 	valueKind := value.Kind
@@ -228,8 +247,10 @@ func (s *SemanticAnalysis) checkConstValueMatchType(pf *cache.ParsedFile, field 
 			if expect != "bool" {
 				return mismatchDiagnostic(pf.AST(), field, expect, "bool")
 			}
+
 			return nil
 		}
+
 		switch expect {
 		case "i8", "i16", "i32", "i64":
 		default:
@@ -255,6 +276,7 @@ func sameKind(expect string, kind syntax.ConstValueKind) bool {
 	case syntax.ValueDouble:
 		return expect == "double"
 	}
+
 	return false
 }
 
@@ -273,6 +295,7 @@ func kindName(kind syntax.ConstValueKind) string {
 	case syntax.ValueIdent:
 		return "identifier"
 	}
+
 	return "unknown"
 }
 
@@ -291,6 +314,7 @@ func typeName(ft *syntax.FieldType) string {
 	if ft == nil {
 		return ""
 	}
+
 	switch ft.Kind {
 	case syntax.TypeIdent:
 		return ft.Ident.Text
@@ -303,6 +327,7 @@ func typeName(ft *syntax.FieldType) string {
 	case syntax.TypeBase:
 		return ft.Base.String()
 	}
+
 	return ""
 }
 
@@ -312,6 +337,7 @@ func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, ss *cache.Snapsho
 	if ft == nil {
 		return res
 	}
+
 	switch ft.Kind {
 	case syntax.TypeMap, syntax.TypeList, syntax.TypeSet:
 		return s.checkContainerTypeExist(ctx, ss, file, pf, ft)
@@ -328,6 +354,7 @@ func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, ss *cache.Snapsho
 			})
 		}
 	}
+
 	return res
 }
 
@@ -337,8 +364,10 @@ func (s *SemanticAnalysis) checkContainerTypeExist(ctx context.Context,
 	if ft.KeyType != nil {
 		res = append(res, s.checkTypeExist(ctx, ss, file, pf, ft.KeyType)...)
 	}
+
 	if ft.ValueType != nil {
 		res = append(res, s.checkTypeExist(ctx, ss, file, pf, ft.ValueType)...)
 	}
+
 	return res
 }

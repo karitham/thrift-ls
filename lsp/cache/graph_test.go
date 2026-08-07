@@ -24,6 +24,7 @@ func Test_IncludeGraph_Set(t *testing.T) {
 
 	tmpDir, err := os.MkdirTemp("", "thrift-test")
 	assert.NoError(t, err)
+
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	baseDir := filepath.Join(tmpDir, "base")
@@ -85,6 +86,7 @@ func Test_Graph(t *testing.T) {
 	file1 := uri.MustParse("file:///tmp/model/user.thrift")
 	file2 := uri.MustParse("file:///tmp/base.thrift")
 	file3 := uri.MustParse("file:///tmp/addr.thrift")
+
 	graph.Set(file1, []*syntax.Include{
 		{Path: &syntax.Token{Text: "../base.thrift"}},
 		{Path: &syntax.Token{Text: "../addr.thrift"}},
@@ -119,6 +121,7 @@ func Test_Graph(t *testing.T) {
 	assert.Equal(t, expectNode3, graph.Get("file:///tmp/addr.thrift"), "addr.thrift")
 
 	graph.Remove(file1)
+
 	expectNode1 = nil
 	expectNode2 = &IncludeNode{
 		indegree: []uri.URI{file3},
@@ -126,6 +129,7 @@ func Test_Graph(t *testing.T) {
 	expectNode3 = &IncludeNode{
 		outdegree: []uri.URI{file2},
 	}
+
 	assert.Equal(t, expectNode1, graph.Get("file:///tmp/model/user.thrift"), "user.thrift")
 	assert.Equal(t, expectNode2, graph.Get("file:///tmp/base.thrift"), "base.thrift")
 	assert.Equal(t, expectNode3, graph.Get("file:///tmp/addr.thrift"), "addr.thrift")
@@ -140,6 +144,7 @@ func Test_Graph(t *testing.T) {
 // the snapshot's resolver-based resolution.
 func resolveWithPaths(includePaths []string) func(uri.URI, string) uri.URI {
 	r := resolver.NewWithFS(includePaths, resolver.FS())
+
 	return func(cur uri.URI, includePath string) uri.URI {
 		return uri.File(r.Resolve(cur.Path(), includePath))
 	}

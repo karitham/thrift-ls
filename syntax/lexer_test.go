@@ -16,6 +16,7 @@ func tokenSpecs(toks []Token) []tokSpec {
 	for _, tok := range toks {
 		specs = append(specs, tokSpec{tok.Kind, tok.Text})
 	}
+
 	return specs
 }
 
@@ -174,6 +175,7 @@ func TestLexTokens(t *testing.T) {
 			if len(errs) > 0 {
 				t.Fatalf("unexpected errors: %v", errs)
 			}
+
 			if got := tokenSpecs(toks); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("tokens mismatch\n got: %v\nwant: %v", got, tt.want)
 			}
@@ -224,9 +226,11 @@ func TestLexPositions(t *testing.T) {
 			if len(errs) > 0 {
 				t.Fatalf("unexpected errors: %v", errs)
 			}
+
 			if len(toks) != len(tt.want) {
 				t.Fatalf("got %d tokens (%v), want %d", len(toks), tokenSpecs(toks), len(tt.want))
 			}
+
 			for i, want := range tt.want {
 				got := toks[i]
 				if got.Line != want.line || got.Col != want.col || got.Offset != want.offset {
@@ -379,17 +383,21 @@ func TestLexTrivia(t *testing.T) {
 			if len(errs) > 0 {
 				t.Fatalf("unexpected errors: %v", errs)
 			}
+
 			for _, check := range tt.checks {
 				if check.idx >= len(toks) {
 					t.Fatalf("token index %d out of range (%d tokens)", check.idx, len(toks))
 				}
+
 				tok := toks[check.idx]
 				if got := triviaTexts(tok.Leading); !reflect.DeepEqual(got, check.leading) {
 					t.Errorf("token %d leading: got %v, want %v", check.idx, got, check.leading)
 				}
+
 				if got := triviaTexts(tok.Trailing); !reflect.DeepEqual(got, check.trailing) {
 					t.Errorf("token %d trailing: got %v, want %v", check.idx, got, check.trailing)
 				}
+
 				if tok.BlankLinesBefore != check.blankLinesBefore {
 					t.Errorf("token %d blankLinesBefore: got %d, want %d", check.idx, tok.BlankLinesBefore, check.blankLinesBefore)
 				}
@@ -402,10 +410,12 @@ func triviaTexts(trivia []Trivia) []string {
 	if len(trivia) == 0 {
 		return nil
 	}
+
 	texts := make([]string, 0, len(trivia))
 	for _, t := range trivia {
 		texts = append(texts, t.Text)
 	}
+
 	return texts
 }
 
@@ -427,14 +437,17 @@ func TestLexTriviaKinds(t *testing.T) {
 			if len(errs) > 0 {
 				t.Fatalf("unexpected errors: %v", errs)
 			}
+
 			eof := toks[len(toks)-1]
 			if eof.Kind != TokenEOF {
 				t.Fatalf("last token is %v, want eof", eof.Kind)
 			}
+
 			var got []TriviaKind
 			for _, trivia := range eof.Leading {
 				got = append(got, trivia.Kind)
 			}
+
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("trivia kinds: got %v, want %v", got, tt.want)
 			}
@@ -523,15 +536,18 @@ func TestLexErrors(t *testing.T) {
 			if len(errs) != len(tt.wantErrs) {
 				t.Fatalf("got %d errors (%v), want %d", len(errs), errs, len(tt.wantErrs))
 			}
+
 			for i, want := range tt.wantErrs {
 				if got := errs[i].Error(); !strings.Contains(got, want) {
 					t.Errorf("error %d: got %q, want substring %q", i, got, want)
 				}
 			}
+
 			got := make([]TokenKind, 0, len(toks))
 			for _, tok := range toks {
 				got = append(got, tok.Kind)
 			}
+
 			if !reflect.DeepEqual(got, tt.wantKinds) {
 				t.Errorf("token kinds: got %v, want %v", got, tt.wantKinds)
 			}

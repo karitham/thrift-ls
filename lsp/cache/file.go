@@ -112,7 +112,9 @@ type FilesMap struct {
 func (m *FilesMap) Get(key uri.URI) (FileHandle, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+
 	fh, ok := m.files[key]
+
 	return fh, ok
 }
 
@@ -145,6 +147,7 @@ func (m *FilesMap) Clone() *FilesMap {
 	for key := range m.files {
 		newMap.files[key] = m.files[key]
 	}
+
 	for key := range m.overlays {
 		newMap.overlays[key] = m.overlays[key]
 	}
@@ -187,6 +190,7 @@ func FileChangeFromLSPDidChange(params *protocol.DidChangeTextDocumentParams) []
 			// semantics using the current full content.
 			continue
 		}
+
 		changes = append(changes, &FileChange{
 			URI:     params.TextDocument.URI,
 			Version: int(params.TextDocument.Version),
@@ -194,5 +198,6 @@ func FileChangeFromLSPDidChange(params *protocol.DidChangeTextDocumentParams) []
 			From:    FileChangeTypeDidChange,
 		})
 	}
+
 	return changes
 }

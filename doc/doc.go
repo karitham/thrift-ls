@@ -34,13 +34,16 @@ func Join(sep Doc, parts []Doc) Doc {
 	if len(parts) == 0 {
 		return Concat(nil)
 	}
+
 	out := make(Concat, 0, len(parts)*2-1)
 	for i, part := range parts {
 		if i > 0 {
 			out = append(out, sep)
 		}
+
 		out = append(out, part)
 	}
+
 	return out
 }
 

@@ -38,6 +38,7 @@ const list<MyEnum> my_list = [MyEnum.Value1, MyEnum.Value2]`
 		file uri.URI
 		pos  protocol.Position
 	}
+
 	tests := []struct {
 		name      string
 		args      args

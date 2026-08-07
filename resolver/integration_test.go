@@ -21,6 +21,7 @@ func TestResolver_Integration_NestedIncludes(t *testing.T) {
 
 	// Create base.thrift (no includes)
 	baseFile := filepath.Join(includeDir, "base.thrift")
+
 	baseContent := `namespace * base
 
 struct BaseID {
@@ -32,6 +33,7 @@ struct BaseID {
 
 	// Create middle.thrift (includes base)
 	middleFile := filepath.Join(includeDir, "middle.thrift")
+
 	middleContent := `include "base.thrift"
 
 namespace * middle
@@ -46,6 +48,7 @@ struct UserID {
 
 	// Create main.thrift (includes middle, which includes base)
 	mainFile := filepath.Join(tmpDir, "main.thrift")
+
 	mainContent := `include "middle.thrift"
 
 namespace * main
@@ -65,6 +68,7 @@ struct User {
 	if filename != middleFile {
 		t.Errorf("expected %q, got %q", middleFile, filename)
 	}
+
 	content, err := os.ReadFile(filename)
 	if err != nil {
 		t.Fatalf("failed to read middle.thrift: %v", err)
@@ -77,9 +81,11 @@ struct User {
 			t.Fatalf("failed to parse middle.thrift: %v", errs)
 		}
 	}
+
 	if len(middleDoc.Includes()) == 0 {
 		t.Fatal("expected middle.thrift to have includes")
 	}
+
 	includePath := middleDoc.Includes()[0].Path.Text
 	if strings.Trim(includePath, "\"'") != "base.thrift" {
 		t.Errorf("expected include path 'base.thrift', got %q", includePath)
@@ -96,6 +102,7 @@ struct User {
 	if err != nil {
 		t.Fatalf("failed to read base.thrift: %v", err)
 	}
+
 	if string(content2) != baseContent {
 		t.Errorf("base.thrift content mismatch")
 	}
@@ -110,12 +117,14 @@ func TestResolver_Integration_ResolutionOrder(t *testing.T) {
 	if err := os.MkdirAll(includeDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := os.MkdirAll(srcDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
 	// Create a version in include directory
 	includeVersion := filepath.Join(includeDir, "shared.thrift")
+
 	includeContent := `namespace * shared
 
 struct SharedInInclude {
@@ -127,6 +136,7 @@ struct SharedInInclude {
 
 	// Create a different version in src directory
 	srcVersion := filepath.Join(srcDir, "shared.thrift")
+
 	srcContent := `namespace * shared
 
 struct SharedInSrc {
@@ -138,6 +148,7 @@ struct SharedInSrc {
 
 	// Create main file in src
 	mainFile := filepath.Join(srcDir, "main.thrift")
+
 	mainContent := `include "shared.thrift"
 
 namespace * test
@@ -154,6 +165,7 @@ struct Data {
 
 	// Test: IncludeCall should find include path first, not relative
 	includeCall := r.IncludeCall(mainFile)
+
 	filename, content, err := includeCall("shared.thrift")
 	if err != nil {
 		t.Fatalf("failed to resolve shared.thrift: %v", err)
@@ -163,6 +175,7 @@ struct Data {
 	if filename != includeVersion {
 		t.Errorf("expected include path version %q, got %q", includeVersion, filename)
 	}
+
 	if string(content) != includeContent {
 		t.Error("expected content from include directory")
 	}
@@ -174,6 +187,7 @@ func TestResolver_Integration_RelativeFallback(t *testing.T) {
 
 	// Create file in root (no include directories)
 	localFile := filepath.Join(tmpDir, "local.thrift")
+
 	localContent := `namespace * local
 
 struct LocalData {
@@ -185,6 +199,7 @@ struct LocalData {
 
 	// Create main file that references local
 	mainFile := filepath.Join(tmpDir, "main.thrift")
+
 	mainContent := `include "local.thrift"
 
 namespace * main
@@ -201,6 +216,7 @@ struct Container {
 
 	// Test: Should fall back to relative resolution
 	includeCall := r.IncludeCall(mainFile)
+
 	filename, content, err := includeCall("local.thrift")
 	if err != nil {
 		t.Fatalf("failed to resolve local.thrift: %v", err)
@@ -209,6 +225,7 @@ struct Container {
 	if filename != localFile {
 		t.Errorf("expected %q, got %q", localFile, filename)
 	}
+
 	if string(content) != localContent {
 		t.Error("content mismatch")
 	}
@@ -223,12 +240,14 @@ func TestResolver_Integration_MultipleIncludePaths(t *testing.T) {
 	if err := os.MkdirAll(includeDir1, 0o755); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := os.MkdirAll(includeDir2, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
 	// File only in include path 2
 	file2 := filepath.Join(includeDir2, "unique.thrift")
+
 	content2 := `namespace * unique
 
 struct UniqueInDir2 {
@@ -240,6 +259,7 @@ struct UniqueInDir2 {
 
 	// File in both include paths (dir1 should win)
 	fileBoth1 := filepath.Join(includeDir1, "both.thrift")
+
 	contentBoth1 := `namespace * both
 
 struct BothFromDir1 {
@@ -250,6 +270,7 @@ struct BothFromDir1 {
 	}
 
 	fileBoth2 := filepath.Join(includeDir2, "both.thrift")
+
 	contentBoth2 := `namespace * both
 
 struct BothFromDir2 {
@@ -260,6 +281,7 @@ struct BothFromDir2 {
 	}
 
 	mainFile := filepath.Join(tmpDir, "main.thrift")
+
 	mainContent := `include "unique.thrift"
 include "both.thrift"`
 	if err := os.WriteFile(mainFile, []byte(mainContent), 0o644); err != nil {
@@ -275,6 +297,7 @@ include "both.thrift"`
 	if err != nil {
 		t.Fatalf("failed to resolve unique.thrift: %v", err)
 	}
+
 	if filename != file2 {
 		t.Errorf("expected %q, got %q", file2, filename)
 	}
@@ -284,6 +307,7 @@ include "both.thrift"`
 	if err != nil {
 		t.Fatalf("failed to resolve both.thrift: %v", err)
 	}
+
 	if filename2 != fileBoth1 {
 		t.Errorf("expected first include path %q, got %q", fileBoth1, filename2)
 	}
@@ -300,6 +324,7 @@ func TestResolver_Integration_DeeplyNestedIncludes(t *testing.T) {
 
 	// d.thrift (no includes)
 	dFile := filepath.Join(includeDir, "d.thrift")
+
 	dContent := `namespace * d
 
 struct D {
@@ -311,6 +336,7 @@ struct D {
 
 	// c.thrift includes d
 	cFile := filepath.Join(includeDir, "c.thrift")
+
 	cContent := `include "d.thrift"
 
 namespace * c
@@ -324,6 +350,7 @@ struct C {
 
 	// b.thrift includes c
 	bFile := filepath.Join(includeDir, "b.thrift")
+
 	bContent := `include "c.thrift"
 
 namespace * b
@@ -337,6 +364,7 @@ struct B {
 
 	// a.thrift includes b
 	aFile := filepath.Join(includeDir, "a.thrift")
+
 	aContent := `include "b.thrift"
 
 namespace * a
@@ -357,16 +385,19 @@ struct A {
 		if err != nil {
 			return nil, err
 		}
+
 		doc, errs := syntax.Parse(content)
 		for _, e := range errs {
 			if e.Severity == syntax.SeverityError {
 				return nil, fmt.Errorf("parse %s: %v", file, errs)
 			}
 		}
+
 		var paths []string
 		for _, inc := range doc.Includes() {
 			paths = append(paths, strings.Trim(inc.Path.Text, "\"'"))
 		}
+
 		return paths, nil
 	}
 
@@ -376,9 +407,11 @@ struct A {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		if len(includes) != 1 {
 			t.Fatalf("%s: expected one include, got %v", chain[i], includes)
 		}
+
 		next := r.Resolve(chain[i], includes[0])
 		if next != chain[i+1] {
 			t.Errorf("expected %q, got %q", chain[i+1], next)

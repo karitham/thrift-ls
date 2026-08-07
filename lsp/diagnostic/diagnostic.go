@@ -36,20 +36,26 @@ func NewDiagnostic() Interface {
 
 func (d *Diagnostic) Diagnostic(ctx context.Context, ss *cache.Snapshot, changeFiles []uri.URI) (DiagnosticResult, error) {
 	res := make(DiagnosticResult)
+
 	var errs []error
+
 	for _, impl := range registry {
 		slog.Debug("diagnostic called", "impl", impl.Name())
+
 		diagRes, err := impl.Diagnostic(ctx, ss, changeFiles)
 		if err != nil {
 			errs = append(errs, err)
 		}
+
 		for key, items := range diagRes {
 			res[key] = append(res[key], items...)
 		}
 	}
+
 	if len(errs) > 0 {
 		return res, errors.Join(errs...)
 	}
+
 	return res, nil
 }
 
@@ -64,8 +70,10 @@ func tokenRange(doc *syntax.Document, tok *syntax.Token) protocol.Range {
 	if tok == nil {
 		return protocol.Range{}
 	}
+
 	start := doc.TokenPosition(tokIndex(doc, tok))
 	end := doc.TokenEndPosition(tokIndex(doc, tok))
+
 	return protocol.Range{
 		Start: protocol.Position{
 			Line:      uint32(start.Line - 1),
@@ -81,6 +89,7 @@ func tokenRange(doc *syntax.Document, tok *syntax.Token) protocol.Range {
 // nodeRange converts a node's span to an LSP range.
 func nodeRange(doc *syntax.Document, node syntax.Node) protocol.Range {
 	start, end := doc.Range(node)
+
 	return protocol.Range{
 		Start: protocol.Position{
 			Line:      uint32(start.Line - 1),
@@ -106,5 +115,6 @@ func tokIndex(doc *syntax.Document, tok *syntax.Token) int {
 			return i
 		}
 	}
+
 	return 0
 }

@@ -22,30 +22,39 @@ service Svc { void f() }
 	if len(doc.Includes()) != 1 || doc.Includes()[0].Path.Text != `"a.thrift"` {
 		t.Errorf("Includes = %+v", doc.Includes())
 	}
+
 	if len(doc.CPPIncludes()) != 1 {
 		t.Errorf("CPPIncludes = %d", len(doc.CPPIncludes()))
 	}
+
 	if len(doc.Namespaces()) != 1 {
 		t.Errorf("Namespaces = %d", len(doc.Namespaces()))
 	}
+
 	if len(doc.Consts()) != 1 || doc.Consts()[0].Name.Text != "C" {
 		t.Errorf("Consts = %+v", doc.Consts())
 	}
+
 	if len(doc.Typedefs()) != 1 {
 		t.Errorf("Typedefs = %d", len(doc.Typedefs()))
 	}
+
 	if len(doc.Enums()) != 1 {
 		t.Errorf("Enums = %d", len(doc.Enums()))
 	}
+
 	if len(doc.Structs()) != 1 || doc.Structs()[0].Name.Text != "S" {
 		t.Errorf("Structs = %+v", doc.Structs())
 	}
+
 	if len(doc.Unions()) != 1 {
 		t.Errorf("Unions = %d", len(doc.Unions()))
 	}
+
 	if len(doc.Exceptions()) != 1 || doc.Exceptions()[0].Name.Text != "X" {
 		t.Errorf("Exceptions = %+v", doc.Exceptions())
 	}
+
 	if len(doc.Services()) != 1 {
 		t.Errorf("Services = %d", len(doc.Services()))
 	}
@@ -73,6 +82,7 @@ func TestDocumentRanges(t *testing.T) {
 	if !doc.Contains(s, Position{Line: 2, Col: 7, Offset: 18}) {
 		t.Error("position inside struct should be contained")
 	}
+
 	if doc.Contains(s, Position{Line: 5, Col: 1, Offset: 25}) {
 		t.Error("position outside struct should not be contained")
 	}
@@ -98,6 +108,7 @@ const i32 X = SOME_VALUE
 		if idx < 0 {
 			t.Fatalf("text %q not found in source", text)
 		}
+
 		return doc.TokenPosition(tokIndexAt(doc, idx))
 	}
 
@@ -120,6 +131,7 @@ const i32 X = SOME_VALUE
 			if len(path) == 0 {
 				t.Fatal("empty path")
 			}
+
 			deepest := path[len(path)-1]
 			if got := typeName(deepest); got != tt.want {
 				t.Errorf("deepest node = %s, want %s (path: %v)", got, tt.want, pathNames(path))
@@ -132,6 +144,7 @@ const i32 X = SOME_VALUE
 	if len(path) < 3 {
 		t.Fatalf("path too short: %v", pathNames(path))
 	}
+
 	if _, ok := path[len(path)-2].(*Field); !ok {
 		t.Errorf("parent of field name should be Field: %v", pathNames(path))
 	}
@@ -141,6 +154,7 @@ const i32 X = SOME_VALUE
 	if len(path) < 3 {
 		t.Fatalf("path too short: %v", pathNames(path))
 	}
+
 	if _, ok := path[len(path)-2].(*Struct); !ok {
 		t.Errorf("parent of struct name should be Struct: %v", pathNames(path))
 	}
@@ -150,8 +164,10 @@ const i32 X = SOME_VALUE
 	if idx < 0 {
 		t.Fatal("const not found")
 	}
+
 	pos := doc.TokenPosition(tokIndexAt(doc, idx))
 	pos.Offset -= 1 // the last newline of the blank line before const
+
 	path = doc.SearchNodePathByPosition(pos)
 	if len(path) != 1 { // only the document itself
 		t.Errorf("expected document-only path, got %v", pathNames(path))
@@ -161,11 +177,13 @@ const i32 X = SOME_VALUE
 func tokIndexAt(doc *Document, offset int) int {
 	// Find the last token starting at or before offset.
 	idx := 0
+
 	for i, tok := range doc.Tokens {
 		if tok.Offset <= offset {
 			idx = i
 		}
 	}
+
 	return idx
 }
 
@@ -204,6 +222,7 @@ func typeName(n Node) string {
 	case *CPPInclude:
 		return "*syntax.CPPInclude"
 	}
+
 	return "unknown"
 }
 
@@ -212,6 +231,7 @@ func pathNames(path []Node) []string {
 	for _, n := range path {
 		names = append(names, typeName(n))
 	}
+
 	return names
 }
 
@@ -221,5 +241,6 @@ func indexOf(s, sub string) int {
 			return i
 		}
 	}
+
 	return -1
 }

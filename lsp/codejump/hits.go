@@ -16,5 +16,6 @@ func hits(hits []referenceHit) []protocol.Location {
 	for _, h := range hits {
 		out = append(out, h.loc)
 	}
+
 	return out
 }

@@ -11,6 +11,7 @@ package formatter
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/karitham/thrift-ls/doc"
 	"github.com/karitham/thrift-ls/syntax"
@@ -45,6 +46,88 @@ const (
 	SeparatorNone
 )
 
+// Construct identifies a construct with per-construct options.
+type Construct uint8
+
+const (
+	ConstructStruct Construct = iota
+	ConstructUnion
+	ConstructException
+	ConstructEnum
+	ConstructArguments
+	ConstructThrows
+)
+
+// PerConstruct holds one option value per construct.
+type PerConstruct[T any] struct {
+	Structs    T
+	Unions     T
+	Exceptions T
+	Enums      T
+	Arguments  T
+	Throws     T
+}
+
+// Get returns the value for the construct.
+func (p PerConstruct[T]) Get(c Construct) T {
+	switch c {
+	case ConstructUnion:
+		return p.Unions
+	case ConstructException:
+		return p.Exceptions
+	case ConstructEnum:
+		return p.Enums
+	case ConstructArguments:
+		return p.Arguments
+	case ConstructThrows:
+		return p.Throws
+	}
+
+	return p.Structs
+}
+
+// Set assigns the value for the construct.
+func (p *PerConstruct[T]) Set(c Construct, v T) {
+	switch c {
+	case ConstructUnion:
+		p.Unions = v
+	case ConstructException:
+		p.Exceptions = v
+	case ConstructEnum:
+		p.Enums = v
+	case ConstructArguments:
+		p.Arguments = v
+	case ConstructThrows:
+		p.Throws = v
+	default:
+		p.Structs = v
+	}
+}
+
+// AllConstructs lists every construct, in config order.
+var AllConstructs = []Construct{
+	ConstructStruct, ConstructUnion, ConstructException,
+	ConstructEnum, ConstructArguments, ConstructThrows,
+}
+
+// String returns the config key of the construct.
+func (c Construct) String() string {
+	switch c {
+	case ConstructUnion:
+		return "unions"
+	case ConstructException:
+		return "exceptions"
+	case ConstructEnum:
+		return "enums"
+	case ConstructArguments:
+		return "arguments"
+	case ConstructThrows:
+		return "throws"
+	}
+
+	return "structs"
+}
+
 // Options controls formatting behavior. Zero values mean defaults.
 type Options struct {
 	// PrintWidth is the target line width. Must be positive.
@@ -56,19 +139,12 @@ type Options struct {
 	TabWidth int
 	// Align controls column alignment (default AlignField).
 	Align AlignMode
-	// FieldSeparator controls trailing separators after
-	// struct/union/exception fields and enum values (default
+	// Separator controls trailing separators per construct (default
 	// SeparatorPreserve).
-	FieldSeparator SeparatorMode
-	// FunctionSeparator controls trailing separators after service
-	// arguments and throws entries (default SeparatorPreserve).
-	FunctionSeparator SeparatorMode
-	// BreakStructs forces struct, union, and exception bodies to the
-	// multiline layout, even when they fit on one line.
-	BreakStructs bool
-	// BreakEnums forces enum bodies to the multiline layout, even when
-	// they fit on one line.
-	BreakEnums bool
+	Separator PerConstruct[SeparatorMode]
+	// Break forces the multiline layout per construct, even when the body
+	// fits on one line.
+	Break PerConstruct[bool]
 	// NoTrailingNewline suppresses the final newline that is otherwise
 	// appended to the formatted output.
 	NoTrailingNewline bool
@@ -77,11 +153,18 @@ type Options struct {
 // DefaultOptions returns the default formatting options.
 func DefaultOptions() Options {
 	return Options{
-		PrintWidth:     80,
-		Indent:         "    ",
-		TabWidth:       4,
-		Align:          AlignField,
-		FieldSeparator: SeparatorPreserve,
+		PrintWidth: 80,
+		Indent:     "    ",
+		TabWidth:   4,
+		Align:      AlignField,
+		Separator: PerConstruct[SeparatorMode]{
+			Structs:    SeparatorPreserve,
+			Unions:     SeparatorPreserve,
+			Exceptions: SeparatorPreserve,
+			Enums:      SeparatorPreserve,
+			Arguments:  SeparatorPreserve,
+			Throws:     SeparatorPreserve,
+		},
 	}
 }
 
@@ -91,12 +174,15 @@ func (o Options) normalize() Options {
 	if o.PrintWidth <= 0 {
 		o.PrintWidth = d.PrintWidth
 	}
+
 	if o.Indent == "" {
 		o.Indent = d.Indent
 	}
+
 	if o.TabWidth <= 0 {
 		o.TabWidth = d.TabWidth
 	}
+
 	return o
 }
 
@@ -107,14 +193,27 @@ func Format(d *syntax.Document, o Options) (string, error) {
 	if d == nil {
 		return "", errors.New("formatter: nil document")
 	}
+
 	o = o.normalize()
 
+	return PrintIR(BuildIR(d, o), o)
+}
+
+// BuildIR builds the document IR for the given options. The IR can be
+// inspected with doc.Dump before printing; the printer mutates groups in
+// place, so dump after PrintIR to see the layout decisions.
+func BuildIR(d *syntax.Document, o Options) doc.Doc {
 	f := &formatter{
 		doc:  d,
 		toks: d.Tokens,
 		opts: o,
 	}
-	ir := f.document()
+
+	return f.document()
+}
+
+// PrintIR prints the document IR.
+func PrintIR(ir doc.Doc, o Options) (string, error) {
 	return doc.Print(ir, doc.Options{
 		PrintWidth: o.PrintWidth,
 		Indent:     o.Indent,
@@ -129,6 +228,7 @@ func FormatNode(d *syntax.Document, n syntax.Node, o Options) (string, error) {
 	if d == nil || n == nil {
 		return "", errors.New("formatter: nil document or node")
 	}
+
 	o = o.normalize()
 
 	f := &formatter{
@@ -137,6 +237,7 @@ func FormatNode(d *syntax.Document, n syntax.Node, o Options) (string, error) {
 		opts: o,
 	}
 	ir := f.node(n)
+
 	return doc.Print(ir, doc.Options{
 		PrintWidth: o.PrintWidth,
 		Indent:     o.Indent,
@@ -155,11 +256,179 @@ type formatter struct {
 // id returns a fresh non-zero group id for IfBreak references.
 func (f *formatter) id() int {
 	f.nextID++
+
 	return f.nextID
 }
 
+// token returns the i-th token.
 func (f *formatter) token(i int) syntax.Token {
 	return f.toks[i]
+}
+
+// emitOpts controls token emission.
+type emitOpts struct {
+	leading       bool         // emit the first token's leading trivia
+	trailing      bool         // emit the last token's trailing trivia
+	breakTrailing bool         // line-comment trailing forces groups to break
+	skipText      map[int]bool // tokens whose text and gap are suppressed
+	breakSkip     bool         // hard line before a skipped token whose text
+	// the caller emits (separators)
+	pads   map[int]string // spaces inserted after a token, before its gap
+	prefix string         // spaces emitted before the first token
+}
+
+// emitTokens renders the tokens in [start, end] with their trivia, joined
+// with canonical spacing. The first token's leading and last token's
+// trailing trivia belong to the caller's comment helpers unless the
+// corresponding flag is set. skipText suppresses separator tokens that the
+// structural layout emits itself; pads widen alignment columns.
+func (f *formatter) emitTokens(start, end int, o emitOpts) doc.Doc {
+	var parts []doc.Doc
+	if o.prefix != "" {
+		parts = append(parts, doc.Text(o.prefix))
+	}
+
+	for i := start; i <= end; i++ {
+		tok := f.token(i)
+
+		skipped := o.skipText[i]
+		if i > start {
+			if skipped {
+				// Leading trivia always forces a hard line; a trailing
+				// line comment only when the caller emits the skipped
+				// token's text after it (separators), which would
+				// otherwise be swallowed.
+				if len(tok.Leading) > 0 || o.breakSkip && f.lineAfter(i-1) {
+					parts = append(parts, doc.HardLine)
+				}
+			} else {
+				parts = append(parts, f.tokenGap(f.token(i-1), tok))
+			}
+		}
+
+		if i > start || o.leading {
+			for j, c := range tok.Leading {
+				parts = append(parts, doc.Text(trimComment(c.Text)))
+				// The last comment's line end comes from the caller's
+				// structure for suppressed tokens, unless the caller
+				// emits the token's text after it.
+				if j < len(tok.Leading)-1 || !skipped || o.breakSkip {
+					parts = append(parts, doc.HardLine)
+				}
+			}
+		}
+
+		if !skipped {
+			text := tok.Text
+			if tok.Kind == syntax.TokenAsync {
+				text = "oneway"
+			}
+
+			parts = append(parts, doc.Text(text))
+		}
+
+		if !skipped && o.pads != nil {
+			if pad, ok := o.pads[i]; ok && pad != "" {
+				parts = append(parts, doc.Text(pad))
+			}
+		}
+
+		if i < end || o.trailing {
+			for _, c := range tok.Trailing {
+				parts = append(parts, doc.Text(" "+trimComment(c.Text)))
+				if o.breakTrailing && (c.Kind == syntax.TriviaLineComment || c.Kind == syntax.TriviaAnnotation) {
+					// A line comment must end its line: force the
+					// enclosing groups to break so nothing follows it.
+					parts = append(parts, doc.BreakParent)
+				}
+			}
+		}
+	}
+
+	return doc.Concat(parts)
+}
+
+// tokenGap returns the doc between two adjacent tokens: a line break when
+// the source separated them with a line comment (which would swallow the
+// next token on the same line), a canonical space otherwise.
+func (f *formatter) tokenGap(prev, cur syntax.Token) doc.Doc {
+	for _, c := range prev.Trailing {
+		if c.Kind == syntax.TriviaLineComment || c.Kind == syntax.TriviaAnnotation {
+			return doc.HardLine
+		}
+	}
+
+	if len(cur.Leading) > 0 {
+		return doc.HardLine
+	}
+
+	return doc.Text(rawTokenGap(prev, cur))
+}
+
+// lineAfter reports whether the token ends its line with a line comment or
+// annotation, which forces the next doc onto a new line.
+func (f *formatter) lineAfter(i int) bool {
+	for _, c := range f.token(i).Trailing {
+		if c.Kind == syntax.TriviaLineComment || c.Kind == syntax.TriviaAnnotation {
+			return true
+		}
+	}
+
+	return false
+}
+
+// foldBreak is the foldable gap after an opening token or separating
+// comma: a line in the broken layout, a space (or nothing) flat. A
+// trailing line comment forces a hard line.
+func (f *formatter) foldBreak(i int, flat string) doc.Doc {
+	if f.lineAfter(i) {
+		return doc.HardLine
+	}
+
+	return doc.IfBreak(doc.Line, doc.Text(flat))
+}
+
+// commaSep renders a separating comma with its trivia: a hard line when
+// the previous item ends its line with a comment (which would swallow the
+// comma), then the comma and the foldable gap after it.
+func (f *formatter) commaSep(comma int) []doc.Doc {
+	parts := []doc.Doc{}
+	if f.lineAfter(comma-1) || len(f.token(comma).Leading) > 0 {
+		parts = append(parts, doc.HardLine)
+	}
+
+	parts = append(parts, f.emitTokens(comma, comma, emitOpts{leading: true, trailing: true}))
+	parts = append(parts, f.foldBreak(comma, " "))
+
+	return parts
+}
+
+// rawTokenGap returns the canonical text between two adjacent tokens:
+// opening and closing punctuation attaches to its neighbor, separators get
+// a space after them, everything else is space-separated so tokens cannot
+// merge ("const list" must not become "constlist").
+func rawTokenGap(prev, cur syntax.Token) string {
+	switch cur.Kind {
+	case syntax.TokenRBrace, syntax.TokenRParen, syntax.TokenRBracket,
+		syntax.TokenGt, syntax.TokenComma, syntax.TokenSemicolon, syntax.TokenColon:
+		return ""
+	}
+
+	switch prev.Kind {
+	case syntax.TokenLBrace, syntax.TokenLParen, syntax.TokenLBracket,
+		syntax.TokenLt, syntax.TokenAmp:
+		return ""
+	}
+
+	switch {
+	case cur.Kind == syntax.TokenLt && (prev.Kind == syntax.TokenMap || prev.Kind == syntax.TokenList || prev.Kind == syntax.TokenSet):
+		return "" // map<, list<, set<
+	case prev.Kind == syntax.TokenComma, prev.Kind == syntax.TokenSemicolon,
+		prev.Kind == syntax.TokenColon, prev.Kind == syntax.TokenEqual:
+		return " "
+	}
+
+	return " "
 }
 
 // blankBefore returns the number of blank lines before the node's first
@@ -178,33 +447,72 @@ func (f *formatter) leadingComments(n syntax.Node) []doc.Doc {
 	if len(tok.Leading) == 0 {
 		return nil
 	}
+
 	var parts []doc.Doc
+
 	prevBlank := 0
 	for _, c := range tok.Leading {
 		parts = append(parts, f.blankLineDocs(c.BlankLinesBefore-prevBlank, doc.HardLine)...)
 		prevBlank = c.BlankLinesBefore
-		parts = append(parts, doc.Text(c.Text), doc.HardLine)
+		parts = append(parts, doc.Text(trimComment(c.Text)), doc.HardLine)
 	}
+
 	parts = append(parts, f.blankLineDocs(tok.BlankLinesBefore-prevBlank, doc.HardLine)...)
+
 	return parts
 }
 
 // trailingComments returns the comments attached after the node's last token
-// on the same line, as line-suffix docs. The break parent forces the
-// enclosing group to break so the comment stays on the node's own line.
-func (f *formatter) trailingComments(n syntax.Node) []doc.Doc {
+// on the same line. Block comments render as line-suffix docs; line comments
+// and annotations render inline with a break parent, since a line suffix
+// after them would merge into the comment's text. When the content before
+// the separator already ends with a line comment, these comments cannot
+// share the line and get their own lines instead.
+func (f *formatter) trailingComments(n syntax.Node, sepEmitted bool) []doc.Doc {
 	var parts []doc.Doc
-	for _, c := range f.token(n.TokEnd()).Trailing {
-		parts = append(parts, doc.LineSuffix(doc.Text(" "+c.Text)), doc.BreakParent)
+	// Comments attached to a separator share the separator's own line,
+	// unless the separator is not emitted (the mode drops it): then a line
+	// comment before it would swallow them, and they need their own lines.
+	last := f.token(n.TokEnd())
+
+	ownLine := !sepEmitted && (last.Kind == syntax.TokenComma || last.Kind == syntax.TokenSemicolon) &&
+		(f.lineAfter(n.TokEnd()-1) || leadingLineComment(last))
+	for _, c := range last.Trailing {
+		line := c.Kind == syntax.TriviaLineComment || c.Kind == syntax.TriviaAnnotation
+		if ownLine {
+			parts = append(parts, doc.HardLine, doc.Text(trimComment(c.Text)), doc.BreakParent)
+
+			continue
+		}
+
+		if line {
+			parts = append(parts, doc.Text(" "+trimComment(c.Text)), doc.BreakParent)
+		} else {
+			parts = append(parts, doc.LineSuffix(doc.Text(" "+trimComment(c.Text))), doc.BreakParent)
+		}
 	}
+
 	return parts
+}
+
+// leadingLineComment reports whether the token's leading trivia contains a
+// line comment or annotation, which ends the previous line.
+func leadingLineComment(tok syntax.Token) bool {
+	for _, c := range tok.Leading {
+		if c.Kind == syntax.TriviaLineComment || c.Kind == syntax.TriviaAnnotation {
+			return true
+		}
+	}
+
+	return false
 }
 
 // node assembles a top-level node: its leading comments, its formatted
 // body, and its trailing comments.
 func (f *formatter) node(n syntax.Node) doc.Doc {
 	parts := append(f.leadingComments(n), f.nodeBody(n))
-	parts = append(parts, f.trailingComments(n)...)
+	parts = append(parts, f.trailingComments(n, true)...)
+
 	return doc.Concat(parts)
 }
 
@@ -236,25 +544,37 @@ func (f *formatter) nodeBody(n syntax.Node) doc.Doc {
 // lines, blank lines preserved, and trailing comments.
 func (f *formatter) document() doc.Doc {
 	var parts []doc.Doc
+
 	for i, n := range f.doc.Nodes {
 		if i > 0 {
 			parts = append(parts, doc.HardLine)
 			parts = append(parts, f.blankLines(n, doc.HardLine)...)
+		} else if lead := f.token(n.TokStart()).Leading; len(lead) > 0 && lead[0].BlankLinesBefore > 0 {
+			// At file start the leading comments carry their blanks without
+			// a separator line, so N blanks would round-trip as N-1. The
+			// extra line keeps the count canonical: N blanks are N+1
+			// newlines.
+			parts = append(parts, doc.HardLine)
 		}
+
 		parts = append(parts, f.node(n))
 	}
 
-	// Comments at the end of the file attach to the EOF token.
+	// Comments at the end of the file attach to the EOF token. Like the
+	// first node's leading comments, a comment run at file start (no nodes)
+	// needs a separator line before its blanks to round-trip the count.
 	eof := f.toks[len(f.toks)-1]
 	if len(eof.Leading) > 0 {
-		if len(f.doc.Nodes) > 0 {
+		if len(f.doc.Nodes) > 0 || eof.Leading[0].BlankLinesBefore > 0 {
 			parts = append(parts, doc.HardLine)
 		}
+
 		prevBlank := 0
 		for i, c := range eof.Leading {
 			parts = append(parts, f.blankLineDocs(c.BlankLinesBefore-prevBlank, doc.HardLine)...)
 			prevBlank = c.BlankLinesBefore
-			parts = append(parts, doc.Text(c.Text))
+
+			parts = append(parts, doc.Text(trimComment(c.Text)))
 			if i < len(eof.Leading)-1 {
 				parts = append(parts, doc.HardLine)
 			}
@@ -264,73 +584,190 @@ func (f *formatter) document() doc.Doc {
 	if !f.opts.NoTrailingNewline {
 		parts = append(parts, doc.HardLine)
 	}
+
 	return doc.Concat(parts)
 }
 
 // --- headers ---------------------------------------------------------------
 
 func (f *formatter) include(v *syntax.Include) doc.Doc {
-	return doc.Concat{doc.Text("include "), doc.Text(v.Path.Text)}
+	return f.emitTokens(v.TokStart(), v.TokEnd(), emitOpts{})
 }
 
 func (f *formatter) cppInclude(v *syntax.CPPInclude) doc.Doc {
-	return doc.Concat{doc.Text("cpp_include "), doc.Text(v.Path.Text)}
+	return f.emitTokens(v.TokStart(), v.TokEnd(), emitOpts{})
 }
 
 func (f *formatter) namespace(v *syntax.Namespace) doc.Doc {
-	parts := []doc.Doc{
-		doc.Text("namespace "),
-		doc.Text(v.Scope.Text),
-		doc.Text(" "),
-		doc.Text(v.Name.Text),
+	end := v.TokEnd()
+	if v.Annotations != nil {
+		end = v.Annotations.TokStart() - 1
 	}
-	parts = append(parts, f.annotationsDoc(v.Annotations))
+
+	o := emitOpts{}
+	if v.Annotations != nil {
+		o.trailing = true
+	}
+
+	parts := []doc.Doc{f.emitTokens(v.TokStart(), end, o)}
+	if v.Annotations != nil {
+		parts = append(parts, f.breakBeforeAnnotations(end))
+	}
+
+	parts = append(parts, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
+	parts = append(parts, f.afterAnnotations(v.Annotations, v.TokEnd()))
+
 	return doc.Concat(parts)
 }
 
 func (f *formatter) typedef(v *syntax.Typedef) doc.Doc {
-	parts := []doc.Doc{
-		doc.Text("typedef "),
-		f.fieldType(v.Type),
-		doc.Text(" "),
-		doc.Text(v.Name.Text),
+	end := v.TokEnd()
+	if v.Annotations != nil {
+		end = v.Annotations.TokStart() - 1
 	}
-	parts = append(parts, f.annotationsDoc(v.Annotations))
+
+	o := emitOpts{}
+	if v.Annotations != nil {
+		o.trailing = true
+	}
+
+	parts := []doc.Doc{f.emitTokens(v.TokStart(), end, o)}
+	if v.Annotations != nil {
+		parts = append(parts, f.breakBeforeAnnotations(end))
+	}
+
+	parts = append(parts, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
+	parts = append(parts, f.afterAnnotations(v.Annotations, v.TokEnd()))
+
 	return doc.Concat(parts)
 }
 
 func (f *formatter) constant(v *syntax.Const) doc.Doc {
-	return doc.Concat{
-		doc.Text("const "),
-		f.fieldType(v.Type),
-		doc.Text(" "),
-		doc.Text(v.Name.Text),
-		doc.Text(" = "),
-		f.constValue(v.Value),
+	value := v.Value
+	if value == nil {
+		return f.emitTokens(v.TokStart(), v.TokEnd(), emitOpts{})
 	}
+
+	eq := value.TokStart() - 1
+	gap := f.tokenGap(f.token(eq), f.token(value.TokStart()))
+
+	parts := []doc.Doc{
+		f.emitTokens(v.TokStart(), eq, emitOpts{trailing: true}),
+		gap,
+		f.constValue(value, value.TokEnd() == v.TokEnd()),
+	}
+	if value.TokEnd() < v.TokEnd() {
+		// Stray tokens after the value (lenient sources): preserve them
+		// and their trivia, with a line break after the value's close.
+		stray := f.emitTokens(value.TokEnd()+1, v.TokEnd(), emitOpts{leading: true})
+		if f.lineAfter(value.TokEnd()) || len(f.token(value.TokEnd()+1).Leading) > 0 {
+			stray = doc.Concat{doc.HardLine, stray}
+		}
+
+		parts = append(parts, stray)
+	}
+
+	return doc.Concat(parts)
 }
 
 // --- annotations -----------------------------------------------------------
 
+// breakBeforeAnnotations returns a hard line when the token at idx ends
+// its line with a comment, or the annotations' first token carries leading
+// trivia, so neither gets swallowed by the other.
+func (f *formatter) breakBeforeAnnotations(idx int) doc.Doc {
+	if f.lineAfter(idx) || len(f.token(idx+1).Leading) > 0 {
+		return doc.HardLine
+	}
+
+	return doc.Concat{}
+}
+
+// afterAnnotations renders any tokens between the annotations and the
+// node's end — stray separators lenient sources may leave — preserving
+// their leading trivia and forcing a line break after the annotations'
+// close when it ends its line with a comment.
+func (f *formatter) afterAnnotations(a *syntax.Annotations, end int) doc.Doc {
+	if a == nil || a.TokEnd() >= end {
+		return doc.Concat{}
+	}
+
+	parts := []doc.Doc{}
+	if f.lineAfter(a.TokEnd()) || len(f.token(a.TokEnd()+1).Leading) > 0 {
+		parts = append(parts, doc.HardLine)
+	}
+
+	parts = append(parts, f.emitTokens(a.TokEnd()+1, end, emitOpts{leading: true}))
+
+	return doc.Concat(parts)
+}
+
 // annotationsDoc returns an annotation group, or an empty doc when absent.
-func (f *formatter) annotationsDoc(a *syntax.Annotations) doc.Doc {
+// The group folds when it does not fit; the items and their separating
+// commas render as token runs, so trivia inside the parens is preserved.
+func (f *formatter) annotationsDoc(a *syntax.Annotations, isLast bool) doc.Doc {
 	if a == nil {
 		return doc.Concat{}
 	}
-	items := make([]doc.Doc, 0, len(a.Items))
-	for _, item := range a.Items {
-		var parts []doc.Doc
-		parts = append(parts, doc.Text(item.Name.Text))
-		if item.Value != nil {
-			parts = append(parts, doc.Text(" = "), doc.Text(item.Value.Text))
+
+	open, close := a.TokStart(), a.TokEnd()
+	if len(a.Items) == 0 {
+		closeDoc := f.emitTokens(close, close, emitOpts{leading: true, trailing: !isLast})
+		if f.lineAfter(open) || len(f.token(close).Leading) > 0 {
+			closeDoc = doc.Concat{doc.HardLine, closeDoc}
 		}
-		items = append(items, doc.Concat(parts))
+
+		return doc.Concat{
+			doc.Text(" "),
+			f.emitTokens(open, open, emitOpts{leading: true, trailing: true}),
+			closeDoc,
+		}
 	}
+
+	all := emitOpts{leading: true, trailing: true}
+	middle := make([]doc.Doc, 0, len(a.Items)*2)
+	last := open
+
+	for i, item := range a.Items {
+		if i > 0 {
+			prev := a.Items[i-1]
+			if prev.Sep != 0 {
+				middle = append(middle, f.commaSep(prev.TokEnd())...)
+			} else {
+				// Lenient sources may omit separators; keep the items
+				// apart so their tokens cannot merge.
+				middle = append(middle, f.foldBreak(prev.TokEnd(), " "))
+			}
+		}
+
+		end := item.TokEnd()
+		if item.Sep != 0 {
+			end--
+		}
+
+		middle = append(middle, f.emitTokens(item.TokStart(), end, all))
+		last = end
+	}
+	// A trailing comma after the last item (which may carry comments) is
+	// not between two items, so it is emitted here.
+	if lastItem := a.Items[len(a.Items)-1]; lastItem.Sep != 0 {
+		middle = append(middle, f.commaSep(lastItem.TokEnd())...)
+		last = lastItem.TokEnd()
+	}
+
 	group := doc.Group(doc.Concat{
-		doc.Text("("),
-		doc.Indent(doc.Concat{doc.SoftLine, doc.Join(doc.Concat{doc.Text(","), doc.Line}, items)}),
-		doc.SoftLine,
-		doc.Text(")"),
+		f.emitTokens(open, open, all),
+		doc.Indent(doc.Concat{f.foldBreak(open, ""), doc.Concat(middle)}),
+		f.foldBreak(last, ""),
+		f.emitTokens(close, close, emitOpts{leading: true, trailing: !isLast}),
 	})
+
 	return doc.Concat{doc.Text(" "), group}
+}
+
+// trimComment returns the comment text without trailing whitespace, which
+// the printer would trim at line ends anyway; emitting it untrimmed would
+// skew the width measurement of enclosing groups.
+func trimComment(text string) string {
+	return strings.TrimRight(text, " \t")
 }

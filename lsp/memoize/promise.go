@@ -86,6 +86,7 @@ func NewPromise(debug string, function Function) *Promise {
 	if function == nil {
 		panic("nil function")
 	}
+
 	return &Promise{
 		debug:    debug,
 		function: function,
@@ -107,9 +108,11 @@ const (
 func (p *Promise) Cached() any {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	if p.state == stateCompleted {
 		return p.value
 	}
+
 	return nil
 }
 
@@ -128,6 +131,7 @@ func (p *Promise) Get(ctx context.Context, arg any) (any, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
+
 	p.mu.Lock()
 	switch p.state {
 	case stateIdle:
@@ -136,6 +140,7 @@ func (p *Promise) Get(ctx context.Context, arg any) (any, error) {
 		return p.wait(ctx)
 	case stateCompleted:
 		defer p.mu.Unlock()
+
 		return p.value, nil
 	default:
 		panic("unknown state")
@@ -164,6 +169,7 @@ func (p *Promise) run(ctx context.Context, arg any) (any, error) {
 			if childCtx.Err() != nil {
 				return
 			}
+
 			v := function(childCtx, arg)
 			if childCtx.Err() != nil {
 				return
@@ -199,13 +205,16 @@ func (p *Promise) wait(ctx context.Context) (any, error) {
 	case <-done:
 		p.mu.Lock()
 		defer p.mu.Unlock()
+
 		if p.state == stateCompleted {
 			return p.value, nil
 		}
+
 		return nil, nil
 	case <-ctx.Done():
 		p.mu.Lock()
 		defer p.mu.Unlock()
+
 		p.waiters--
 		if p.waiters == 0 && p.state == stateRunning {
 			p.cancel()
@@ -214,6 +223,7 @@ func (p *Promise) wait(ctx context.Context) (any, error) {
 			p.done = nil
 			p.cancel = nil
 		}
+
 		return nil, ctx.Err()
 	}
 }

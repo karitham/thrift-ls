@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 )
 
@@ -13,6 +14,7 @@ func Parse(src []byte) (*Document, []Error) {
 	doc, parseErrs := ParseTokens(toks)
 	errs := append(lexErrs, parseErrs...)
 	sort.SliceStable(errs, func(i, j int) bool { return errs[i].Offset < errs[j].Offset })
+
 	return doc, errs
 }
 
@@ -20,6 +22,7 @@ func Parse(src []byte) (*Document, []Error) {
 // reparse a file from its cached tokens without re-lexing.
 func ParseTokens(toks []Token) (*Document, []Error) {
 	p := &parser{toks: toks}
+
 	return p.parseDocument(), p.errs
 }
 
@@ -38,6 +41,7 @@ func (p *parser) at(k TokenKind) bool { return p.cur().Kind == k }
 func (p *parser) advance() *Token {
 	t := &p.toks[p.pos]
 	p.pos++
+
 	return t
 }
 
@@ -46,6 +50,7 @@ func (p *parser) accept(k TokenKind) *Token {
 	if p.at(k) {
 		return p.advance()
 	}
+
 	return nil
 }
 
@@ -54,20 +59,22 @@ func (p *parser) accept(k TokenKind) *Token {
 func (p *parser) expect(k TokenKind, what string) bool {
 	if p.at(k) {
 		p.advance()
+
 		return true
 	}
+
 	p.errorfCur("expected %s, got %q", what, p.cur().Text)
+
 	return false
 }
 
 // synchronizeTo skips tokens until one of the given kinds or EOF.
 func (p *parser) synchronizeTo(kinds ...TokenKind) {
 	for !p.at(TokenEOF) {
-		for _, k := range kinds {
-			if p.cur().Kind == k {
-				return
-			}
+		if slices.Contains(kinds, p.cur().Kind) {
+			return
 		}
+
 		p.advance()
 	}
 }
@@ -147,51 +154,67 @@ func (p *parser) parseDocument() *Document {
 func (p *parser) parseInclude() *Include {
 	n := &Include{nodeBase: nodeBase{first: p.pos}}
 	p.advance() // include
+
 	if !p.at(TokenStringLiteral) {
 		p.errorfCur("expected include path string, got %q", p.cur().Text)
+
 		if !p.at(TokenEOF) {
 			p.advance() // consume the offending token so the top level can continue
 		}
+
 		return nil
 	}
+
 	n.Path = p.advance()
 	n.last = p.pos - 1
+
 	return n
 }
 
 func (p *parser) parseCPPInclude() *CPPInclude {
 	n := &CPPInclude{nodeBase: nodeBase{first: p.pos}}
 	p.advance() // cpp_include
+
 	if !p.at(TokenStringLiteral) {
 		p.errorfCur("expected cpp_include path string, got %q", p.cur().Text)
+
 		if !p.at(TokenEOF) {
 			p.advance() // consume the offending token so the top level can continue
 		}
+
 		return nil
 	}
+
 	n.Path = p.advance()
 	n.last = p.pos - 1
+
 	return n
 }
 
 func (p *parser) parseNamespace() *Namespace {
 	n := &Namespace{nodeBase: nodeBase{first: p.pos}}
 	p.advance() // namespace
+
 	switch {
 	case p.at(TokenIdentifier), p.at(TokenStar):
 		n.Scope = p.advance()
 	default:
 		p.errorfCur("expected namespace scope, got %q", p.cur().Text)
 		p.synchronizeTo(TokenEOF)
+
 		return nil
 	}
+
 	n.Name = p.expectIdentifier("namespace name")
 	if n.Name == nil {
 		p.synchronizeTo(TokenEOF)
+
 		return nil
 	}
+
 	n.Annotations = p.parseAnnotationsIfPresent()
 	n.last = p.pos - 1
+
 	return n
 }
 
@@ -200,70 +223,94 @@ func (p *parser) parseNamespace() *Namespace {
 func (p *parser) parseConst() *Const {
 	n := &Const{nodeBase: nodeBase{first: p.pos}}
 	p.advance() // const
+
 	n.Type = p.parseFieldType()
 	if n.Type == nil {
 		p.synchronizeTo(TokenEOF)
+
 		return nil
 	}
+
 	n.Name = p.expectIdentifier("constant name")
 	if n.Name == nil {
 		p.synchronizeTo(TokenEOF)
+
 		return nil
 	}
+
 	if !p.expect(TokenEqual, "'='") {
 		p.synchronizeTo(TokenEOF)
+
 		return nil
 	}
+
 	n.Value = p.parseConstValue()
 	if n.Value == nil {
 		p.synchronizeTo(TokenEOF)
+
 		return nil
 	}
+
 	if sep := p.acceptSeparator(); sep != 0 {
 		n.Sep = sep
 	}
+
 	n.last = p.pos - 1
+
 	return n
 }
 
 func (p *parser) parseTypedef() *Typedef {
 	n := &Typedef{nodeBase: nodeBase{first: p.pos}}
 	p.advance() // typedef
+
 	n.Type = p.parseFieldType()
 	if n.Type == nil {
 		p.synchronizeTo(TokenEOF)
+
 		return nil
 	}
+
 	n.Name = p.expectIdentifier("typedef name")
 	if n.Name == nil {
 		p.synchronizeTo(TokenEOF)
+
 		return nil
 	}
+
 	n.Annotations = p.parseAnnotationsIfPresent()
 	if sep := p.acceptSeparator(); sep != 0 {
 		n.Sep = sep
 	}
+
 	n.last = p.pos - 1
+
 	return n
 }
 
 func (p *parser) parseEnum() *Enum {
 	n := &Enum{nodeBase: nodeBase{first: p.pos}}
 	p.advance() // enum
+
 	n.Name = p.expectIdentifier("enum name")
 	if n.Name == nil {
 		p.synchronizeTo(TokenEOF)
+
 		return nil
 	}
+
 	if p.accept(TokenLBrace) != nil {
 		for !p.at(TokenRBrace) && !p.at(TokenEOF) {
 			v := p.parseEnumValue()
 			if v == nil {
 				p.synchronizeTo(TokenRBrace)
+
 				continue
 			}
+
 			n.Values = append(n.Values, v)
 		}
+
 		if !p.at(TokenRBrace) {
 			p.errorfCur("expected '}' to close enum, got %q", p.cur().Text)
 		} else {
@@ -272,42 +319,54 @@ func (p *parser) parseEnum() *Enum {
 	} else {
 		p.errorfCur("expected '{' after enum name, got %q", p.cur().Text)
 	}
+
 	n.Annotations = p.parseAnnotationsIfPresent()
 	n.last = p.pos - 1
+
 	return n
 }
 
 func (p *parser) parseEnumValue() *EnumValue {
 	if !p.at(TokenIdentifier) {
 		p.errorfCur("expected enum value name, got %q", p.cur().Text)
+
 		return nil
 	}
+
 	v := &EnumValue{nodeBase: nodeBase{first: p.pos}}
+
 	v.Name = p.identifier()
 	if p.at(TokenEqual) {
 		p.advance()
+
 		if !p.at(TokenIntConstant) {
 			p.errorfCur("expected integer enum value, got %q", p.cur().Text)
 		} else {
 			v.Value = p.advance()
 		}
 	}
+
 	v.Annotations = p.parseAnnotationsIfPresent()
 	if sep := p.acceptSeparator(); sep != 0 {
 		v.Sep = sep
 	}
+
 	v.last = p.pos - 1
+
 	return v
 }
 
 func (p *parser) parseStruct() *Struct {
 	n := &Struct{nodeBase: nodeBase{first: p.pos}, Kind: StructKind(p.cur().Kind)}
 	p.advance() // struct | union | exception
+
 	n.Name = p.expectIdentifier("struct name")
 	if n.Name == nil {
 		p.synchronizeTo(TokenEOF)
+
 		return nil
 	}
+
 	if p.accept(TokenLBrace) != nil {
 		n.Fields = p.parseFieldList(TokenRBrace)
 		if !p.at(TokenRBrace) {
@@ -318,38 +377,49 @@ func (p *parser) parseStruct() *Struct {
 	} else {
 		p.errorfCur("expected '{' after struct name, got %q", p.cur().Text)
 	}
+
 	n.Annotations = p.parseAnnotationsIfPresent()
 	n.last = p.pos - 1
+
 	return n
 }
 
 func (p *parser) parseService() *Service {
 	n := &Service{nodeBase: nodeBase{first: p.pos}}
 	p.advance() // service
+
 	n.Name = p.expectIdentifier("service name")
 	if n.Name == nil {
 		p.synchronizeTo(TokenEOF)
+
 		return nil
 	}
+
 	if p.at(TokenExtends) {
 		p.advance()
+
 		n.Extends = p.expectIdentifier("base service name")
 		if n.Extends == nil {
 			p.synchronizeTo(TokenLBrace, TokenEOF)
+
 			if !p.at(TokenLBrace) {
 				return nil
 			}
 		}
 	}
+
 	if p.accept(TokenLBrace) != nil {
 		for !p.at(TokenRBrace) && !p.at(TokenEOF) {
 			f := p.parseFunction()
 			if f == nil {
 				p.synchronizeTo(TokenRBrace)
+
 				continue
 			}
+
 			n.Functions = append(n.Functions, f)
 		}
+
 		if !p.at(TokenRBrace) {
 			p.errorfCur("expected '}' to close service, got %q", p.cur().Text)
 		} else {
@@ -358,8 +428,10 @@ func (p *parser) parseService() *Service {
 	} else {
 		p.errorfCur("expected '{' after service name, got %q", p.cur().Text)
 	}
+
 	n.Annotations = p.parseAnnotationsIfPresent()
 	n.last = p.pos - 1
+
 	return n
 }
 
@@ -380,6 +452,7 @@ func (p *parser) parseFunction() *Function {
 		f.Type = p.parseFieldType()
 		if f.Type == nil {
 			p.synchronizeTo(TokenLParen, TokenEOF)
+
 			return nil
 		}
 	}
@@ -387,13 +460,16 @@ func (p *parser) parseFunction() *Function {
 	f.Name = p.expectIdentifier("function name")
 	if f.Name == nil {
 		p.synchronizeTo(TokenLParen, TokenEOF)
+
 		return nil
 	}
 
 	if !p.expect(TokenLParen, "'('") {
 		p.synchronizeTo(TokenEOF)
+
 		return nil
 	}
+
 	f.Args = p.parseFieldList(TokenRParen)
 	if !p.at(TokenRParen) {
 		p.errorfCur("expected ')' to close arguments, got %q", p.cur().Text)
@@ -403,17 +479,22 @@ func (p *parser) parseFunction() *Function {
 
 	if p.at(TokenThrows) {
 		p.advance()
+
 		if !p.expect(TokenLParen, "'(' after throws") {
 			p.synchronizeTo(TokenEOF)
+
 			return nil
 		}
+
 		f.Throws = &Throws{nodeBase: nodeBase{first: p.pos - 1}}
+
 		f.Throws.Fields = p.parseFieldList(TokenRParen)
 		if !p.at(TokenRParen) {
 			p.errorfCur("expected ')' to close throws, got %q", p.cur().Text)
 		} else {
 			p.advance()
 		}
+
 		f.Throws.last = p.pos - 1
 	}
 
@@ -421,7 +502,9 @@ func (p *parser) parseFunction() *Function {
 	if sep := p.acceptSeparator(); sep != 0 {
 		f.Sep = sep
 	}
+
 	f.last = p.pos - 1
+
 	return f
 }
 
@@ -431,17 +514,22 @@ func (p *parser) parseFunction() *Function {
 // struct bodies, function arguments, and throws clauses.
 func (p *parser) parseFieldList(term TokenKind) []*Field {
 	var fields []*Field
+
 	for !p.at(term) && !p.at(TokenEOF) {
 		f, ok := p.parseField()
 		if !ok {
 			p.synchronizeTo(TokenComma, TokenSemicolon, term)
+
 			if !p.at(term) && !p.at(TokenEOF) {
 				p.advance() // consume the stray separator, if any
 			}
+
 			continue
 		}
+
 		fields = append(fields, f)
 	}
+
 	return fields
 }
 
@@ -452,6 +540,7 @@ func (p *parser) parseField() (*Field, bool) {
 		f.FieldID = p.advance()
 		if !p.expect(TokenColon, "':' after field id") {
 			p.synchronizeTo(TokenComma, TokenSemicolon, TokenRBrace, TokenRParen)
+
 			return f, false
 		}
 	}
@@ -464,6 +553,7 @@ func (p *parser) parseField() (*Field, bool) {
 	f.Type = p.parseFieldType()
 	if f.Type == nil {
 		p.synchronizeTo(TokenComma, TokenSemicolon, TokenRBrace, TokenRParen)
+
 		return f, false
 	}
 
@@ -480,14 +570,17 @@ func (p *parser) parseField() (*Field, bool) {
 	} else {
 		p.errorfCur("expected field name, got %q", p.cur().Text)
 		p.synchronizeTo(TokenComma, TokenSemicolon, TokenRBrace, TokenRParen)
+
 		return f, false
 	}
 
 	if p.at(TokenEqual) {
 		p.advance()
+
 		f.Value = p.parseConstValue()
 		if f.Value == nil {
 			p.synchronizeTo(TokenComma, TokenSemicolon, TokenRBrace, TokenRParen)
+
 			return f, false
 		}
 	}
@@ -496,7 +589,9 @@ func (p *parser) parseField() (*Field, bool) {
 	if sep := p.acceptSeparator(); sep != 0 {
 		f.Sep = sep
 	}
+
 	f.last = p.pos - 1
+
 	return f, true
 }
 
@@ -515,10 +610,12 @@ func (p *parser) parseFieldType() *FieldType {
 		case TokenSet:
 			t.Kind = TypeSet
 		}
+
 		p.advance()
 
 		if p.at(TokenCPPType) {
 			p.advance()
+
 			if !p.at(TokenStringLiteral) {
 				p.errorfCur("expected string literal after cpp_type, got %q", p.cur().Text)
 			} else {
@@ -528,6 +625,7 @@ func (p *parser) parseFieldType() *FieldType {
 
 		if !p.expect(TokenLt, "'<' to open container type") {
 			p.synchronizeTo(TokenComma, TokenSemicolon, TokenRBrace, TokenRParen)
+
 			return nil
 		}
 
@@ -536,6 +634,7 @@ func (p *parser) parseFieldType() *FieldType {
 			if t.KeyType == nil {
 				p.synchronizeTo(TokenComma, TokenGt)
 			}
+
 			if p.accept(TokenComma) != nil {
 				t.ValueType = p.parseFieldType()
 				if t.ValueType == nil {
@@ -543,6 +642,7 @@ func (p *parser) parseFieldType() *FieldType {
 				}
 			} else {
 				p.errorfCur("expected ',' and a value type for map, got %q", p.cur().Text)
+
 				if !p.at(TokenGt) {
 					p.synchronizeTo(TokenGt)
 				}
@@ -556,6 +656,7 @@ func (p *parser) parseFieldType() *FieldType {
 
 		if !p.expect(TokenGt, "'>' to close container type") {
 			p.synchronizeTo(TokenComma, TokenSemicolon, TokenRBrace, TokenRParen)
+
 			return nil
 		}
 
@@ -566,8 +667,10 @@ func (p *parser) parseFieldType() *FieldType {
 	default:
 		if !isBaseType(p.cur().Kind) {
 			p.errorfCur("expected type, got %q", p.cur().Text)
+
 			return nil
 		}
+
 		t.Kind = TypeBase
 		t.Base = p.cur().Kind
 		p.deprecationWarnings(p.cur())
@@ -578,7 +681,9 @@ func (p *parser) parseFieldType() *FieldType {
 	if t.Kind != TypeIdent {
 		t.Annotations = p.parseAnnotationsIfPresent()
 	}
+
 	t.last = p.pos - 1
+
 	return t
 }
 
@@ -597,6 +702,7 @@ func isBaseType(k TokenKind) bool {
 		TokenDouble, TokenString, TokenBinary, TokenSlist, TokenUUID:
 		return true
 	}
+
 	return false
 }
 
@@ -624,19 +730,26 @@ func (p *parser) parseConstValue() *ConstValue {
 
 	case TokenLBracket:
 		v.Kind = ValueList
+
 		p.advance()
+
 		for !p.at(TokenRBracket) && !p.at(TokenEOF) {
 			item := p.parseConstValue()
 			if item == nil {
 				p.synchronizeTo(TokenComma, TokenSemicolon, TokenRBracket)
+
 				if !p.at(TokenRBracket) && !p.at(TokenEOF) {
 					p.advance() // consume the stray separator
 				}
+
 				continue
 			}
+
 			v.List = append(v.List, item)
+
 			p.acceptSeparator()
 		}
+
 		if !p.at(TokenRBracket) {
 			p.errorfCur("expected ']' to close list constant, got %q", p.cur().Text)
 		} else {
@@ -645,34 +758,47 @@ func (p *parser) parseConstValue() *ConstValue {
 
 	case TokenLBrace:
 		v.Kind = ValueMap
+
 		p.advance()
+
 		for !p.at(TokenRBrace) && !p.at(TokenEOF) {
 			key := p.parseConstValue()
 			if key == nil {
 				p.synchronizeTo(TokenComma, TokenSemicolon, TokenRBrace)
+
 				if !p.at(TokenRBrace) && !p.at(TokenEOF) {
 					p.advance()
 				}
+
 				continue
 			}
+
 			if !p.expect(TokenColon, "':' between map key and value") {
 				p.synchronizeTo(TokenComma, TokenSemicolon, TokenRBrace)
+
 				if !p.at(TokenRBrace) && !p.at(TokenEOF) {
 					p.advance()
 				}
+
 				continue
 			}
+
 			value := p.parseConstValue()
 			if value == nil {
 				p.synchronizeTo(TokenComma, TokenSemicolon, TokenRBrace)
+
 				if !p.at(TokenRBrace) && !p.at(TokenEOF) {
 					p.advance()
 				}
+
 				continue
 			}
+
 			v.Map = append(v.Map, ConstMapEntry{Key: key, Value: value})
+
 			p.acceptSeparator()
 		}
+
 		if !p.at(TokenRBrace) {
 			p.errorfCur("expected '}' to close map constant, got %q", p.cur().Text)
 		} else {
@@ -681,10 +807,12 @@ func (p *parser) parseConstValue() *ConstValue {
 
 	default:
 		p.errorfCur("expected constant value, got %q", p.cur().Text)
+
 		return nil
 	}
 
 	v.last = p.pos - 1
+
 	return v
 }
 
@@ -694,6 +822,7 @@ func (p *parser) parseAnnotationsIfPresent() *Annotations {
 	if !p.at(TokenLParen) {
 		return nil
 	}
+
 	return p.parseAnnotations()
 }
 
@@ -709,15 +838,20 @@ func (p *parser) parseAnnotations() *Annotations {
 		if !p.at(TokenIdentifier) {
 			p.errorfCur("expected annotation name, got %q", p.cur().Text)
 			p.synchronizeTo(TokenComma, TokenSemicolon, TokenRParen)
+
 			if !p.at(TokenRParen) && !p.at(TokenEOF) {
 				p.advance()
 			}
+
 			continue
 		}
+
 		item := &Annotation{nodeBase: nodeBase{first: p.pos}}
+
 		item.Name = p.identifier()
 		if p.at(TokenEqual) {
 			p.advance()
+
 			if !p.at(TokenStringLiteral) {
 				p.errorfCur("expected string literal annotation value, got %q", p.cur().Text)
 				p.synchronizeTo(TokenComma, TokenSemicolon, TokenRParen)
@@ -725,9 +859,11 @@ func (p *parser) parseAnnotations() *Annotations {
 				item.Value = p.advance()
 			}
 		}
+
 		if sep := p.acceptSeparator(); sep != 0 {
 			item.Sep = sep
 		}
+
 		item.last = p.pos - 1
 		a.Items = append(a.Items, item)
 	}
@@ -737,7 +873,9 @@ func (p *parser) parseAnnotations() *Annotations {
 	} else {
 		p.advance()
 	}
+
 	a.last = p.pos - 1
+
 	return a
 }
 
@@ -748,14 +886,17 @@ func (p *parser) acceptSeparator() TokenKind {
 	case TokenComma, TokenSemicolon:
 		k := p.cur().Kind
 		p.advance()
+
 		return k
 	}
+
 	return 0
 }
 
 func (p *parser) identifier() *Identifier {
 	i := p.pos
 	t := p.advance()
+
 	return &Identifier{nodeBase: nodeBase{first: i, last: i}, Text: t.Text}
 }
 
@@ -764,7 +905,9 @@ func (p *parser) identifier() *Identifier {
 func (p *parser) expectIdentifier(what string) *Identifier {
 	if !p.at(TokenIdentifier) {
 		p.errorfCur("expected %s, got %q", what, p.cur().Text)
+
 		return nil
 	}
+
 	return p.identifier()
 }

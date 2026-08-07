@@ -18,17 +18,21 @@ func stringWidth(s string) int {
 	// Fast path: pure ASCII without control characters has width equal to
 	// its byte length.
 	ascii := true
+
 	for i := 0; i < len(s); i++ {
 		if s[i] >= 0x80 || s[i] <= 0x1f || s[i] == 0x7f {
 			ascii = false
+
 			break
 		}
 	}
+
 	if ascii {
 		return len(s)
 	}
 
 	width := 0
+
 	for _, r := range s {
 		switch {
 		case unicode.Is(unicode.Cc, r):
@@ -41,6 +45,7 @@ func stringWidth(s string) int {
 			width++
 		}
 	}
+
 	return width
 }
 
@@ -58,5 +63,6 @@ func isWide(r rune) bool {
 	case width.EastAsianWide, width.EastAsianFullwidth:
 		return true
 	}
+
 	return false
 }

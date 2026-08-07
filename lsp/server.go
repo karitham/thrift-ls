@@ -30,6 +30,7 @@ func NewServer(c *cache.Cache, client protocol.Client, formatOpts formatter.Opti
 func (s *Server) Initialize(ctx context.Context, params *protocol.InitializeParams) (result *protocol.InitializeResult, err error) {
 	slog.Debug("Initialize called")
 	defer slog.Debug("Initialize finished")
+
 	return s.initialize(ctx, params)
 }
 
@@ -76,6 +77,7 @@ func (s *Server) ColorPresentation(ctx context.Context, params *protocol.ColorPr
 func (s *Server) Completion(ctx context.Context, params *protocol.CompletionParams) (result protocol.CompletionResult, err error) {
 	slog.Debug("Completion called")
 	defer slog.Debug("Completion finished")
+
 	return s.completion(ctx, params)
 }
 
@@ -90,13 +92,16 @@ func (s *Server) Declaration(ctx context.Context, params *protocol.DeclarationPa
 func (s *Server) Definition(ctx context.Context, params *protocol.DefinitionParams) (result protocol.DefinitionResult, err error) {
 	slog.Debug("Definition called")
 	defer slog.Debug("Definition finished")
+
 	res, err := s.definition(ctx, params)
+
 	return protocol.LocationSlice(res), err
 }
 
 func (s *Server) DidChange(ctx context.Context, params *protocol.DidChangeTextDocumentParams) (err error) {
 	slog.Debug("DidChange called")
 	defer slog.Debug("DidChange finished")
+
 	return s.didChange(ctx, params)
 }
 
@@ -119,6 +124,7 @@ func (s *Server) DidClose(ctx context.Context, params *protocol.DidCloseTextDocu
 func (s *Server) DidOpen(ctx context.Context, params *protocol.DidOpenTextDocumentParams) (err error) {
 	slog.Debug("DidOpen called")
 	defer slog.Debug("DidOpen finished")
+
 	return s.didOpen(ctx, params)
 }
 
@@ -145,6 +151,7 @@ func (s *Server) DocumentLinkResolve(ctx context.Context, params *protocol.Docum
 func (s *Server) DocumentSymbol(ctx context.Context, params *protocol.DocumentSymbolParams) (result protocol.DocumentSymbolResult, err error) {
 	slog.Debug("DocumentSymbol called")
 	defer slog.Debug("DocumentSymbol finished")
+
 	return s.documentSymbol(ctx, params)
 }
 
@@ -159,12 +166,14 @@ func (s *Server) FoldingRanges(ctx context.Context, params *protocol.FoldingRang
 func (s *Server) Formatting(ctx context.Context, params *protocol.DocumentFormattingParams) (result []protocol.TextEdit, err error) {
 	slog.Debug("Formatting called")
 	defer slog.Debug("Formatting finished")
+
 	return s.formatting(ctx, params)
 }
 
 func (s *Server) Hover(ctx context.Context, params *protocol.HoverParams) (result *protocol.Hover, err error) {
 	slog.Debug("hover called")
 	defer slog.Debug("hover finished")
+
 	return s.hover(ctx, params)
 }
 
@@ -179,6 +188,7 @@ func (s *Server) OnTypeFormatting(ctx context.Context, params *protocol.Document
 func (s *Server) PrepareRename(ctx context.Context, params *protocol.PrepareRenameParams) (result protocol.PrepareRenameResult, err error) {
 	slog.Debug("PrepareRename called")
 	defer slog.Debug("PrepareRename finished")
+
 	return s.prepareRename(ctx, params)
 }
 
@@ -189,12 +199,14 @@ func (s *Server) RangeFormatting(ctx context.Context, params *protocol.DocumentR
 func (s *Server) References(ctx context.Context, params *protocol.ReferenceParams) (result []protocol.Location, err error) {
 	slog.Debug("References called")
 	defer slog.Debug("References finished")
+
 	return s.references(ctx, params)
 }
 
 func (s *Server) Rename(ctx context.Context, params *protocol.RenameParams) (result *protocol.WorkspaceEdit, err error) {
 	slog.Debug("Rename called")
 	defer slog.Debug("Rename finished")
+
 	return s.rename(ctx, params)
 }
 
@@ -209,7 +221,9 @@ func (s *Server) Symbols(ctx context.Context, params *protocol.WorkspaceSymbolPa
 func (s *Server) TypeDefinition(ctx context.Context, params *protocol.TypeDefinitionParams) (result protocol.DefinitionResult, err error) {
 	slog.Debug("TypeDefinition called")
 	defer slog.Debug("TypeDefinition finished")
+
 	res, err := s.typeDefinition(ctx, params)
+
 	return protocol.LocationSlice(res), err
 }
 

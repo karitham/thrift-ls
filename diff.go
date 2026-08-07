@@ -47,6 +47,7 @@ func Diff(oldName string, old []byte, newName string, new []byte) []byte {
 	if bytes.Equal(old, new) {
 		return nil
 	}
+
 	x := lines(old)
 	y := lines(new)
 
@@ -83,6 +84,7 @@ func Diff(oldName string, old []byte, newName string, new []byte) []byte {
 			start.x--
 			start.y--
 		}
+
 		end := m
 		for end.x < len(x) && end.y < len(y) && x[end.x] == y[end.y] {
 			end.x++
@@ -95,6 +97,7 @@ func Diff(oldName string, old []byte, newName string, new []byte) []byte {
 			ctext = append(ctext, "-"+s)
 			count.x++
 		}
+
 		for _, s := range y[done.y:start.y] {
 			ctext = append(ctext, "+"+s)
 			count.y++
@@ -110,7 +113,9 @@ func Diff(oldName string, old []byte, newName string, new []byte) []byte {
 				count.x++
 				count.y++
 			}
+
 			done = end
+
 			continue
 		}
 
@@ -122,6 +127,7 @@ func Diff(oldName string, old []byte, newName string, new []byte) []byte {
 				count.x++
 				count.y++
 			}
+
 			done = pair{start.x + n, start.y + n}
 
 			// Format and emit chunk.
@@ -130,13 +136,17 @@ func Diff(oldName string, old []byte, newName string, new []byte) []byte {
 			if count.x > 0 {
 				chunk.x++
 			}
+
 			if count.y > 0 {
 				chunk.y++
 			}
+
 			fmt.Fprintf(&out, "@@ -%d,%d +%d,%d @@\n", chunk.x, count.x, chunk.y, count.y)
+
 			for _, s := range ctext {
 				out.WriteString(s)
 			}
+
 			count.x = 0
 			count.y = 0
 			ctext = ctext[:0]
@@ -154,6 +164,7 @@ func Diff(oldName string, old []byte, newName string, new []byte) []byte {
 			count.x++
 			count.y++
 		}
+
 		done = end
 	}
 
@@ -172,6 +183,7 @@ func lines(x []byte) []string {
 		// using the same text as BSD/GNU diff (including the leading backslash).
 		l[len(l)-1] += "\n\\ No newline at end of file\n"
 	}
+
 	return l
 }
 
@@ -194,6 +206,7 @@ func tgs(x, y []string) []pair {
 			m[s] = c - 1
 		}
 	}
+
 	for _, s := range y {
 		if c := m[s]; c > -8 {
 			m[s] = c - 4
@@ -207,12 +220,14 @@ func tgs(x, y []string) []pair {
 	//	yi[i] = increasing indexes of unique strings in y.
 	//	inv[i] = index j such that x[xi[i]] = y[yi[j]].
 	var xi, yi, inv []int
+
 	for i, s := range y {
 		if m[s] == -1+-4 {
 			m[s] = len(yi)
 			yi = append(yi, i)
 		}
 	}
+
 	for i, s := range x {
 		if j, ok := m[s]; ok && j >= 0 {
 			xi = append(xi, i)
@@ -227,10 +242,12 @@ func tgs(x, y []string) []pair {
 	J := inv
 	n := len(xi)
 	T := make([]int, n)
+
 	L := make([]int, n)
 	for i := range T {
 		T[i] = n + 1
 	}
+
 	for i := range n {
 		k := sort.Search(n, func(k int) bool {
 			return T[k] >= J[i]
@@ -238,14 +255,17 @@ func tgs(x, y []string) []pair {
 		T[k] = J[i]
 		L[i] = k + 1
 	}
+
 	k := 0
 	for _, v := range L {
 		if k < v {
 			k = v
 		}
 	}
+
 	seq := make([]pair, 2+k)
 	seq[1+k] = pair{len(x), len(y)} // sentinel at end
+
 	lastj := n
 	for i := n - 1; i >= 0; i-- {
 		if L[i] == k && J[i] < lastj {
@@ -253,6 +273,8 @@ func tgs(x, y []string) []pair {
 			k--
 		}
 	}
+
 	seq[0] = pair{0, 0} // sentinel at start
+
 	return seq
 }

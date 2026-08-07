@@ -65,6 +65,7 @@ func (fs *memoizedFS) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, er
 	recentlyModified := time.Since(mtime) < 2*time.Second
 
 	fs.mu.Lock()
+
 	fhs, ok := fs.filesByID[id]
 	if ok && fhs[0].modTime.Equal(mtime) {
 		var fh *DiskFile
@@ -72,6 +73,7 @@ func (fs *memoizedFS) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, er
 		for _, h := range fhs {
 			if h.uri == uri {
 				fh = h
+
 				break
 			}
 		}
@@ -84,6 +86,7 @@ func (fs *memoizedFS) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, er
 			fs.filesByID[id] = fhs
 		}
 		fs.mu.Unlock()
+
 		return fh, nil
 	}
 	fs.mu.Unlock()
@@ -101,6 +104,7 @@ func (fs *memoizedFS) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, er
 		delete(fs.filesByID, id)
 	}
 	fs.mu.Unlock()
+
 	return fh, nil
 }
 
@@ -113,6 +117,7 @@ func readFile(ctx context.Context, uri uri.URI, mtime time.Time) (*DiskFile, err
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+
 	defer func() { <-ioLimit }()
 
 	// It is possible that a race causes us to read a file with different file
@@ -123,6 +128,7 @@ func readFile(ctx context.Context, uri uri.URI, mtime time.Time) (*DiskFile, err
 	if err != nil {
 		content = nil // just in case
 	}
+
 	return &DiskFile{
 		modTime: mtime,
 		uri:     uri,

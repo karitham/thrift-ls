@@ -16,6 +16,7 @@ func Test_DidOpen(t *testing.T) {
 	ctx := t.Context()
 	fileURI, err := uri.Parse("file:///tmp/file.thrift")
 	assert.NoError(t, err)
+
 	fileContent := `
 include "base.thrift"
 
@@ -42,7 +43,7 @@ struct Test {
 
 	fh, err := srv.session.ReadFile(ctx, fileURI)
 	assert.NoError(t, err)
-	assert.Equal(t, int(fh.Version()), 0)
+	assert.Equal(t, 0, int(fh.Version()))
 	gotContent, err := fh.Content()
 	assert.NoError(t, err)
 	assert.Equal(t, gotContent, []byte(fileContent))
@@ -52,6 +53,7 @@ func Test_DidChange(t *testing.T) {
 	ctx := t.Context()
 	fileURI, err := uri.Parse("file:///tmp/file.thrift")
 	assert.NoError(t, err)
+
 	fileContentInit := `
 include "base.thrift"
 
@@ -102,7 +104,7 @@ struct Test {
 
 	fh, err := srv.session.ReadFile(ctx, fileURI)
 	assert.NoError(t, err)
-	assert.Equal(t, int(fh.Version()), 1)
+	assert.Equal(t, 1, int(fh.Version()))
 	gotContent, err := fh.Content()
 	assert.NoError(t, err)
 	assert.Equal(t, gotContent, []byte(fileContent))
@@ -185,8 +187,8 @@ struct Test {
 
 			assert.IsType(t, &protocol.CompletionList{}, completionResult)
 			completionList := completionResult.(*protocol.CompletionList)
-			assert.True(t, len(completionList.Items) > 0)
-			assert.True(t, len(completionList.Items) <= 10)
+			assert.NotEmpty(t, completionList.Items)
+			assert.LessOrEqual(t, len(completionList.Items), 10)
 			assert.Equal(t, tt.wantLabel, completionList.Items[0].Label)
 			preselect, _ := completionList.Items[0].Preselect.Get()
 			assert.Equal(t, tt.wantPreselect, preselect)
@@ -286,6 +288,7 @@ struct Test {
 
 			assert.IsType(t, &protocol.CompletionList{}, completionResult)
 			completionList := completionResult.(*protocol.CompletionList)
+
 			labels := make([]string, len(completionList.Items))
 			for i, item := range completionList.Items {
 				labels[i] = item.Label
@@ -395,6 +398,7 @@ struct Other {
 
 			assert.IsType(t, &protocol.CompletionList{}, completionResult)
 			completionList := completionResult.(*protocol.CompletionList)
+
 			labels := make([]string, len(completionList.Items))
 			for i, item := range completionList.Items {
 				labels[i] = item.Label

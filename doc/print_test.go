@@ -14,10 +14,12 @@ func testOpts(width int) Options {
 
 func printT(t *testing.T, d Doc, o Options) string {
 	t.Helper()
+
 	got, err := Print(d, o)
 	if err != nil {
 		t.Fatalf("Print: %v", err)
 	}
+
 	return got
 }
 
@@ -411,6 +413,7 @@ func TestPrintRemeasure(t *testing.T) {
 		T("dd"),
 	})
 	got := printT(t, doc, testOpts(8))
+
 	want := "a\nbbbb\ncc dd"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
@@ -419,6 +422,7 @@ func TestPrintRemeasure(t *testing.T) {
 
 func TestPrintNewLineOption(t *testing.T) {
 	o := Options{PrintWidth: 2, Indent: "  ", TabWidth: 2, NewLine: "\r\n"}
+
 	doc := GroupBreak(Concat{T("a"), Line, T("b")})
 	if got := printT(t, doc, o); got != "a\r\nb" {
 		t.Errorf("got %q, want %q", got, "a\r\nb")
@@ -519,6 +523,7 @@ func TestPrintIdempotentDocs(t *testing.T) {
 	}
 	for _, d := range docs {
 		first := printT(t, d, testOpts(2))
+
 		second := printT(t, d, testOpts(2))
 		if first != second {
 			t.Errorf("not idempotent: %q vs %q", first, second)
@@ -532,6 +537,7 @@ func TestDocMutability(t *testing.T) {
 	build := func() Doc {
 		return Group(Concat{T("a"), HardLine, T("b"), SoftLine, T("c")})
 	}
+
 	first := printT(t, build(), testOpts(80))
 	for i := range 10 {
 		if got := printT(t, build(), testOpts(80)); got != first {

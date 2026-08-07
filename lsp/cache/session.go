@@ -44,10 +44,13 @@ func NewSession(cache *Cache) *Session {
 func (s *Session) Initialize(fn func()) {
 	s.initializedMu.Lock()
 	defer s.initializedMu.Unlock()
+
 	if s.initialized {
 		return
 	}
+
 	s.initialized = true
+
 	fn()
 }
 
@@ -71,6 +74,7 @@ func (s *Session) ViewOf(fileURI uri.URI) (*View, error) {
 	for i := range s.views {
 		if s.views[i].ContainsFile(fileURI) {
 			s.viewMap[fileURI] = s.views[i]
+
 			return s.views[i], nil
 		}
 	}
@@ -78,6 +82,7 @@ func (s *Session) ViewOf(fileURI uri.URI) (*View, error) {
 	for i := range s.views {
 		if s.views[i].FileKnown(fileURI) {
 			s.viewMap[fileURI] = s.views[i]
+
 			return s.views[i], nil
 		}
 	}

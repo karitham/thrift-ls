@@ -10,10 +10,12 @@ import (
 
 func (s *Server) prepareRename(ctx context.Context, params *protocol.PrepareRenameParams) (*protocol.Range, error) {
 	file := params.TextDocument.URI
+
 	view, err := s.session.ViewOf(file)
 	if err != nil {
 		return nil, err
 	}
+
 	ss, release := view.Snapshot()
 	defer release()
 
@@ -22,10 +24,12 @@ func (s *Server) prepareRename(ctx context.Context, params *protocol.PrepareRena
 
 func (s *Server) rename(ctx context.Context, params *protocol.RenameParams) (*protocol.WorkspaceEdit, error) {
 	file := params.TextDocument.URI
+
 	view, err := s.session.ViewOf(file)
 	if err != nil {
 		return nil, err
 	}
+
 	ss, release := view.Snapshot()
 	defer release()
 

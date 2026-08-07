@@ -46,6 +46,7 @@ func resolveTarget(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos pr
 	if err != nil {
 		return nil, nil, err
 	}
+
 	if pf.AST() == nil {
 		return nil, nil, errNoAST
 	}
@@ -67,7 +68,9 @@ func resolveTarget(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos pr
 	if len(path) > 1 {
 		t.parent = path[len(path)-2]
 	}
+
 	t.kind = classify(t)
+
 	return pf, t, nil
 }
 
@@ -84,12 +87,14 @@ func classify(t *target) TargetKind {
 		case *syntax.Service:
 			return TargetService
 		}
+
 		return TargetDefinition
 	case *syntax.ConstValue:
 		if n.Kind == syntax.ValueIdent {
 			return TargetConstValue
 		}
 	}
+
 	return TargetNone
 }
 
@@ -99,6 +104,7 @@ func (t *target) identifier() *syntax.Identifier {
 	if id, ok := t.node.(*syntax.Identifier); ok {
 		return id
 	}
+
 	return nil
 }
 
@@ -119,15 +125,18 @@ func jumpInFile(ctx context.Context, ss *cache.Snapshot, file uri.URI, node synt
 	if err != nil {
 		return protocol.Location{}, err
 	}
+
 	if pf.AST() == nil {
 		return protocol.Location{}, errNoAST
 	}
+
 	return jump(file, pf.AST(), node), nil
 }
 
 // nodeRange converts a node span to an LSP range.
 func nodeRange(doc *syntax.Document, node syntax.Node) protocol.Range {
 	start, end := doc.Range(node)
+
 	return protocol.Range{
 		Start: protocol.Position{
 			Line:      uint32(start.Line - 1),

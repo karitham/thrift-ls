@@ -48,11 +48,13 @@ service Demo {
 			From:    cache.FileChangeTypeDidOpen,
 		},
 	})
+
 	type args struct {
 		ctx         context.Context
 		ss          *cache.Snapshot
 		changeFiles []uri.URI
 	}
+
 	tests := []struct {
 		name      string
 		c         *FieldIDCheck

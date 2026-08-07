@@ -41,7 +41,9 @@ func ListDirAndFiles(dir, prefix string) (res []Candidate, err error) {
 		if err != nil || baseDir == path {
 			return nil
 		}
+
 		slog.Debug("include completion name", "name", d.Name(), "prefix", filePrefix)
+
 		if strings.HasPrefix(d.Name(), filePrefix) {
 			if d.IsDir() {
 				res = append(res, Candidate{
@@ -61,6 +63,7 @@ func ListDirAndFiles(dir, prefix string) (res []Candidate, err error) {
 		if d.IsDir() {
 			return filepath.SkipDir
 		}
+
 		return nil
 	})
 

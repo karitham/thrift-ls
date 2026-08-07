@@ -15,6 +15,7 @@ import (
 func TestResolver(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "resolver-test")
 	assert.NoError(t, err)
+
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	baseDir := filepath.Join(tmpDir, "base")
@@ -107,7 +108,7 @@ func TestResolver(t *testing.T) {
 				}
 
 				result := resolver.GetIncludePath(doc, "shared")
-				assert.Equal(t, "", result)
+				assert.Empty(t, result)
 			},
 		},
 		{

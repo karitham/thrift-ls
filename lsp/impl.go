@@ -31,10 +31,12 @@ func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocume
 
 	s.session.Initialize(func() {
 		file := change.URI
+
 		dirPos := strings.LastIndexByte(string(file), '/')
 		if dirPos == -1 {
 			return
 		}
+
 		dir := file[0:dirPos]
 		s.walkFoldersThriftFile(dir)
 	})
@@ -60,6 +62,7 @@ func (s *Server) openFile(ctx context.Context, change *cache.FileChange) error {
 	view.FileChange(ctx, []*cache.FileChange{change}, func() {
 		ss, release := view.Snapshot()
 		defer release()
+
 		err := s.diagnostic(ctx, ss, change)
 		if err != nil {
 			slog.Error("diagnostic error", "err", err)
@@ -77,6 +80,7 @@ func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDo
 
 	document := params.TextDocument
 	fileURI := document.URI
+
 	view, err := s.session.ViewOf(fileURI)
 	if err != nil {
 		return err
@@ -85,6 +89,7 @@ func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDo
 	view.FileChange(ctx, changes, func() {
 		ss, release := view.Snapshot()
 		defer release()
+
 		for i := range changes {
 			err := s.diagnostic(ctx, ss, changes[i])
 			if err != nil {
@@ -122,6 +127,7 @@ func toLspCompletionList(items []*completion.CompletionItem, rng protocol.Range)
 	list := &protocol.CompletionList{
 		IsIncomplete: true,
 	}
+
 	for i := range items {
 		item := protocol.CompletionItem{
 			Label:  items[i].Label,
@@ -140,11 +146,13 @@ func toLspCompletionList(items []*completion.CompletionItem, rng protocol.Range)
 		}
 		list.Items = append(list.Items, item)
 	}
+
 	return list
 }
 
 func (s *Server) getFileContext(ctx context.Context, uri uri.URI) (ss *cache.Snapshot, release func(), fh cache.FileHandle, err error) {
 	var view *cache.View
+
 	view, err = s.session.ViewOf(uri)
 	if err != nil {
 		return ss, release, fh, err
@@ -155,6 +163,7 @@ func (s *Server) getFileContext(ctx context.Context, uri uri.URI) (ss *cache.Sna
 	fh, err = ss.ReadFile(ctx, uri)
 	if err != nil {
 		release()
+
 		return ss, release, fh, err
 	}
 

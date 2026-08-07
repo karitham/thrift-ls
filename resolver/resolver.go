@@ -75,6 +75,7 @@ func (r *Resolver) Resolve(currentFile, includePath string) string {
 // exists reports whether the file exists on the resolver's filesystem.
 func (r *Resolver) exists(path string) bool {
 	_, err := fs.Stat(r.fsys, path)
+
 	return err == nil
 }
 
@@ -84,10 +85,12 @@ type IncludeCall func(include string) (filename string, content []byte, err erro
 // ResolveContent resolves an include path and reads the file content.
 func (r *Resolver) ResolveContent(currentFile, includePath string) (filename string, content []byte, err error) {
 	filename = r.Resolve(currentFile, includePath)
+
 	content, err = fs.ReadFile(r.fsys, filename)
 	if err != nil {
 		return filename, nil, err
 	}
+
 	return filename, content, nil
 }
 
@@ -100,9 +103,11 @@ func (r *Resolver) IncludeCall(initialFile string) IncludeCall {
 			candidatePath := filepath.Join(ip, include)
 			if r.exists(candidatePath) {
 				content, err = fs.ReadFile(r.fsys, candidatePath)
+
 				return candidatePath, content, err
 			}
 		}
+
 		return r.ResolveContent(initialFile, include)
 	}
 }

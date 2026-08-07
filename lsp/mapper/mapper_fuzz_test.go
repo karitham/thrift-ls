@@ -27,24 +27,29 @@ func FuzzOffsetRoundTrip(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, content []byte, offset int) {
 		limit := len(content) + 1
+
 		offset = offset % limit
 		if offset < 0 {
 			offset += limit
 		}
+
 		if offset < len(content) && !utf8.RuneStart(content[offset]) {
 			// Byte offset inside a multi-byte rune: not representable.
 			return
 		}
 
 		m := NewMapper(uri.File("/tmp/fuzz.thrift"), content)
+
 		pos, err := m.OffsetToLSPPosition(offset)
 		if err != nil {
 			t.Fatalf("OffsetToLSPPosition(%d): %v", offset, err)
 		}
+
 		back, err := m.LSPPosToParserPosition(pos)
 		if err != nil {
 			t.Fatalf("LSPPosToParserPosition(%+v): %v (content %q)", pos, err, content)
 		}
+
 		if back.Offset != offset {
 			t.Fatalf("round trip mismatch: %d -> %+v -> %d (content %q)", offset, pos, back.Offset, content)
 		}

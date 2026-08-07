@@ -1,0 +1,2 @@
+go test fuzz v1
+string("enum A02{A ,#\nA0=0}")

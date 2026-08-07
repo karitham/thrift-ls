@@ -36,18 +36,22 @@ func FuzzPrint(f *testing.F) {
 			if !ok {
 				t.Skip("program exhausted")
 			}
+
 			return d
 		}
 
 		opts := Options{PrintWidth: 1 + len(program)%80, Indent: "  ", TabWidth: 2, NewLine: "\n"}
+
 		first, err := Print(build(), opts)
 		if err != nil {
 			t.Fatalf("Print: %v", err)
 		}
+
 		second, err := Print(build(), opts)
 		if err != nil {
 			t.Fatalf("Print (second): %v", err)
 		}
+
 		if first != second {
 			t.Fatalf("Print is not deterministic:\n%q\n%q", first, second)
 		}
@@ -89,10 +93,12 @@ func buildDoc(program []byte, depth int) (Doc, bool) {
 	switch op := program[0]; op {
 	case opText:
 		n := int(program[1%len(program)]) % 8
+
 		text := make([]rune, 0, n)
 		for i := range n {
 			text = append(text, textChars[int(program[(2+i)%len(program)])%len(textChars)])
 		}
+
 		return Text(string(text)), true
 
 	case opLine, opSoftLine, opHardLine:
@@ -110,26 +116,32 @@ func buildDoc(program []byte, depth int) (Doc, bool) {
 		if !ok {
 			return Concat{}, false
 		}
+
 		if op == opGroupBreak {
 			return GroupBreak(inner), true
 		}
+
 		return Group(inner), true
 
 	case opConcat:
 		n := int(program[1%len(program)]) % 5
 		parts := make([]Doc, 0, n)
+
 		offset := 2
 		for range n {
 			if offset >= len(program) {
 				return Concat(parts), true
 			}
+
 			part, ok := buildDoc(program[offset:], depth+1)
 			if !ok {
 				return Concat(parts), true
 			}
+
 			parts = append(parts, part)
 			offset++
 		}
+
 		return Concat(parts), true
 
 	case opIndent:
@@ -137,6 +149,7 @@ func buildDoc(program []byte, depth int) (Doc, bool) {
 		if !ok {
 			return Concat{}, false
 		}
+
 		return Indent(inner), true
 
 	case opAlign:
@@ -144,14 +157,17 @@ func buildDoc(program []byte, depth int) (Doc, bool) {
 		if !ok {
 			return Concat{}, false
 		}
+
 		return Align(int(program[1%len(program)])%5, inner), true
 
 	case opIfBreak:
 		brk, ok1 := buildDoc(program[1:], depth+1)
+
 		flat, ok2 := buildDoc(program[2%len(program):], depth+1)
 		if !ok1 || !ok2 {
 			return Concat{}, false
 		}
+
 		return IfBreak(brk, flat), true
 
 	case opLineSuffix:
@@ -159,6 +175,7 @@ func buildDoc(program []byte, depth int) (Doc, bool) {
 		if !ok {
 			return Concat{}, false
 		}
+
 		return LineSuffix(inner), true
 
 	case opConditional:
@@ -166,10 +183,12 @@ func buildDoc(program []byte, depth int) (Doc, bool) {
 		if !ok {
 			return Concat{}, false
 		}
+
 		second, ok := buildDoc(program[2%len(program):], depth+1)
 		if !ok {
 			return Concat{}, false
 		}
+
 		return ConditionalGroup(0, first, second, GroupBreak(first)), true
 
 	case opTrim:

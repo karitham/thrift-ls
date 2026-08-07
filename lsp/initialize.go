@@ -23,6 +23,7 @@ func (s *Server) initialize(ctx context.Context, params *protocol.InitializePara
 			folders = append(folders, ws.URI)
 		}
 	}
+
 	if len(folders) == 0 {
 		//nolint:staticcheck // intentional handling of legacy client params
 		rootURI := params.RootURI
@@ -33,12 +34,14 @@ func (s *Server) initialize(ctx context.Context, params *protocol.InitializePara
 				rootURI = &r
 			}
 		}
+
 		if rootURI != nil {
 			folders = append(folders, *rootURI)
 		}
 	}
 
 	slog.Debug("initialized folders", "folders", folders)
+
 	if len(folders) > 0 {
 		s.session.Initialize(func() {
 			for i := range folders {
@@ -55,6 +58,7 @@ func (s *Server) walkFoldersThriftFile(folder uri.URI) {
 	// WalkDir walk files with lexical order
 	_ = filepath.WalkDir(folder.Path(), func(path string, d fs.DirEntry, err error) error {
 		slog.Debug("walking", "path", path)
+
 		if err != nil {
 			return nil
 		}
@@ -69,6 +73,7 @@ func (s *Server) walkFoldersThriftFile(folder uri.URI) {
 
 		fileURI := uri.File(path)
 		slog.Debug("file path", "uri", fileURI)
+
 		if err := s.openFile(context.TODO(), &cache.FileChange{
 			URI:     fileURI,
 			Version: 0,

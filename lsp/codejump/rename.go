@@ -24,8 +24,10 @@ func PrepareRename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos pr
 	switch target.kind {
 	case TargetDefinition, TargetConstValue, TargetService:
 		rg := nodeRange(pf.AST(), target.node)
+
 		return &rg, nil
 	}
+
 	return nil, fmt.Errorf("rename not supported at this position")
 }
 
@@ -39,12 +41,14 @@ func Rename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.
 	}
 
 	var refs []referenceHit
+
 	switch target.kind {
 	case TargetTypeName:
 		ft := target.parent.(*syntax.FieldType)
 		if typeReferenceName(ft) == "" || IsBasicType(typeReferenceName(ft)) {
 			return nil, fmt.Errorf("rename not supported for basic types")
 		}
+
 		refs, err = searchTypeNameReferences(ctx, ss, file, pf, target)
 		if err != nil {
 			return nil, err
@@ -57,6 +61,7 @@ func Rename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.
 		} else if id == nil {
 			return nil, fmt.Errorf("definition not found")
 		}
+
 		refs, err = searchConstValueReferences(ctx, ss, file, pf, target)
 		if err != nil {
 			return nil, err
@@ -68,11 +73,13 @@ func Rename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.
 			svcName = fmt.Sprintf("%s.%s", lsputils.GetIncludeName(file), svcName)
 		} else {
 			include, _ := lsputils.ParseIdent(file, pf.AST().Includes(), svcName)
+
 			resolver := ss.Resolver()
 			if path := resolver.GetIncludePath(pf.AST(), include); path != "" {
 				file = resolver.ResolveInclude(file, path)
 			}
 		}
+
 		refs, err = searchServiceReferences(ctx, ss, file, svcName)
 		if err != nil {
 			return nil, err
@@ -105,11 +112,13 @@ func Rename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.
 // text becomes user.newtext.
 func convertHitsToWorkspaceEdit(refs []referenceHit, newName string) *protocol.WorkspaceEdit {
 	changes := make(map[uri.URI][]protocol.TextEdit)
+
 	for i := range refs {
 		text := newName
 		if dot := strings.LastIndexByte(refs[i].text, '.'); dot >= 0 {
 			text = refs[i].text[:dot+1] + newName
 		}
+
 		changes[refs[i].loc.URI] = append(changes[refs[i].loc.URI], protocol.TextEdit{
 			Range:   refs[i].loc.Range,
 			NewText: text,

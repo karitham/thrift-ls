@@ -18,6 +18,7 @@ func (s *Server) formatting(ctx context.Context, params *protocol.DocumentFormat
 
 	document := params.TextDocument
 	fileURI := document.URI
+
 	view, err := s.session.ViewOf(fileURI)
 	if err != nil {
 		return nil, err
@@ -40,6 +41,7 @@ func (s *Server) formatting(ctx context.Context, params *protocol.DocumentFormat
 	if err != nil {
 		return nil, err
 	}
+
 	if len(pf.Errors()) > 0 || pf.AST() == nil {
 		return nil, pf.AggregatedError()
 	}
@@ -80,6 +82,7 @@ func (s *Server) formatting(ctx context.Context, params *protocol.DocumentFormat
 // produced and the request is a no-op.
 func (s *Server) rangeFormatting(ctx context.Context, params *protocol.DocumentRangeFormattingParams) (result []protocol.TextEdit, err error) {
 	fileURI := params.TextDocument.URI
+
 	view, err := s.session.ViewOf(fileURI)
 	if err != nil {
 		return nil, err
@@ -99,14 +102,17 @@ func (s *Server) rangeFormatting(ctx context.Context, params *protocol.DocumentR
 	}
 
 	mp := mapper.NewMapper(fileURI, content)
+
 	start, err := mp.LSPPosToParserPosition(lspPosition(params.Range.Start))
 	if err != nil {
 		return nil, nil
 	}
+
 	end, err := mp.LSPPosToParserPosition(lspPosition(params.Range.End))
 	if err != nil {
 		return nil, nil
 	}
+
 	rs, re := start.Offset, end.Offset
 	if rs >= re {
 		return nil, nil
@@ -126,6 +132,7 @@ func (s *Server) rangeFormatting(ctx context.Context, params *protocol.DocumentR
 	if err != nil {
 		return nil, nil
 	}
+
 	endPos, err := mp.OffsetToLSPPosition(re)
 	if err != nil {
 		return nil, nil
@@ -170,6 +177,7 @@ func formatRangeText(content []byte, rs, re int, opts formatter.Options) (newTex
 	rs = lineStart(content, rs)
 	re = lineEnd(content, re)
 	rs = skipBlankLinesForward(content, rs, re)
+
 	re = skipBlankLinesBackward(content, rs, re)
 	if rs >= re {
 		return "", rs, re, false
@@ -182,6 +190,7 @@ func formatRangeText(content []byte, rs, re int, opts formatter.Options) (newTex
 	}
 
 	slice := content[rs:re]
+
 	doc, errs := syntax.Parse(slice)
 	if len(errs) > 0 {
 		return "", rs, re, false
@@ -196,6 +205,7 @@ func formatRangeText(content []byte, rs, re int, opts formatter.Options) (newTex
 	// starts at a line start and ends just before its last line's newline.
 	formatted = strings.TrimLeft(formatted, "\n")
 	formatted = strings.TrimRight(formatted, "\r\n")
+
 	return formatted, rs, re, true
 }
 
@@ -204,6 +214,7 @@ func lineStart(content []byte, offset int) int {
 	if i := bytes.LastIndexByte(content[:offset], '\n'); i != -1 {
 		return i + 1
 	}
+
 	return 0
 }
 
@@ -213,6 +224,7 @@ func lineEnd(content []byte, offset int) int {
 	if i := bytes.IndexByte(content[offset:], '\n'); i != -1 {
 		return offset + i
 	}
+
 	return len(content)
 }
 
@@ -222,7 +234,9 @@ func blankLineBefore(content []byte, offset int) bool {
 	if offset == 0 {
 		return true
 	}
+
 	start := lineStart(content, offset-1)
+
 	return len(bytes.TrimSpace(content[start:offset])) == 0
 }
 
@@ -232,7 +246,9 @@ func blankLineAfter(content []byte, offset int) bool {
 	if offset == len(content) {
 		return true
 	}
+
 	end := lineEnd(content, offset+1)
+
 	return len(bytes.TrimSpace(content[offset+1:end])) == 0
 }
 
@@ -243,11 +259,14 @@ func skipBlankLinesForward(content []byte, offset, limit int) int {
 		if end >= limit {
 			break
 		}
+
 		if len(bytes.TrimSpace(content[offset:end])) > 0 {
 			break
 		}
+
 		offset = end + 1
 	}
+
 	return offset
 }
 
@@ -255,15 +274,13 @@ func skipBlankLinesForward(content []byte, offset, limit int) int {
 // past blank lines, stopping at start.
 func skipBlankLinesBackward(content []byte, start, offset int) int {
 	for offset > start {
-
 		lineStart := lineStart(content, offset-1)
 		if len(bytes.TrimSpace(content[lineStart:offset])) > 0 {
 			break
 		}
-		offset = lineStart - 1
-		if offset < 0 {
-			offset = 0
-		}
+
+		offset = max(lineStart-1, 0)
 	}
+
 	return offset
 }

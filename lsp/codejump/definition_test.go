@@ -91,6 +91,7 @@ struct Person {
 		file uri.URI
 		pos  protocol.Position
 	}
+
 	tests := []struct {
 		name      string
 		args      args

@@ -11,10 +11,12 @@ import (
 
 func (s *Server) hover(ctx context.Context, params *protocol.HoverParams) (*protocol.Hover, error) {
 	file := params.TextDocument.URI
+
 	view, err := s.session.ViewOf(file)
 	if err != nil {
 		return nil, err
 	}
+
 	ss, release := view.Snapshot()
 	defer release()
 
@@ -31,6 +33,7 @@ func (s *Server) hover(ctx context.Context, params *protocol.HoverParams) (*prot
 	if strings.HasPrefix(content, "\n") {
 		markdown_prefix = "```thrift"
 	}
+
 	markdown_suffix := "\n```"
 	if strings.HasSuffix(content, "\n") {
 		markdown_suffix = "```"

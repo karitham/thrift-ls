@@ -47,16 +47,20 @@ func TestDefinitionCrossProjectInclude(t *testing.T) {
 		if len(offset) > 0 {
 			idx += offset[0]
 		}
+
 		lineStart := idx
 		for lineStart > 0 && appContent[lineStart-1] != '\n' {
 			lineStart--
 		}
+
 		line := 0
+
 		for i := 0; i < lineStart; i++ {
 			if appContent[i] == '\n' {
 				line++
 			}
 		}
+
 		return protocol.Position{Line: uint32(line), Character: uint32(idx - lineStart)}
 	}
 

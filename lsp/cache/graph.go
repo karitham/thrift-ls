@@ -21,9 +21,11 @@ func (n *IncludeNode) Clone() *IncludeNode {
 	if len(n.indegree) > 0 {
 		newNode.indegree = make([]uri.URI, len(n.indegree))
 	}
+
 	if len(n.outdegree) > 0 {
 		newNode.outdegree = make([]uri.URI, len(n.outdegree))
 	}
+
 	copy(newNode.indegree, n.indegree)
 	copy(newNode.outdegree, n.outdegree)
 
@@ -52,6 +54,7 @@ func NewIncludeGraph() *IncludeGraph {
 func (g *IncludeGraph) Get(file uri.URI) *IncludeNode {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
+
 	return g.mapper[file]
 }
 
@@ -60,6 +63,7 @@ func (g *IncludeGraph) Get(file uri.URI) *IncludeNode {
 func (g *IncludeGraph) Set(file uri.URI, includes []*syntax.Include, resolve func(cur uri.URI, includePath string) uri.URI) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+
 	includeURIs := make([]uri.URI, 0, len(includes))
 	for _, inc := range includes {
 		if inc.Path == nil {
@@ -69,6 +73,7 @@ func (g *IncludeGraph) Set(file uri.URI, includes []*syntax.Include, resolve fun
 		includeURI := resolve(file, strings.Trim(inc.Path.Text, "\"'"))
 		includeURIs = append(includeURIs, includeURI)
 	}
+
 	sort.SliceStable(includeURIs, func(i, j int) bool {
 		return includeURIs[i] < includeURIs[j]
 	})
@@ -81,20 +86,25 @@ func (g *IncludeGraph) Set(file uri.URI, includes []*syntax.Include, resolve fun
 			})
 
 			equal := true
+
 			for i := range includeURIs {
 				if includeURIs[i] != node.outdegree[i] {
 					equal = false
+
 					break
 				}
 			}
+
 			if equal {
 				return
 			}
 		}
+
 		g.removeWithoutLock(file)
 	} else {
 		node = &IncludeNode{}
 	}
+
 	for _, inc := range includeURIs {
 		node.outdegree = append(node.outdegree, inc)
 
@@ -103,6 +113,7 @@ func (g *IncludeGraph) Set(file uri.URI, includes []*syntax.Include, resolve fun
 			outNode = &IncludeNode{}
 			g.mapper[inc] = outNode
 		}
+
 		outNode.indegree = append(outNode.indegree, file)
 	}
 
@@ -112,6 +123,7 @@ func (g *IncludeGraph) Set(file uri.URI, includes []*syntax.Include, resolve fun
 func (g *IncludeGraph) Remove(file uri.URI) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+
 	g.removeWithoutLock(file)
 }
 
@@ -146,9 +158,11 @@ func (g *IncludeGraph) removeWithoutLock(file uri.URI) {
 				if len(outNode.indegree) == 0 {
 					outNode.indegree = nil
 				}
+
 				break
 			}
 		}
+
 		if len(outNode.indegree) == 0 && len(outNode.outdegree) == 0 {
 			delete(g.mapper, outFile)
 		}

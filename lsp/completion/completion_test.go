@@ -15,11 +15,13 @@ import (
 // paths.
 func buildSnapshot(t *testing.T, includePaths []string, files ...*cache.FileChange) *cache.Snapshot {
 	t.Helper()
+
 	store := &memoize.Store{}
 	c := cache.New(store, nil)
 	fs := cache.NewOverlayFS(c)
 	_ = fs.Update(t.Context(), files)
 	view := cache.NewView("test", uri.File("/tmp"), fs, store, includePaths)
+
 	return cache.NewSnapshot(view, store, includePaths)
 }
 
@@ -80,13 +82,16 @@ const i32 LIMIT = 10`
 			assert.NoError(t, err)
 
 			cands := semanticCandidates(t.Context(), ss, uri.URI(tt.file), pf, pos)
+
 			got := make(map[string]bool)
 			for _, c := range cands {
 				got[c.showText] = true
 			}
+
 			for _, w := range tt.want {
 				assert.True(t, got[w], "missing candidate %q in %v", w, got)
 			}
+
 			for _, nw := range tt.notWant {
 				assert.False(t, got[nw], "unexpected candidate %q in %v", nw, got)
 			}

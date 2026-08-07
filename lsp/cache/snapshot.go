@@ -46,9 +46,11 @@ func (s *snapshotFS) Stat(name string) (fs.FileInfo, error) {
 	if _, ok := s.ss.files.Get(uri.File(name)); ok {
 		return snapshotFileInfo{}, nil
 	}
+
 	if s.disk == nil {
 		s.disk = resolver.FS()
 	}
+
 	return fs.Stat(s.disk, name)
 }
 
@@ -58,11 +60,14 @@ func (s *snapshotFS) Open(name string) (fs.File, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		return &snapshotFile{Reader: bytes.NewReader(content), info: snapshotFileInfo{}}, nil
 	}
+
 	if s.disk == nil {
 		s.disk = resolver.FS()
 	}
+
 	return s.disk.Open(name)
 }
 
@@ -93,6 +98,7 @@ func (r *Resolver) IncludePaths() []string {
 func (r *Resolver) ResolveInclude(cur uri.URI, includePath string) uri.URI {
 	filePath := cur.Path()
 	resolvedPath := r.central.Resolve(filePath, includePath)
+
 	return uri.File(resolvedPath)
 }
 
@@ -109,12 +115,15 @@ func (r *Resolver) GetIncludePath(ast *syntax.Document, includeName string) stri
 		if include.Path == nil {
 			continue
 		}
+
 		path := lsputils.IncludePathText(include)
+
 		name := getIncludeNameFromPath(path)
 		if name == includeName {
 			return path
 		}
 	}
+
 	return ""
 }
 
@@ -125,6 +134,7 @@ func (r *Resolver) GetIncludeURI(cur uri.URI, ast *syntax.Document, includeName 
 	if path == "" {
 		return ""
 	}
+
 	return r.ResolveInclude(cur, path)
 }
 
@@ -132,6 +142,7 @@ func (r *Resolver) GetIncludeURI(cur uri.URI, ast *syntax.Document, includeName 
 func getIncludeNameFromPath(path string) string {
 	items := strings.Split(path, "/")
 	name := items[len(items)-1]
+
 	return strings.TrimSuffix(name, ".thrift")
 }
 
@@ -176,6 +187,7 @@ func NewSnapshot(view *View, store *memoize.Store, includePaths []string) *Snaps
 
 func (s *Snapshot) Acquire() func() {
 	s.refCount.Add(1)
+
 	return s.refCount.Done
 }
 
@@ -201,10 +213,12 @@ func (s *Snapshot) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, error
 	}
 
 	slog.Debug("snapshot read from fs")
+
 	fh, err := s.view.fs.ReadFile(ctx, uri)
 	if err != nil {
 		return nil, err
 	}
+
 	s.files.Set(uri, fh)
 
 	return fh, nil
@@ -235,12 +249,14 @@ func (s *Snapshot) Parse(ctx context.Context, uri uri.URI) (*ParsedFile, error) 
 	pf, err := Parse(fh)
 	if err != nil {
 		slog.Debug("snapshot parse failed", "err", err)
+
 		return nil, err
 	}
 
 	if pf.AST() != nil {
 		s.graph.Set(uri, pf.AST().Includes(), s.Resolver().ResolveInclude)
 	}
+
 	s.parsedCache.Set(uri, pf)
 
 	return pf, nil
@@ -256,6 +272,7 @@ func (s *Snapshot) TokensForFile(file uri.URI) map[string]struct{} {
 		if node == nil {
 			return nil
 		}
+
 		return node.OutDegree()
 	})
 }

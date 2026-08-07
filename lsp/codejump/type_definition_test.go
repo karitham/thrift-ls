@@ -72,6 +72,7 @@ const user.UserType usermale = "male"
 		file uri.URI
 		pos  protocol.Position
 	}
+
 	tests := []struct {
 		name      string
 		args      args

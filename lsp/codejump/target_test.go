@@ -41,11 +41,13 @@ service Svc extends Base {
 		if len(offset) > 0 {
 			idx += offset[0]
 		}
+
 		if idx < 0 {
 			t.Fatalf("marker %q not found", marker)
 		}
 		// Convert byte offset to line/character.
 		line, col := 0, 0
+
 		for i := 0; i < idx; i++ {
 			if src[i] == '\n' {
 				line++
@@ -54,6 +56,7 @@ service Svc extends Base {
 				col++
 			}
 		}
+
 		return protocol.Position{Line: uint32(line), Character: uint32(col)}
 	}
 
@@ -80,6 +83,7 @@ service Svc extends Base {
 			if err != nil {
 				t.Fatalf("resolveTarget: %v", err)
 			}
+
 			if target.kind != tt.want {
 				t.Errorf("kind = %v, want %v (node %T)", target.kind, tt.want, target.node)
 			}
@@ -102,6 +106,7 @@ func TestResolveTargetNoNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveTarget: %v", err)
 	}
+
 	if target.kind != TargetNone {
 		t.Errorf("kind = %v, want TargetNone", target.kind)
 	}
@@ -113,5 +118,6 @@ func indexOf(s, sub string) int {
 			return i
 		}
 	}
+
 	return -1
 }

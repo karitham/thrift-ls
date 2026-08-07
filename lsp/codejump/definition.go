@@ -16,6 +16,7 @@ import (
 // a type reference, a constant value identifier, or a service reference.
 func Definition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) (res []protocol.Location, err error) {
 	res = make([]protocol.Location, 0)
+
 	pf, target, err := resolveTarget(ctx, ss, file, pos)
 	if err != nil {
 		return res, err
@@ -29,6 +30,7 @@ func Definition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos proto
 	case TargetService:
 		return serviceDefinition(ctx, ss, file, pf, target)
 	}
+
 	return res, err
 }
 
@@ -50,19 +52,24 @@ func FindTypeDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, a
 		if dstException := GetExceptionNode(dstAst, identifier); dstException != nil {
 			return astFile, dstException.Name, DefinitionException, nil
 		}
+
 		if dstStruct := GetStructNode(dstAst, identifier); dstStruct != nil {
 			return astFile, dstStruct.Name, DefinitionStruct, nil
 		}
+
 		if dstEnum := GetEnumNode(dstAst, identifier); dstEnum != nil {
 			return astFile, dstEnum.Name, DefinitionEnum, nil
 		}
+
 		if dstUnion := GetUnionNode(dstAst, identifier); dstUnion != nil {
 			return astFile, dstUnion.Name, DefinitionUnion, nil
 		}
+
 		if dstTypedef := GetTypedefNode(dstAst, identifier); dstTypedef != nil {
 			return astFile, dstTypedef.Name, DefinitionTypedef, nil
 		}
 	}
+
 	return file, nil, DefinitionNone, nil
 }
 
@@ -72,6 +79,7 @@ func FindConstValueDefinition(ctx context.Context, ss *cache.Snapshot, file uri.
 	if value == nil || value.Kind != syntax.ValueIdent {
 		return "", nil, nil
 	}
+
 	name := value.Text
 	if name == "true" || name == "false" {
 		return "", nil, nil
@@ -87,10 +95,12 @@ func FindConstValueDefinition(ctx context.Context, ss *cache.Snapshot, file uri.
 		if dstEnumValue := GetEnumValueIdentifierNode(dstAst, identifier); dstEnumValue != nil {
 			return astFile, dstEnumValue, nil
 		}
+
 		if constIdentifier := GetConstIdentifierNode(dstAst, identifier); constIdentifier != nil {
 			return astFile, constIdentifier, nil
 		}
 	}
+
 	return file, nil, nil
 }
 
@@ -112,6 +122,7 @@ func FindServiceDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI
 			return astFile, dstService.Name, nil
 		}
 	}
+
 	return file, nil, nil
 }
 
@@ -123,28 +134,35 @@ func parseDefinitionFile(ctx context.Context, ss *cache.Snapshot, file uri.URI) 
 	if err != nil {
 		return nil, err
 	}
+
 	if len(pf.Errors()) > 0 {
 		slog.Error("parse error", "errs", pf.Errors())
 	}
+
 	if pf.AST() == nil {
 		return nil, errNoAST
 	}
+
 	return pf.AST(), nil
 }
 
 func typeNameDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
 	ft := target.parent.(*syntax.FieldType)
+
 	astFile, id, _, err := FindTypeDefinition(ctx, ss, file, pf.AST(), ft)
 	if err != nil {
 		return nil, err
 	}
+
 	if id == nil {
 		return nil, nil
 	}
+
 	loc, err := jumpInFile(ctx, ss, astFile, id)
 	if err != nil {
 		return nil, err
 	}
+
 	return []protocol.Location{loc}, nil
 }
 
@@ -153,13 +171,16 @@ func constValueDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI,
 	if err != nil {
 		return nil, err
 	}
+
 	if id == nil {
 		return nil, nil
 	}
+
 	loc, err := jumpInFile(ctx, ss, astFile, id)
 	if err != nil {
 		return nil, err
 	}
+
 	return []protocol.Location{loc}, nil
 }
 
@@ -168,12 +189,15 @@ func serviceDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf
 	if err != nil {
 		return nil, err
 	}
+
 	if id == nil {
 		return nil, nil
 	}
+
 	loc, err := jumpInFile(ctx, ss, astFile, id)
 	if err != nil {
 		return nil, err
 	}
+
 	return []protocol.Location{loc}, nil
 }

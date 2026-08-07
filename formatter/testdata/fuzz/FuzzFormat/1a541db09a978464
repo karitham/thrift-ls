@@ -1,0 +1,2 @@
+go test fuzz v1
+string("service C{  z00 a(1: A00 A2 x000n0 A) t x020 (B X)}")

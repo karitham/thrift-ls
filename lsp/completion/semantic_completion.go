@@ -20,6 +20,7 @@ func semanticCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, p
 	if len(path) == 0 {
 		return nil
 	}
+
 	target := path[len(path)-1]
 
 	switch n := target.(type) {
@@ -34,6 +35,7 @@ func semanticCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, p
 		if len(path) < 2 {
 			return nil
 		}
+
 		switch parent := path[len(path)-2].(type) {
 		case *syntax.FieldType:
 			return typeCandidates(ctx, ss, file, parsedFile.AST())
@@ -53,6 +55,7 @@ func semanticCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, p
 		if n.Name != nil && pos.Offset < tokenOffset(parsedFile.AST(), n.Name) {
 			return typeCandidates(ctx, ss, file, parsedFile.AST())
 		}
+
 		if n.Value == nil {
 			return valueCandidates(ctx, ss, file, parsedFile.AST())
 		}
@@ -69,6 +72,7 @@ func semanticCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, p
 			return typeCandidates(ctx, ss, file, parsedFile.AST())
 		}
 	}
+
 	return nil
 }
 
@@ -85,24 +89,30 @@ func typeCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, doc *
 		for _, st := range ast.Structs() {
 			names[st.Name.Text] = struct{}{}
 		}
+
 		for _, st := range ast.Unions() {
 			names[st.Name.Text] = struct{}{}
 		}
+
 		for _, st := range ast.Exceptions() {
 			names[st.Name.Text] = struct{}{}
 		}
+
 		for _, enum := range ast.Enums() {
 			names[enum.Name.Text] = struct{}{}
 		}
+
 		for _, td := range ast.Typedefs() {
 			names[td.Name.Text] = struct{}{}
 		}
+
 		for _, svc := range ast.Services() {
 			names[svc.Name.Text] = struct{}{}
 		}
 	}
 
 	collectTypeNames(doc)
+
 	for _, inc := range includedFiles(ss, file) {
 		if pf, err := ss.Parse(ctx, inc); err == nil && pf.AST() != nil {
 			collectTypeNames(pf.AST())
@@ -117,7 +127,9 @@ func typeCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, doc *
 			format:     protocol.InsertTextFormatPlainText,
 		})
 	}
+
 	sort.Slice(res, func(i, j int) bool { return res[i].showText < res[j].showText })
+
 	return res
 }
 
@@ -129,6 +141,7 @@ func valueCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, doc 
 		for _, cst := range ast.Consts() {
 			names[cst.Name.Text] = struct{}{}
 		}
+
 		for _, enum := range ast.Enums() {
 			names[enum.Name.Text] = struct{}{}
 			for _, value := range enum.Values {
@@ -139,6 +152,7 @@ func valueCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, doc 
 	}
 
 	collectValueNames(doc)
+
 	for _, inc := range includedFiles(ss, file) {
 		if pf, err := ss.Parse(ctx, inc); err == nil && pf.AST() != nil {
 			collectValueNames(pf.AST())
@@ -153,7 +167,9 @@ func valueCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, doc 
 			format:     protocol.InsertTextFormatPlainText,
 		})
 	}
+
 	sort.Slice(res, func(i, j int) bool { return res[i].showText < res[j].showText })
+
 	return res
 }
 
@@ -161,22 +177,29 @@ func valueCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, doc 
 // include graph.
 func includedFiles(ss *cache.Snapshot, file uri.URI) []uri.URI {
 	var out []uri.URI
+
 	visited := make(map[uri.URI]bool)
+
 	var visit func(f uri.URI)
+
 	visit = func(f uri.URI) {
 		if visited[f] {
 			return
 		}
+
 		visited[f] = true
+
 		node := ss.Graph().Get(f)
 		if node == nil {
 			return
 		}
+
 		for _, inc := range node.OutDegree() {
 			out = append(out, inc)
 			visit(inc)
 		}
 	}
 	visit(file)
+
 	return out
 }

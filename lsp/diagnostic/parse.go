@@ -18,10 +18,12 @@ func (p *Parse) Diagnostic(ctx context.Context, ss *cache.Snapshot, changeFiles 
 	var errs []error
 
 	res := make(DiagnosticResult)
+
 	for _, uri := range changeFiles {
 		parseRes, err := ss.Parse(ctx, uri)
 		if err != nil {
 			errs = append(errs, err)
+
 			continue
 		}
 
@@ -49,6 +51,7 @@ func syntaxErrorToDiagnostic(err syntax.Error) protocol.Diagnostic {
 	if err.Severity == syntax.SeverityWarning {
 		severity = protocol.DiagnosticSeverityWarning
 	}
+
 	return protocol.Diagnostic{
 		Range: protocol.Range{
 			Start: protocol.Position{

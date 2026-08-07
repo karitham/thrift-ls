@@ -34,6 +34,7 @@ func (c *ParseCaches) Set(filePath uri.URI, res *ParsedFile) {
 func (c *ParseCaches) Get(filePath uri.URI) *ParsedFile {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+
 	return c.caches[filePath]
 }
 
@@ -53,6 +54,7 @@ func (c *ParseCaches) Clone() *ParseCaches {
 	for i := range c.caches {
 		clone[i] = c.caches[i]
 	}
+
 	return &ParseCaches{caches: clone}
 }
 
@@ -62,12 +64,15 @@ func (c *ParseCaches) Tokens() map[string]struct{} {
 	}
 
 	tokens := make(map[string]struct{})
+
 	for _, parsed := range c.caches {
 		if parsed.ast == nil {
 			continue
 		}
+
 		collectTokens(parsed.ast, tokens)
 	}
+
 	c.tokens = tokens
 
 	return tokens
@@ -80,10 +85,12 @@ func (c *ParseCaches) TokensForFile(file uri.URI, getIncludes func(uri.URI) []ur
 	visited := make(map[uri.URI]bool)
 
 	var collect func(f uri.URI)
+
 	collect = func(f uri.URI) {
 		if visited[f] {
 			return
 		}
+
 		visited[f] = true
 
 		pf := c.Get(f)
@@ -97,6 +104,7 @@ func (c *ParseCaches) TokensForFile(file uri.URI, getIncludes func(uri.URI) []ur
 	}
 
 	collect(file)
+
 	return tokens
 }
 
@@ -104,6 +112,7 @@ func (c *ParseCaches) TokensForFile(file uri.URI, getIncludes func(uri.URI) []ur
 // names, field names, and identifier references.
 func collectTokens(ast *syntax.Document, tokens map[string]struct{}) {
 	var walk func(n syntax.Node)
+
 	walk = func(n syntax.Node) {
 		switch v := n.(type) {
 		case *syntax.Identifier:
@@ -112,31 +121,37 @@ func collectTokens(ast *syntax.Document, tokens map[string]struct{}) {
 			if v.Kind == syntax.ValueIdent {
 				tokens[v.Text] = struct{}{}
 			}
+
 			for _, item := range v.List {
 				walk(item)
 			}
+
 			for _, entry := range v.Map {
 				walk(entry.Key)
 				walk(entry.Value)
 			}
 		case *syntax.Struct:
 			walk(v.Name)
+
 			for _, f := range v.Fields {
 				walk(f)
 			}
 		case *syntax.Service:
 			walk(v.Name)
+
 			for _, fn := range v.Functions {
 				walk(fn)
 			}
 		case *syntax.Enum:
 			walk(v.Name)
+
 			for _, ev := range v.Values {
 				walk(ev)
 			}
 		case *syntax.Field:
 			walk(v.Type)
 			walk(v.Name)
+
 			if v.Value != nil {
 				walk(v.Value)
 			}
@@ -144,10 +159,13 @@ func collectTokens(ast *syntax.Document, tokens map[string]struct{}) {
 			if v.Type != nil {
 				walk(v.Type)
 			}
+
 			walk(v.Name)
+
 			for _, a := range v.Args {
 				walk(a)
 			}
+
 			if v.Throws != nil {
 				for _, f := range v.Throws.Fields {
 					walk(f)
@@ -157,9 +175,11 @@ func collectTokens(ast *syntax.Document, tokens map[string]struct{}) {
 			if v.Ident != nil {
 				walk(v.Ident)
 			}
+
 			if v.KeyType != nil {
 				walk(v.KeyType)
 			}
+
 			if v.ValueType != nil {
 				walk(v.ValueType)
 			}
@@ -207,6 +227,7 @@ func (p *ParsedFile) AggregatedError() error {
 	if len(p.errs) == 0 {
 		return nil
 	}
+
 	return fmt.Errorf("aggregated error: %v", p.errs)
 }
 

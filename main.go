@@ -11,6 +11,7 @@ import (
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/karitham/thrift-ls/doc"
 	"github.com/karitham/thrift-ls/formatter"
 	tlog "github.com/karitham/thrift-ls/log"
 	"github.com/karitham/thrift-ls/lsp"
@@ -43,6 +44,27 @@ func main() {
 				Flags:     formatFlags(),
 				Action:    formatAction,
 			},
+			{
+				Name:      "dump",
+				Usage:     "dump the parse tree and document IR of a thrift file",
+				ArgsUsage: "<file>",
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:  "ir",
+						Usage: "also dump the formatted document IR with layout decisions",
+					},
+					&cli.BoolFlag{
+						Name:  "ast",
+						Usage: "dump only the parse tree (tokens, trivia, node spans)",
+					},
+					&cli.IntFlag{
+						Name:  "printWidth",
+						Usage: "line width for the IR dump",
+						Value: 80,
+					},
+				},
+				Action: dumpAction,
+			},
 		},
 	}
 
@@ -70,9 +92,22 @@ func lspFlags() []cli.Flag {
 	}
 }
 
+// constructFlags maps the per-construct format flag names to constructs.
+var constructFlags = []struct {
+	name      string
+	construct formatter.Construct
+}{
+	{"struct", formatter.ConstructStruct},
+	{"union", formatter.ConstructUnion},
+	{"exception", formatter.ConstructException},
+	{"enum", formatter.ConstructEnum},
+	{"argument", formatter.ConstructArguments},
+	{"throws", formatter.ConstructThrows},
+}
+
 // formatFlags are the flags of the format subcommand.
 func formatFlags() []cli.Flag {
-	return []cli.Flag{
+	flags := []cli.Flag{
 		&cli.BoolFlag{
 			Name:  "w",
 			Usage: "overwrite the file with the formatted result",
@@ -87,27 +122,11 @@ func formatFlags() []cli.Flag {
 		},
 		&cli.StringFlag{
 			Name:  "indent",
-			Usage: `indentation: a literal like "  " or "\t", a number like 8, or a legacy spec like "2spaces"`,
+			Usage: `indentation: a literal like "  " or "\t"`,
 		},
 		&cli.StringFlag{
 			Name:  "align",
 			Usage: `align fields: "field", "assign", or "disable"`,
-		},
-		&cli.StringFlag{
-			Name:  "field-separator",
-			Usage: `struct/enum field separators: "add", "remove", "semicolon", or "disable" to keep as written`,
-		},
-		&cli.StringFlag{
-			Name:  "function-separator",
-			Usage: `service argument and throws separators: "add", "remove", "semicolon", or "disable" to keep as written`,
-		},
-		&cli.BoolFlag{
-			Name:  "break-structs",
-			Usage: "always break struct, union, and exception bodies onto multiple lines",
-		},
-		&cli.BoolFlag{
-			Name:  "break-enums",
-			Usage: "always break enum bodies onto multiple lines",
 		},
 		&cli.StringFlag{
 			Name:  "config",
@@ -118,22 +137,39 @@ func formatFlags() []cli.Flag {
 			Usage: "additional include path, like the thrift compiler (repeatable)",
 		},
 	}
+	for _, cf := range constructFlags {
+		flags = append(flags,
+			&cli.StringFlag{
+				Name:  cf.name + "-separator",
+				Usage: fmt.Sprintf("%s separators: \"comma\", \"semicolon\", \"none\", or \"preserve\" to keep as written", cf.name),
+			},
+			&cli.BoolFlag{
+				Name:  "break-" + cf.name,
+				Usage: fmt.Sprintf("always break %s bodies onto multiple lines", cf.name),
+			},
+		)
+	}
+
+	return flags
 }
 
 // lspAction serves the language server on stdio.
 func lspAction(ctx context.Context, cmd *cli.Command) error {
 	cfg := loadConfig(cmd.String("config"), ".")
 	patch := options.Effective(cfg)
+
 	cli, err := lspPatch(cmd)
 	if err != nil {
 		return err
 	}
+
 	patch = cli.Apply(patch)
 
 	logLevelValue := 3
 	if patch.LogLevel != nil {
 		logLevelValue = *patch.LogLevel
 	}
+
 	tlog.Init(logLevelValue)
 
 	fopts, err := patch.Formatter()
@@ -149,79 +185,144 @@ func lspAction(ctx context.Context, cmd *cli.Command) error {
 	ss := lsp.NewStreamServer(lspOpts)
 	stream := jsonrpc2.NewStream(fakenet.NewConn("stdio", os.Stdin, os.Stdout))
 	conn := jsonrpc2.NewConn(stream)
+
 	err = ss.ServeStream(ctx, conn)
 	if errors.Is(err, io.EOF) {
 		return nil
 	}
+
 	return err
 }
 
 // formatAction formats a single thrift file.
 func formatAction(ctx context.Context, cmd *cli.Command) error {
 	file := cmd.Args().First()
+
 	cli, err := formatPatch(cmd)
 	if err != nil {
 		return err
 	}
+
 	return formatFile(file, cmd.Bool("w"), cmd.Bool("d"), cmd.String("config"), cli)
+}
+
+// dumpAction prints the parse tree, and optionally the formatted document
+// IR with the printer's layout decisions.
+func dumpAction(ctx context.Context, cmd *cli.Command) error {
+	file := cmd.Args().First()
+	if file == "" {
+		return errors.New("must specify a thrift file to dump, e.g. thriftls dump file.thrift")
+	}
+
+	src, err := os.ReadFile(file)
+	if err != nil {
+		return err
+	}
+
+	parsed, errs := syntax.Parse(src)
+	if parseErrors(errs) {
+		return fmt.Errorf("%s: file does not parse:\n%s", file, formatErrors(errs))
+	}
+
+	if !cmd.Bool("ir") {
+		fmt.Print(syntax.Dump(parsed))
+
+		return nil
+	}
+
+	// The IR dump reflects the printer's layout decisions, so print first
+	// (the printer mutates the groups in place), then dump the tree.
+	fopts := formatter.DefaultOptions()
+	fopts.PrintWidth = cmd.Int("printWidth")
+
+	ir := formatter.BuildIR(parsed, fopts)
+	if !cmd.Bool("ast") {
+		fmt.Print(syntax.Dump(parsed))
+		fmt.Println("--- IR ---")
+	}
+
+	if _, err := formatter.PrintIR(ir, fopts); err != nil {
+		return err
+	}
+
+	fmt.Print(doc.Dump(ir))
+	fmt.Println("--- output ---")
+
+	formatted, err := formatter.Format(parsed, fopts)
+	if err != nil {
+		return err
+	}
+
+	fmt.Print(formatted)
+
+	return nil
 }
 
 // lspPatch builds an options patch from the explicitly set lsp flags.
 func lspPatch(cmd *cli.Command) (options.Patch, error) {
 	p := options.Patch{}
+
 	if cmd.IsSet("logLevel") {
 		v := cmd.Int("logLevel")
 		p.LogLevel = &v
 	}
+
 	if paths := cmd.StringSlice("I"); len(paths) > 0 {
 		p.IncludePaths = &paths
 	}
+
 	return p, nil
 }
 
 // formatPatch builds an options patch from the explicitly set format flags.
 func formatPatch(cmd *cli.Command) (options.Patch, error) {
 	p := options.Patch{}
+
 	if cmd.IsSet("printWidth") {
 		v := cmd.Int("printWidth")
 		p.PrintWidth = &v
 	}
+
 	if cmd.IsSet("indent") {
 		ind, err := options.ParseIndentValue(cmd.String("indent"))
 		if err != nil {
 			return options.Patch{}, err
 		}
+
 		p.Indent = &ind
 	}
+
 	if cmd.IsSet("align") {
 		v := cmd.String("align")
 		p.Align = &v
 	}
-	if cmd.IsSet("field-separator") {
-		v := cmd.String("field-separator")
-		p.Separators = &options.Separators{Fields: &v}
-	}
-	if cmd.IsSet("function-separator") {
-		v := cmd.String("function-separator")
-		if p.Separators == nil {
-			p.Separators = &options.Separators{}
+
+	for _, cf := range constructFlags {
+		if cmd.IsSet(cf.name + "-separator") {
+			v := cmd.String(cf.name + "-separator")
+
+			if p.Separators == nil {
+				p.Separators = &options.Separators{}
+			}
+
+			p.Separators.Set(cf.construct, &v)
 		}
-		p.Separators.Functions = &v
-	}
-	if cmd.IsSet("break-structs") {
-		v := cmd.Bool("break-structs")
-		p.Break = &options.Break{Structs: &v}
-	}
-	if cmd.IsSet("break-enums") {
-		v := cmd.Bool("break-enums")
-		if p.Break == nil {
-			p.Break = &options.Break{}
+
+		if cmd.IsSet("break-" + cf.name) {
+			v := cmd.Bool("break-" + cf.name)
+
+			if p.Break == nil {
+				p.Break = &options.Break{}
+			}
+
+			p.Break.Set(cf.construct, &v)
 		}
-		p.Break.Enums = &v
 	}
+
 	if paths := cmd.StringSlice("I"); len(paths) > 0 {
 		p.IncludePaths = &paths
 	}
+
 	return p, nil
 }
 
@@ -230,18 +331,22 @@ func formatPatch(cmd *cli.Command) (options.Patch, error) {
 func loadConfig(path, dir string) *options.Patch {
 	if path == "" {
 		var err error
+
 		path, err = options.FindConfig(dir)
 		if err != nil {
 			fatal(err)
 		}
 	}
+
 	if path == "" {
 		return nil
 	}
+
 	cfg, err := options.Load(path)
 	if err != nil {
 		fatal(err)
 	}
+
 	return cfg
 }
 
@@ -261,6 +366,7 @@ func formatFile(file string, write, diffOut bool, configPath string, cli options
 	if err != nil {
 		return err
 	}
+
 	absFile, err := filepath.Abs(file)
 	if err != nil {
 		return err
@@ -269,17 +375,18 @@ func formatFile(file string, write, diffOut bool, configPath string, cli options
 	cfg := loadConfig(configPath, filepath.Dir(absFile))
 	patch := options.Effective(cfg)
 	patch = cli.Apply(patch)
+
 	fopts, err := patch.Formatter()
 	if err != nil {
 		return err
 	}
 
-	doc, errs := syntax.Parse(src)
+	parsed, errs := syntax.Parse(src)
 	if parseErrors(errs) {
 		return fmt.Errorf("%s: file does not parse:\n%s", file, formatErrors(errs))
 	}
 
-	out, err := formatter.Format(doc, fopts)
+	out, err := formatter.Format(parsed, fopts)
 	if err != nil {
 		return fmt.Errorf("%s: %w", file, err)
 	}
@@ -295,12 +402,15 @@ func formatFile(file string, write, diffOut bool, configPath string, cli options
 		if info, err := os.Stat(file); err == nil {
 			perms = info.Mode()
 		}
+
 		return os.WriteFile(file, []byte(out), perms)
 	case diffOut:
 		fmt.Print(string(Diff("old", src, "new", []byte(out))))
+
 		return nil
 	default:
 		fmt.Print(out)
+
 		return nil
 	}
 }
@@ -311,16 +421,19 @@ func parseErrors(errs []syntax.Error) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
 func formatErrors(errs []syntax.Error) string {
 	var b strings.Builder
+
 	for _, e := range errs {
 		if e.Severity == syntax.SeverityError {
 			fmt.Fprintf(&b, "  %s\n", e)
 		}
 	}
+
 	return b.String()
 }
 
@@ -328,5 +441,6 @@ func derefStrings(p *[]string) []string {
 	if p == nil {
 		return nil
 	}
+
 	return *p
 }

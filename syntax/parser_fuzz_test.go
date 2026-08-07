@@ -39,6 +39,7 @@ func FuzzParse(f *testing.F) {
 		if doc == nil {
 			t.Fatal("Parse returned nil document")
 		}
+
 		checkDoc(t, doc)
 
 		for i := 1; i < len(errs); i++ {

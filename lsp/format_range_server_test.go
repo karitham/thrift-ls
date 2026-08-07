@@ -47,6 +47,7 @@ struct C { 3: i64 c }
 		})
 		assert.NoError(t, err)
 		assert.Len(t, edits, 1)
+
 		return edits[0].NewText
 	}
 

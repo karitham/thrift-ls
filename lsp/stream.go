@@ -48,5 +48,6 @@ func (s *StreamServer) ServeStream(ctx context.Context, conn jsonrpc2.Conn) erro
 			),
 		))
 	<-conn.Done()
+
 	return conn.Err()
 }

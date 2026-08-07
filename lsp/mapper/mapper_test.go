@@ -15,6 +15,7 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 		fileURI uri.URI
 		content []byte
 	}
+
 	type args struct {
 		pos types.Position
 	}
@@ -185,6 +186,7 @@ func Test_utf16Count(t *testing.T) {
 	type args struct {
 		contents []byte
 	}
+
 	tests := []struct {
 		name string
 		args args

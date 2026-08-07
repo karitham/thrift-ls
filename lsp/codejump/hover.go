@@ -27,6 +27,7 @@ func Hover(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.P
 	case TargetService:
 		return hoverService(ctx, ss, file, pf, target)
 	}
+
 	return res, err
 }
 
@@ -40,29 +41,35 @@ func hoverService(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cac
 	if err != nil || id == nil {
 		return "", err
 	}
+
 	dstAst, err := parseDefinitionFile(ctx, ss, astFile)
 	if err != nil {
 		return "", err
 	}
+
 	svc := GetServiceNode(dstAst, id.Text)
 	if svc == nil {
 		return "", nil
 	}
+
 	return formatNode(dstAst, svc)
 }
 
 func hoverDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) (string, error) {
 	ft := target.parent.(*syntax.FieldType)
+
 	astFile, id, kind, err := FindTypeDefinition(ctx, ss, file, pf.AST(), ft)
 	if err != nil || id == nil {
 		return "", err
 	}
+
 	dstAst, err := parseDefinitionFile(ctx, ss, astFile)
 	if err != nil {
 		return "", err
 	}
 
 	var node syntax.Node
+
 	switch kind {
 	case DefinitionException:
 		node = GetExceptionNode(dstAst, id.Text)
@@ -75,9 +82,11 @@ func hoverDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *
 	case DefinitionTypedef:
 		node = GetTypedefNode(dstAst, id.Text)
 	}
+
 	if node == nil {
 		return "", nil
 	}
+
 	return formatNode(dstAst, node)
 }
 
@@ -86,6 +95,7 @@ func hoverConstValue(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *
 	if err != nil || id == nil {
 		return "", err
 	}
+
 	dstAst, err := parseDefinitionFile(ctx, ss, astFile)
 	if err != nil {
 		return "", err
@@ -94,8 +104,10 @@ func hoverConstValue(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *
 	if dstEnum := GetEnumNodeByEnumValue(dstAst, id.Text); dstEnum != nil {
 		return formatNode(dstAst, dstEnum)
 	}
+
 	if dstConst := GetConstNode(dstAst, id.Text); dstConst != nil {
 		return formatNode(dstAst, dstConst)
 	}
+
 	return "", nil
 }

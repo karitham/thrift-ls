@@ -122,12 +122,14 @@ var keywordNames = func() map[TokenKind]string {
 	for text, kind := range keywordKinds {
 		m[kind] = text
 	}
+
 	return m
 }()
 
 // isKeyword reports whether the token kind is one of the reserved words.
 func isKeyword(k TokenKind) bool {
 	_, ok := keywordNames[k]
+
 	return ok
 }
 
@@ -145,9 +147,11 @@ func (k TokenKind) String() string {
 	if name, ok := keywordNames[k]; ok {
 		return name
 	}
+
 	if name, ok := tokenKindNames[k]; ok {
 		return name
 	}
+
 	return fmt.Sprintf("TokenKind(%d)", uint8(k))
 }
 
@@ -172,6 +176,7 @@ func (k TriviaKind) String() string {
 	case TriviaAnnotation:
 		return "annotation"
 	}
+
 	return fmt.Sprintf("TriviaKind(%d)", uint8(k))
 }
 
@@ -236,6 +241,7 @@ func (e Error) Error() string {
 // lexing continues past errors so the parser can still recover.
 func Lex(src []byte) ([]Token, []Error) {
 	l := &lexer{src: string(src)}
+
 	return l.run()
 }
 
@@ -253,6 +259,7 @@ type srcPos struct {
 
 func (l *lexer) run() ([]Token, []Error) {
 	l.line, l.col = 1, 1
+
 	var tokens []Token
 
 	for {
@@ -260,6 +267,7 @@ func (l *lexer) run() ([]Token, []Error) {
 		if n := len(tokens); n > 0 {
 			prevLine = tokens[n-1].Line
 		}
+
 		leading, trailing, blankLines := l.scanTrivia(prevLine)
 
 		tok := l.scanToken()
@@ -301,6 +309,7 @@ func (l *lexer) scanTrivia(prevLine int) (leading, trailing []Trivia, blankLines
 			return leading, trailing, blankLines
 		}
 	}
+
 	return leading, trailing, blankLines
 }
 
@@ -309,6 +318,7 @@ func (l *lexer) appendComment(leading, trailing []Trivia, prevLine, blankLines i
 	if t.Line == prevLine {
 		return leading, append(trailing, t)
 	}
+
 	return append(leading, t), trailing
 }
 
@@ -316,14 +326,18 @@ func (l *lexer) appendComment(leading, trailing []Trivia, prevLine, blankLines i
 // lines it contains (a blank line is a line containing only whitespace).
 func (l *lexer) scanWhitespace() int {
 	newlines := 0
+
 	for l.off < len(l.src) {
 		switch l.src[l.off] {
 		case '\n':
 			newlines++
+
 			l.advanceByte()
 		case '\r':
 			newlines++
+
 			l.advanceByte()
+
 			if l.off < len(l.src) && l.src[l.off] == '\n' {
 				l.advanceByte()
 			}
@@ -333,12 +347,15 @@ func (l *lexer) scanWhitespace() int {
 			if newlines > 0 {
 				return newlines - 1
 			}
+
 			return 0
 		}
 	}
+
 	if newlines > 0 {
 		return newlines - 1
 	}
+
 	return 0
 }
 
@@ -347,6 +364,7 @@ func (l *lexer) scanLineComment() Trivia {
 	for l.off < len(l.src) && l.src[l.off] != '\n' && l.src[l.off] != '\r' {
 		l.advanceRune()
 	}
+
 	return l.finishTrivia(TriviaLineComment, start)
 }
 
@@ -358,6 +376,7 @@ func (l *lexer) scanLineAnnotation() Trivia {
 	for l.off < len(l.src) && l.src[l.off] != '\n' && l.src[l.off] != '\r' {
 		l.advanceRune()
 	}
+
 	return l.finishTrivia(TriviaAnnotation, start)
 }
 
@@ -373,22 +392,28 @@ func (l *lexer) scanBlockComment() Trivia {
 	for {
 		if l.off >= len(l.src) {
 			l.errorfAt(start, "unterminated comment")
+
 			break
 		}
+
 		if l.src[l.off] == '*' && l.peekByte(1) == '/' {
 			l.advanceByte()
 			l.advanceByte()
+
 			kind := TriviaBlockComment
 			if doc {
 				kind = TriviaDocComment
 			}
+
 			return l.finishTrivia(kind, start)
 		}
 		// An empty doc comment /**/ ends right after the opening /**.
 		if doc && l.off == start.offset+3 && l.src[l.off] == '/' {
 			l.advanceByte()
+
 			return l.finishTrivia(TriviaDocComment, start)
 		}
+
 		l.advanceRune()
 	}
 
@@ -420,6 +445,7 @@ func (l *lexer) scanToken() Token {
 			if tok, ok := l.scanNumber(); ok {
 				return tok
 			}
+
 			l.errorf("unexpected character %q", c)
 			l.advanceRune()
 		case c == '\'' || c == '"':
@@ -440,6 +466,7 @@ func (l *lexer) scanToken() Token {
 			if kind, ok := symbolKinds[c]; ok {
 				return l.symbolToken(kind)
 			}
+
 			l.errorf("unexpected character %q", c)
 			l.advanceRune()
 		}
@@ -458,6 +485,7 @@ var symbolKinds = map[byte]TokenKind{
 func (l *lexer) symbolToken(kind TokenKind) Token {
 	start := l.pos()
 	l.advanceByte()
+
 	return Token{Kind: kind, Text: l.src[start.offset:l.off], Offset: start.offset, Line: start.line, Col: start.col}
 }
 
@@ -467,28 +495,38 @@ func (l *lexer) symbolToken(kind TokenKind) Token {
 func (l *lexer) scanIdentifier() Token {
 	start := l.pos()
 	dotted := false
+
 	l.advanceByte() // first character is [a-zA-Z_]
+
 	for l.off < len(l.src) {
 		c := l.src[l.off]
 		if isIdentPart(c) {
 			l.advanceByte()
+
 			continue
 		}
+
 		if c == '.' && isIdentStart(l.peekByte(1)) {
 			dotted = true
+
 			l.advanceByte() // dot
 			l.advanceByte() // first identifier character after dot
+
 			continue
 		}
+
 		break
 	}
+
 	text := l.src[start.offset:l.off]
 	kind := TokenIdentifier
+
 	if !dotted {
 		if k, ok := keywordKinds[text]; ok {
 			kind = k
 		}
 	}
+
 	return Token{Kind: kind, Text: text, Offset: start.offset, Line: start.line, Col: start.col}
 }
 
@@ -506,6 +544,7 @@ func (l *lexer) scanNumber() (Token, bool) {
 
 	length := 0
 	kind := TokenIntConstant
+
 	switch {
 	case hexLen > 0 && hexLen >= intLen && hexLen >= dubLen:
 		length = hexLen
@@ -521,6 +560,7 @@ func (l *lexer) scanNumber() (Token, bool) {
 	for i := 0; i < length; i++ {
 		l.advanceByte()
 	}
+
 	return Token{Kind: kind, Text: rest[:length], Offset: start.offset, Line: start.line, Col: start.col}, true
 }
 
@@ -531,18 +571,23 @@ func matchHex(s string) int {
 	if i < len(s) && (s[i] == '+' || s[i] == '-') {
 		i++
 	}
+
 	if i+2 > len(s) || s[i] != '0' || (s[i+1] != 'x' && s[i+1] != 'X') {
 		return 0
 	}
+
 	i += 2
 	digits := 0
+
 	for i < len(s) && isHexDigit(s[i]) {
 		i++
 		digits++
 	}
+
 	if digits == 0 {
 		return 0
 	}
+
 	return i
 }
 
@@ -553,13 +598,16 @@ func matchInt(s string) int {
 	if i < len(s) && (s[i] == '+' || s[i] == '-') {
 		i++
 	}
+
 	start := i
 	for i < len(s) && isDigit(s[i]) {
 		i++
 	}
+
 	if i == start {
 		return 0
 	}
+
 	return i
 }
 
@@ -571,40 +619,52 @@ func matchDouble(s string) int {
 	if i < len(s) && (s[i] == '+' || s[i] == '-') {
 		i++
 	}
+
 	sawDigit := false
+
 	for i < len(s) && isDigit(s[i]) {
 		i++
 		sawDigit = true
 	}
+
 	if i < len(s) && s[i] == '.' {
 		digits := 0
 		for j := i + 1; j < len(s) && isDigit(s[j]); j++ {
 			digits++
 		}
+
 		if digits == 0 {
 			return 0
 		}
+
 		sawDigit = true
 		i += 1 + digits
 	}
+
 	if i < len(s) && (s[i] == 'e' || s[i] == 'E') {
 		j := i + 1
 		if j < len(s) && (s[j] == '+' || s[j] == '-') {
 			j++
 		}
+
 		digits := 0
+
 		for j < len(s) && isDigit(s[j]) {
 			j++
 			digits++
 		}
+
 		if digits == 0 {
 			return 0
 		}
+
 		i = j
 	}
+
 	if !sawDigit {
 		return 0
 	}
+
 	return i
 }
 
@@ -621,22 +681,28 @@ func (l *lexer) scanString() Token {
 	for {
 		if l.off >= len(l.src) {
 			l.errorfAt(start, "unterminated string literal")
+
 			break
 		}
+
 		c := l.src[l.off]
 		switch c {
 		case quote:
 			l.advanceByte()
+
 			return Token{Kind: TokenStringLiteral, Text: l.src[start.offset:l.off], Offset: start.offset, Line: start.line, Col: start.col}
 		case '\n', '\r':
 			l.errorfAt(start, "newline in string literal")
+
 			return Token{Kind: TokenStringLiteral, Text: l.src[start.offset:l.off], Offset: start.offset, Line: start.line, Col: start.col}
 		case '\\':
 			if l.off+1 >= len(l.src) {
 				l.advanceByte() // consume the backslash with the string
 				l.errorfAt(start, "unterminated string literal")
+
 				return Token{Kind: TokenStringLiteral, Text: l.src[start.offset:l.off], Offset: start.offset, Line: start.line, Col: start.col}
 			}
+
 			esc := l.peekByte(1)
 			switch esc {
 			case 'r', 'n', 't', '"', '\'', '\\':
@@ -653,6 +719,7 @@ func (l *lexer) scanString() Token {
 			l.advanceRune()
 		}
 	}
+
 	return Token{Kind: TokenStringLiteral, Text: l.src[start.offset:l.off], Offset: start.offset, Line: start.line, Col: start.col}
 }
 
@@ -660,6 +727,7 @@ func (l *lexer) peekByte(ahead int) byte {
 	if l.off+ahead >= len(l.src) {
 		return 0
 	}
+
 	return l.src[l.off+ahead]
 }
 
@@ -679,6 +747,7 @@ func (l *lexer) advanceByte() {
 	default:
 		l.col++
 	}
+
 	l.off++
 }
 
@@ -699,6 +768,7 @@ func (l *lexer) advanceRune() {
 	default:
 		l.col++
 	}
+
 	l.off += size
 }
 

@@ -15,16 +15,19 @@ import (
 // for example: file uri is file:///base.thrift, then `base` is include name
 func GetIncludeName(file uri.URI) string {
 	fileName := file.Path()
+
 	index := strings.LastIndexByte(fileName, filepath.Separator)
 	if index == -1 {
 		return fileName
 	}
+
 	fileName = string(fileName[index+1:])
 
 	index = strings.LastIndexByte(fileName, '.')
 	if index == -1 {
 		return fileName
 	}
+
 	return string(fileName[0:index])
 }
 
@@ -34,6 +37,7 @@ func IncludePathText(inc *syntax.Include) string {
 	if inc == nil || inc.Path == nil {
 		return ""
 	}
+
 	return strings.Trim(inc.Path.Text, "\"'")
 }
 
@@ -45,11 +49,14 @@ func GetIncludePath(ast *syntax.Document, includeName string) string {
 		if path == "" {
 			continue
 		}
+
 		items := strings.Split(path, "/")
+
 		path = items[len(items)-1]
 		if !strings.HasSuffix(path, ".thrift") {
 			continue
 		}
+
 		name := strings.TrimSuffix(path, ".thrift")
 		if name == includeName {
 			return IncludePathText(include)

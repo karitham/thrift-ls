@@ -33,10 +33,12 @@ func FuzzFormatRangeText(f *testing.F) {
 		opts := formatter.Options{}
 		// Clamp the fuzzed offsets into the content.
 		limit := len(content) + 1
+
 		rs = rs % limit
 		if rs < 0 {
 			rs += limit
 		}
+
 		re = re % limit
 		if re < 0 {
 			re += limit
@@ -51,9 +53,11 @@ func FuzzFormatRangeText(f *testing.F) {
 		if outRS < 0 || outRE > len(content) || outRS >= outRE {
 			t.Fatalf("invalid accepted range [%d, %d) for content %q", outRS, outRE, content)
 		}
+
 		if outRS != 0 && content[outRS-1] != '\n' {
 			t.Fatalf("accepted range starts mid-line at %d in %q", outRS, content)
 		}
+
 		if outRE != len(content) && content[outRE] != '\n' {
 			t.Fatalf("accepted range ends mid-line at %d in %q", outRE, content)
 		}
@@ -68,6 +72,7 @@ func FuzzFormatRangeText(f *testing.F) {
 		spliced = append(spliced, content[outRE:]...)
 
 		origErrs := errorMessages(syntax.Parse(content))
+
 		splicedErrs := errorMessages(syntax.Parse(spliced))
 		for msg, splicedCount := range splicedErrs {
 			if splicedCount > origErrs[msg] {
@@ -82,10 +87,12 @@ func FuzzFormatRangeText(f *testing.F) {
 func errorMessages(doc *syntax.Document, errs []syntax.Error) map[string]int {
 	_ = doc
 	counts := make(map[string]int)
+
 	for _, err := range errs {
 		if err.Severity == syntax.SeverityError {
 			counts[err.Message]++
 		}
 	}
+
 	return counts
 }

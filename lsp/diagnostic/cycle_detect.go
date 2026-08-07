@@ -20,6 +20,7 @@ func (c *CycleCheck) Diagnostic(ctx context.Context, ss *cache.Snapshot, changeF
 	for _, file := range changeFiles {
 		_ = getIncludes(ctx, ss, file, &includesMap)
 	}
+
 	cyclePairs := cycleDetect(&includesMap)
 
 	return cycleToDiagnosticItems(cyclePairs), nil
@@ -45,6 +46,7 @@ func cyclePairToDiagnostic(pair CyclePair) protocol.Diagnostic {
 		Source:   protocol.NewOptional("thrift-ls"),
 		Message:  protocol.String(fmt.Sprintf("cycle dependency in %s", pair.include.file)),
 	}
+
 	return res
 }
 
@@ -82,19 +84,24 @@ func getIncludes(ctx context.Context, ss *cache.Snapshot, file uri.URI, includes
 	pf, err := ss.Parse(ctx, file)
 	if err != nil {
 		slog.Error("parse failed", "file", file, "err", err)
+
 		return err
 	}
+
 	if pf.AST() == nil {
 		slog.Error("parse ast failed", "errs", pf.AggregatedError())
+
 		return pf.AggregatedError()
 	}
 
 	includes := pf.AST().Includes()
 	resolver := ss.Resolver()
+
 	for i := range includes {
 		if includes[i].Path == nil {
 			continue
 		}
+
 		includeURI := resolver.ResolveIncludeWithText(file, lsputils.IncludePathText(includes[i]))
 		(*includesMap)[file] = append((*includesMap)[file], Include{
 			file:    includeURI,
@@ -105,6 +112,7 @@ func getIncludes(ctx context.Context, ss *cache.Snapshot, file uri.URI, includes
 		if _, ok := (*includesMap)[includeURI]; ok {
 			continue
 		}
+
 		_ = getIncludes(ctx, ss, includeURI, includesMap)
 	}
 

@@ -10,6 +10,7 @@ func TestParse(t *testing.T) {
 	type args struct {
 		fh FileHandle
 	}
+
 	tests := []struct {
 		name      string
 		args      args

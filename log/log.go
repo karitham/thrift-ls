@@ -16,10 +16,12 @@ import (
 // the old logrus levels so CLI flags keep their meaning.
 func Init(level int) {
 	file := os.TempDir() + "/thriftls.log"
+
 	logFile, err := os.OpenFile(file, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o766)
 	if err != nil {
 		panic(err)
 	}
+
 	slog.SetDefault(slog.New(slog.NewTextHandler(logFile, &slog.HandlerOptions{
 		Level: slogLevel(level),
 	})))

@@ -14,6 +14,7 @@ func hasParseErrors(errs []syntax.Error) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -21,20 +22,24 @@ func hasParseErrors(errs []syntax.Error) bool {
 // test when parsing fails.
 func fmtSrc(t *testing.T, src string, opts Options) string {
 	t.Helper()
+
 	got, err := Format(parseDoc(t, src), opts)
 	if err != nil {
 		t.Fatalf("Format: %v", err)
 	}
+
 	return got
 }
 
 // parseDoc parses src and fails the test on parse errors.
 func parseDoc(t *testing.T, src string) *syntax.Document {
 	t.Helper()
+
 	doc, errs := syntax.Parse([]byte(src))
 	if hasParseErrors(errs) {
 		t.Fatalf("parse errors: %v", errs)
 	}
+
 	return doc
 }
 
@@ -43,22 +48,26 @@ func testOpts(width int) Options {
 	o.PrintWidth = width
 	o.Indent = "  "
 	o.TabWidth = 2
+
 	return o
 }
 
-// commaOpts returns testOpts at width with the given FieldSeparator.
+// commaOpts returns testOpts at width with the given struct separator.
 func commaOpts(width int, mode SeparatorMode) Options {
 	o := testOpts(width)
-	o.FieldSeparator = mode
+	o.Separator.Set(ConstructStruct, mode)
+
 	return o
 }
 
 // runCase formats, checks idempotency, and re-parses the output.
 func runCase(t *testing.T, src string, opts Options, want string) {
 	t.Helper()
+
 	got := fmtSrc(t, src, opts)
 	if got != want {
 		t.Errorf("format mismatch\n got: %q\nwant: %q", got, want)
+
 		return
 	}
 	// Idempotency: formatting the output again must not change it.
@@ -83,12 +92,14 @@ type formatCase struct {
 // runFormatCases runs width-based table cases through runCase.
 func runFormatCases(t *testing.T, cases []formatCase) {
 	t.Helper()
+
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			width := tt.width
 			if width == 0 {
 				width = 80
 			}
+
 			runCase(t, tt.src, testOpts(width), tt.want)
 		})
 	}
@@ -236,6 +247,7 @@ func TestFormatConsts(t *testing.T) {
 			if width == 0 {
 				width = 40
 			}
+
 			runCase(t, tt.src, testOpts(width), tt.want)
 		})
 	}
@@ -397,10 +409,10 @@ func TestFormatFunctions(t *testing.T) {
 			want:  "service S {\n  i32 getUser(1: i64 id, 2: string name) throws (\n    NotFound e\n  )\n}\n",
 		},
 		{
-			name:  "everything breaks when signature is long",
+			name:  "args break but throws folds when it fits",
 			src:   "service S {\n  i32 getUser(1: i64 id, 2: string name) throws (NotFound e)\n}",
 			width: 45,
-			want:  "service S {\n  i32 getUser(\n    1: i64    id,\n    2: string name\n  ) throws (\n    NotFound e\n  )\n}\n",
+			want:  "service S {\n  i32 getUser(\n    1: i64    id,\n    2: string name\n  ) throws (NotFound e)\n}\n",
 		},
 		{
 			name:  "args break without throws",
@@ -524,6 +536,7 @@ func TestFormatOptions(t *testing.T) {
 			opts: func() Options {
 				o := testOpts(40)
 				o.Align = AlignDisable
+
 				return o
 			}(),
 			src:  "struct S {\n  1: required i64 id\n  2: string name\n}",
@@ -534,6 +547,7 @@ func TestFormatOptions(t *testing.T) {
 			opts: func() Options {
 				o := testOpts(40)
 				o.Align = AlignAssign
+
 				return o
 			}(),
 			src:  "struct S {\n  1: i32 a = 5\n  2: string longer = \"x\"\n}",
@@ -610,6 +624,7 @@ func TestFormatIsIdempotent(t *testing.T) {
 	for i, src := range sources {
 		t.Run("case-"+strconv.Itoa(i), func(t *testing.T) {
 			first := fmtSrc(t, src, testOpts(40))
+
 			second := fmtSrc(t, first, testOpts(40))
 			if first != second {
 				t.Errorf("not idempotent:\nfirst: %q\nsecond: %q", first, second)
@@ -626,10 +641,12 @@ struct User {
 	doc := parseDoc(t, src)
 	want := `// leading
 struct User { 1: required i64 id } (tag = "x")`
+
 	got, err := FormatNode(doc, doc.Structs()[0], testOpts(80))
 	if err != nil {
 		t.Fatalf("FormatNode: %v", err)
 	}
+
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -646,8 +663,10 @@ func TestFormatSeparators(t *testing.T) {
 			name: "fields semicolon, functions comma",
 			opts: func() Options {
 				o := testOpts(30)
-				o.FieldSeparator = SeparatorSemicolon
-				o.FunctionSeparator = SeparatorComma
+				o.Separator.Set(ConstructStruct, SeparatorSemicolon)
+				o.Separator.Set(ConstructArguments, SeparatorComma)
+				o.Separator.Set(ConstructThrows, SeparatorComma)
+
 				return o
 			}(),
 			src:  "struct S {\n  1: i32 a\n  2: string b\n}\n\nservice F {\n  void go(1: i32 x) throws (\n    1: E err\n  )\n}",
@@ -675,7 +694,9 @@ func TestFormatSeparators(t *testing.T) {
 			name: "function comma add forces commas on throws",
 			opts: func() Options {
 				o := testOpts(30)
-				o.FunctionSeparator = SeparatorComma
+				o.Separator.Set(ConstructArguments, SeparatorComma)
+				o.Separator.Set(ConstructThrows, SeparatorComma)
+
 				return o
 			}(),
 			src:  "service F {\n  void go(1: i32 x) throws (\n    1: E err\n    2: F fail\n  )\n}",
@@ -685,7 +706,9 @@ func TestFormatSeparators(t *testing.T) {
 			name: "function comma remove drops argument separators",
 			opts: func() Options {
 				o := testOpts(30)
-				o.FunctionSeparator = SeparatorNone
+				o.Separator.Set(ConstructArguments, SeparatorNone)
+				o.Separator.Set(ConstructThrows, SeparatorNone)
+
 				return o
 			}(),
 			src:  "service F {\n  void go(1: i32 x, 2: string y)\n}",
@@ -710,7 +733,8 @@ func TestFormatAlwaysBreak(t *testing.T) {
 			name: "break structs forces multiline",
 			opts: func() Options {
 				o := testOpts(80)
-				o.BreakStructs = true
+				o.Break.Set(ConstructStruct, true)
+
 				return o
 			}(),
 			src:  "struct S {\n  1: i32 a\n}",
@@ -720,7 +744,8 @@ func TestFormatAlwaysBreak(t *testing.T) {
 			name: "break enums forces multiline",
 			opts: func() Options {
 				o := testOpts(80)
-				o.BreakEnums = true
+				o.Break.Set(ConstructEnum, true)
+
 				return o
 			}(),
 			src:  "enum E {\n  A,\n  B\n}",
@@ -730,7 +755,8 @@ func TestFormatAlwaysBreak(t *testing.T) {
 			name: "break structs keeps empty bodies flat",
 			opts: func() Options {
 				o := testOpts(80)
-				o.BreakStructs = true
+				o.Break.Set(ConstructStruct, true)
+
 				return o
 			}(),
 			src:  "struct S {}",
@@ -740,7 +766,8 @@ func TestFormatAlwaysBreak(t *testing.T) {
 			name: "break structs does not affect enums",
 			opts: func() Options {
 				o := testOpts(80)
-				o.BreakStructs = true
+				o.Break.Set(ConstructStruct, true)
+
 				return o
 			}(),
 			src:  "struct S {\n  1: i32 a\n}\nenum E {\n  A,\n  B\n}",
@@ -1089,6 +1116,196 @@ func TestFormatTrailingDelim(t *testing.T) {
 				"    2: exceptions.SuitMismatch suit_mismatch\n" +
 				"  )\n" +
 				"}\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCase(t, tt.src, testOpts(80), tt.want)
+		})
+	}
+}
+
+func TestFormatFileStartBlanks(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "blank lines before a leading comment round-trip",
+			src:  "\n\n// header\nstruct S {\n  1: i32 a\n}",
+			want: "\n\n// header\nstruct S { 1: i32 a }\n",
+		},
+		{
+			name: "comment-only file with leading blanks round-trips",
+			src:  "\n\n#0\n",
+			want: "\n\n#0\n",
+		},
+		{
+			name: "comment at file start stays at line one",
+			src:  "#0\n",
+			want: "#0\n",
+		},
+		{
+			name: "carriage returns normalize to newlines",
+			src:  "\r\r\r#0\n",
+			want: "\n\n\n#0\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCase(t, tt.src, testOpts(80), tt.want)
+		})
+	}
+}
+
+func TestFormatInnerTrivia(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "comment inside a container type is preserved",
+			src:  "struct S {\n  1: map<string, // mid\n i32> m\n}",
+			want: "struct S {\n  1: map<string, // mid\n  i32> m\n}\n",
+		},
+		{
+			name: "comment inside a const list is preserved",
+			src:  "const list<i32> L = [1, // mid\n 2]",
+			want: "const list<i32> L = [\n  1, // mid\n  2\n]\n",
+		},
+		{
+			name: "comment in empty body is preserved",
+			src:  "struct A{\n#\n}",
+			want: "struct A {\n  #\n}\n",
+		},
+		{
+			name: "block comment inside type stays inline",
+			src:  "struct S {\n  1: map<string /* c */, i32> m\n}",
+			want: "struct S { 1: map<string /* c */, i32> m }\n",
+		},
+		{
+			name: "comment in header span is preserved",
+			src:  "service S {\n  void // c\n go(1: i32 a)\n}",
+			want: "service S {\n  void // c\n  go(1: i32 a)\n}\n",
+		},
+		{
+			name: "empty body comment with trailing comment both kept",
+			src:  "enum A{\n#\n}#",
+			want: "enum A {\n  #\n} #\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCase(t, tt.src, testOpts(80), tt.want)
+		})
+	}
+}
+
+func TestFormatAlignmentNoFlip(t *testing.T) {
+	tests := []struct {
+		name  string
+		width int
+		src   string
+		want  string
+	}{
+		{
+			name:  "accidentally aligned names do not force alignment",
+			width: 10,
+			src:   "service S {\n  void go(1: A00 A2 x000n0 A)\n}",
+			want: "service S {\n" +
+				"  void go(\n" +
+				"    1: A00 A2\n" +
+				"    x000n0 A\n" +
+				"  )\n" +
+				"}\n",
+		},
+		{
+			name:  "deliberately padded names keep alignment",
+			width: 40,
+			src: "struct S {\n" +
+				"  1: federation.MobileSuitFrameType                frame_type;\n" +
+				"  2: federation.PropulsionType                     propulsion_type;\n" +
+				"}",
+			want: "struct S {\n" +
+				"  1: federation.MobileSuitFrameType frame_type;\n" +
+				"  2: federation.PropulsionType      propulsion_type;\n" +
+				"}\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCase(t, tt.src, testOpts(tt.width), tt.want)
+		})
+	}
+}
+
+func TestFormatThrowsFoldsWithBrokenArgs(t *testing.T) {
+	src := "service Processor {\n" +
+		"  string upload(\n" +
+		"    1: string               imageUrl,\n" +
+		"    2: arguments.Size       size,\n" +
+		"    3: arguments.Identifier id,\n" +
+		"  ) throws (1: errors.ProcessingError err)\n" +
+		"}"
+	want := "service Processor {\n" +
+		"  string upload(\n" +
+		"    1: string               imageUrl,\n" +
+		"    2: arguments.Size       size,\n" +
+		"    3: arguments.Identifier id,\n" +
+		"  ) throws (1: errors.ProcessingError err)\n" +
+		"}\n"
+	runCase(t, src, testOpts(80), want)
+}
+
+func TestFormatSeparatorsPerConstruct(t *testing.T) {
+	opts := testOpts(80)
+	opts.Separator.Set(ConstructStruct, SeparatorSemicolon)
+	opts.Separator.Set(ConstructUnion, SeparatorSemicolon)
+	opts.Separator.Set(ConstructException, SeparatorSemicolon)
+	opts.Separator.Set(ConstructEnum, SeparatorComma)
+
+	src := "struct S {\n  1: i32 a\n  2: i32 b\n}\n\nunion U {\n  1: i32 a\n  2: i32 b\n}\n\nexception X {\n  1: i32 a\n  2: i32 b\n}\n\nenum E {\n  A\n  B\n}"
+	want := "struct S { 1: i32 a; 2: i32 b }\n\nunion U { 1: i32 a; 2: i32 b }\n\nexception X { 1: i32 a; 2: i32 b }\n\nenum E { A, B }\n"
+	runCase(t, src, opts, want)
+}
+
+func TestFormatPreserveSeparators(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "mixed separators force the broken layout",
+			src:  "struct S {\n  1: i32 a\n  2: string b;\n  3: bool c\n}",
+			want: "struct S {\n  1: i32    a\n  2: string b;\n  3: bool   c\n}\n",
+		},
+		{
+			name: "uniform separators fold flat",
+			src:  "struct S {\n  1: i32 a;\n  2: string b\n}",
+			want: "struct S { 1: i32 a; 2: string b }\n",
+		},
+		{
+			name: "no separators fold flat",
+			src:  "enum E {\n  A\n  B\n}",
+			want: "enum E { A B }\n",
+		},
+		{
+			name: "mixed separators in enum force the broken layout",
+			src:  "enum E {\n  A\n  B,\n  C\n}",
+			want: "enum E {\n  A\n  B,\n  C\n}\n",
+		},
+		{
+			name: "mixed separators in args force the broken layout",
+			src:  "service F {\n  void go(1: i32 a 2: string b; 3: bool c)\n}",
+			want: "service F {\n  void go(\n    1: i32    a\n    2: string b;\n    3: bool   c\n  )\n}\n",
+		},
+		{
+			name: "trailing delimiter on the last field forces broken",
+			src:  "struct S {\n  1: i32 a\n  2: string b;\n}",
+			want: "struct S {\n  1: i32    a\n  2: string b;\n}\n",
 		},
 	}
 	for _, tt := range tests {

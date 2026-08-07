@@ -28,10 +28,12 @@ func NewOverlayFS(delegate FileSource) *overlayFS {
 func (fs *overlayFS) Overlays() []*Overlay {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
+
 	overlays := make([]*Overlay, 0, len(fs.overlays))
 	for _, overlay := range fs.overlays {
 		overlays = append(overlays, overlay)
 	}
+
 	return overlays
 }
 
@@ -40,9 +42,11 @@ func (fs *overlayFS) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, err
 	fs.mu.Lock()
 	overlay, ok := fs.overlays[uri]
 	fs.mu.Unlock()
+
 	if ok {
 		return overlay, nil
 	}
+
 	return fs.delegate.ReadFile(ctx, uri)
 }
 
@@ -50,16 +54,19 @@ func (fs *overlayFS) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, err
 func (fs *overlayFS) Update(ctx context.Context, changes []*FileChange) error {
 	for _, change := range changes {
 		var base []byte
+
 		if change.From == FileChangeTypeDidChange {
 			fh, err := fs.ReadFile(ctx, change.URI)
 			if err != nil {
 				return err
 			}
+
 			base, err = fh.Content()
 			if err != nil {
 				return err
 			}
 		}
+
 		overlay := NewOverlay(change.URI, change.FullContent(base), int32(change.Version))
 
 		slog.Debug("new overlay content", "content", string(overlay.content), "uri", change.URI)
@@ -68,6 +75,7 @@ func (fs *overlayFS) Update(ctx context.Context, changes []*FileChange) error {
 		fs.overlays[change.URI] = overlay
 		fs.mu.Unlock()
 	}
+
 	return nil
 }
 

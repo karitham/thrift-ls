@@ -70,6 +70,7 @@ func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cm
 	if err != nil {
 		return nil, rng, err
 	}
+
 	if parsedFile.AST() == nil {
 		return nil, rng, fmt.Errorf("parser ast failed")
 	}
@@ -90,11 +91,13 @@ func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cm
 	// Include completion: the cursor is inside an include path literal.
 	includePos := pos
 	includePos.Col--
+
 	includePath := parsedFile.AST().SearchNodePathByPosition(includePos)
 	if items, includeRng, err := c.includeCompletion(ss, cmp.Fh.URI(), parsedFile.AST(), includePath); err == nil {
 		candidates = append(candidates, items...)
 		if len(items) > 0 {
 			rng = includeRng
+
 			slog.Debug("include completion candidates", "candidates", candidates)
 		}
 	}
@@ -104,12 +107,14 @@ func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cm
 		if err != nil {
 			return nil, rng, err
 		}
+
 		var prefix []byte
 		// get prefix by pos
 		for i := pos.Offset - 1; i >= 0; i-- {
 			if unicode.IsSpace(rune(content[i])) || content[i] == '.' || content[i] == '\'' || content[i] == '"' {
 				prefix = content[i+1 : pos.Offset]
 				rng.Start.Character = rng.Start.Character - uint32(len(prefix))
+
 				break
 			}
 		}
@@ -142,6 +147,7 @@ func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cm
 			for i := range keywords {
 				searchCandidate(i, keywords[i])
 			}
+
 			for i := range tokens {
 				searchCandidate(i, protocol.InsertTextFormatPlainText)
 			}
@@ -151,13 +157,16 @@ func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cm
 		sort.Slice(candidates, func(i, j int) bool {
 			a, b := candidates[i].showText, candidates[j].showText
 			aStarts := strings.HasPrefix(a, string(prefix))
+
 			bStarts := strings.HasPrefix(b, string(prefix))
 			if aStarts != bStarts {
 				return aStarts
 			}
+
 			if len(a) != len(b) {
 				return len(a) < len(b)
 			}
+
 			return a < b
 		})
 
@@ -182,6 +191,7 @@ func (c *TokenCompletion) includeCompletion(ss *cache.Snapshot, file uri.URI, do
 	if len(path) == 0 {
 		return res, rng, err
 	}
+
 	include, ok := path[len(path)-1].(*syntax.Include)
 	if !ok || include.Path == nil {
 		return res, rng, err
@@ -207,5 +217,6 @@ func (c *TokenCompletion) includeCompletion(ss *cache.Snapshot, file uri.URI, do
 	res, err = ListDirAndFiles(currentDir, pathPrefix)
 
 	slog.Debug("include completion", "res", res, "err", err)
+
 	return res, rng, err
 }

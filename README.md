@@ -7,9 +7,9 @@ implementation.
 - **Language server**: completion, go to definition, find references, hover,
   diagnostics, rename, document symbols, and formatting — including
   **range formatting** (Format Selection).
-- **Formatter**: a full rewrite of the old template-based formatter. It
-  preserves comments and blank lines, understands width, and is deterministic
-  and idempotent.
+- **Formatter**: a full rewrite of the old template-based formatter. It is
+  lossless (comments, annotations, and blank lines survive everywhere),
+  width-aware, deterministic, and idempotent — properties enforced by fuzzing.
 
 Fork of https://github.com/joyme123/thrift-ls, parser + lexer + formatter rewritten, lsp overhauled
 
@@ -28,6 +28,7 @@ a CLI formatter.
 thriftls [flags]            run the language server (default)
 thriftls lsp [flags]        run the language server
 thriftls format [flags] <file>   format a thrift file
+thriftls dump [--ir] <file>      dump the parse tree and formatter IR
 ```
 
 Run `thriftls --help` or `thriftls format --help` for the full flag list.
@@ -114,16 +115,102 @@ Formatting flags:
 | `-w`                   | Overwrite the file with the formatted result                                                       |
 | `-d`                   | Print a diff instead of the formatted result                                                       |
 | `--printWidth`         | Target line width (default 80)                                                                     |
-| `--indent`             | Indentation: a literal like `"  "` or `"\t"`, a number like `8`, or a legacy spec like `"2spaces"` |
+| `--indent`             | Indentation: a literal like `"  "` or `"\t"` |
 | `--align`              | `field`, `assign`, or `disable`                                                                    |
-| `--field-separator`    | Struct/enum field separators: `add`, `remove`, `semicolon`, or `disable` (keep as written)         |
-| `--function-separator` | Service arg/throws separators: `add`, `remove`, `semicolon`, or `disable` (keep as written)        |
-| `--break-structs`      | Always break struct/union/exception bodies onto multiple lines                                     |
-| `--break-enums`        | Always break enum bodies onto multiple lines                                                       |
+| `--<construct>-separator` | Separators per construct (`struct`, `union`, `exception`, `enum`, `argument`, `throws`): `comma`, `semicolon`, `none`, or `preserve` (keep as written) |
+| `--break-<construct>`  | Always break the construct's bodies onto multiple lines (same constructs)                          |
 | `--config`             | Path to a `thriftls.json` config file                                                              |
 | `-I`                   | Additional include path, like the thrift compiler's `-I` (repeatable)                              |
 
 Flags override the config file.
+
+### Debugging: `dump`
+
+`thriftls dump` prints the parse tree — every token with its position,
+blank-line count, and attached comment trivia, plus the node spans — which
+is useful to understand how the lexer attached a comment or why the
+formatter moved something:
+
+```bash
+thriftls dump path/to/file.thrift
+```
+
+With `--ir`, it also builds the formatter's document IR, prints it (which
+records the layout decisions on the groups), and dumps the IR tree showing
+which groups broke and which stayed flat:
+
+```bash
+thriftls dump --ir --printWidth 100 path/to/file.thrift
+```
+
+## Formatter behavior
+
+The formatter is **lossless**: comments, `@` annotations, and blank lines
+survive formatting everywhere — including comments inside container types
+(`map<string, /* c */ i32>`), const values, and annotation parens. The
+formatted output re-parses cleanly and formatting is idempotent and
+deterministic; comment preservation, idempotency, and parseability are
+enforced by a fuzzer over the full option space.
+
+### Conditional breaking, zig-style
+
+Like `zig fmt`, a **trailing delimiter** on the last item of a list decides
+whether the list folds:
+
+```thrift
+struct S {
+  1: i32 a;
+  2: string b;
+}
+```
+
+stays multiline because the source ends the last field with `;`, while
+
+```thrift
+struct S {
+  1: i32 a
+  2: string b
+}
+```
+
+folds to `struct S { 1: i32 a 2: string b }` when it fits. The rule applies
+to struct/union/exception bodies, enum bodies, function arguments, and
+throws clauses. The `break.*` options force the multiline layout regardless
+of the source.
+
+Note: a trailing delimiter only forces the multiline layout when the
+separator mode actually emits it — `remove` drops separators, so it cannot
+force a break (the output would not round-trip).
+
+### Width-aware folding
+
+Every group — struct bodies, function signatures, argument lists, throws
+clauses, const lists, annotations — decides independently whether it fits
+in the remaining width at its position. In particular, arguments and throws
+fold independently:
+
+```thrift
+service Processor {
+  string upload(
+    1: string               imageUrl,
+    2: arguments.Size       size,
+    3: arguments.Identifier id,
+  ) throws (1: errors.ProcessingError err)
+}
+```
+
+The arguments break (trailing commas), while the throws clause stays flat
+because it fits on the closing paren's line. Comments or blank lines inside
+a clause force it to break, without breaking the other clause.
+
+### Column alignment
+
+Struct/union/exception fields and enum values are column-aligned within
+their group (`align: field`). Alignment groups split at blank lines and
+comments, like whitespace. A group is aligned only when the padded columns
+fit within `printWidth` — except layouts that were deliberately
+column-aligned in the source, which are preserved even when they overflow.
+Trailing comments may overflow their line without affecting alignment.
 
 ## Configuration
 
@@ -138,11 +225,17 @@ the file being formatted or the workspace root (like Biome). Set the
   "tabWidth": 4,
   "align": "field",
   "separators": {
-    "fields": "semicolon",
-    "functions": "add"
+    "structs": "semicolon",
+    "unions": "semicolon",
+    "exceptions": "semicolon",
+    "enums": "comma",
+    "arguments": "comma",
+    "throws": "comma"
   },
   "break": {
     "structs": true,
+    "unions": true,
+    "exceptions": true,
     "enums": true
   },
   "includePaths": ["/path/to/base"],
@@ -159,13 +252,8 @@ position. Default: `80`.
 
 ### indent
 
-Indentation can be written three ways:
-
-- a literal string: `"  "` (two spaces) or `"\t"` (a tab)
-- a number: `8` (eight spaces)
-- a legacy spec: `"2spaces"`, `"1tab"` (kept as aliases)
-
-Default: `"    "` (four spaces).
+Indentation is a literal string of spaces or tabs, e.g. `"  "` or
+`"\t"`. Default: `"    "` (four spaces).
 
 ### tabWidth
 
@@ -179,37 +267,51 @@ Controls column alignment of struct/union/exception fields and enum values.
 - `assign`: Align the `=` sign for default values
 - `disable`: No alignment
 
+See [Column alignment](#column-alignment) for how alignment interacts with
+width, comments, and blank lines.
+
 ### separators
 
-Controls trailing separators for the two field contexts independently.
+Controls trailing separators per construct, independently. The
+`separators` object has one key per construct: `structs`, `unions`,
+`exceptions`, `enums`, `arguments` (function arguments), and `throws`
+(throws entries). Each accepts:
 
-`separators.fields` — struct/union/exception fields and enum values:
-
-- `disable`: Keep as written (default)
-- `add`: Always add trailing commas
+- `comma`: Always add trailing commas
 - `semicolon`: Always add trailing semicolons
-- `remove`: Remove trailing separators
+- `none`: Remove trailing separators
+- `preserve`: Keep as written (default)
 
-`separators.functions` — service arguments and throws entries, with the
-same values:
+For example, semicolons in structs and commas in enums:
 
-- `disable`: Keep as written (default)
-- `add`: Always add trailing commas
-- `semicolon`: Always add trailing semicolons
-- `remove`: Remove trailing separators
+```json
+"separators": {
+  "structs": "semicolon",
+  "unions": "semicolon",
+  "exceptions": "semicolon",
+  "enums": "comma"
+}
+```
 
 Broken (multiline) argument and throws blocks are column-aligned like
 struct fields, controlled by `align`.
 
+The separator mode also interacts with [conditional
+breaking](#conditional-breaking-zig-style): a mode that keeps or adds
+trailing separators (`preserve`, `comma`, `semicolon`) lets a source
+trailing delimiter force the multiline layout, while `none` always folds
+when the group fits. Under `preserve`, a *mixed* separator pattern (some
+fields separated, some not) also forces the multiline layout — a flat line
+whose separators are inconsistently present looks broken.
+
 ### break
 
 Forces layouts that would otherwise collapse to one line to stay
-multiline.
+multiline, regardless of the source's trailing delimiters. Like
+`separators`, the `break` object has one key per construct: `structs`,
+`unions`, `exceptions`, `enums`, `arguments`, `throws`.
 
-- `break.structs`: Always break struct, union, and exception bodies
-- `break.enums`: Always break enum bodies
-
-Both default to `false`.
+All default to `false`.
 
 ### includePaths
 
@@ -235,3 +337,15 @@ Controls logging verbosity (the server logs to `$TMPDIR/thriftls.log`):
 go test ./...          # unit and fuzz regression tests
 bash tests/e2e/run-e2e.sh   # end-to-end formatter tests
 ```
+
+The formatter is fuzz-tested end to end: `FuzzFormat` checks that any clean
+document formats without errors, keeps every comment, is idempotent and
+deterministic across the whole option space. The lexer, parser, doc
+printer, LSP offset mapper, and range formatting each have their own fuzz
+targets; the corpus entries under `testdata/fuzz` are permanent regression
+tests.
+
+`thriftls dump` (see above) is the debugging companion: it shows the parse
+tree and the formatter's document IR with the layout decisions, so a
+formatting issue can be pinned to the parser, the IR construction, or the
+printer.

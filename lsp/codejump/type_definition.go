@@ -16,6 +16,7 @@ import (
 // type.
 func TypeDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) (res []protocol.Location, err error) {
 	res = make([]protocol.Location, 0)
+
 	pf, target, err := resolveTarget(ctx, ss, file, pos)
 	if err != nil {
 		return res, err
@@ -31,17 +32,21 @@ func TypeDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos p
 		if err != nil {
 			return nil, err
 		}
+
 		if id == nil {
 			return nil, nil
 		}
+
 		loc, err := jumpInFile(ctx, ss, astFile, id)
 		if err != nil {
 			return nil, err
 		}
+
 		return []protocol.Location{loc}, nil
 	case TargetDefinition:
 		return declarationTypeDefinition(ctx, ss, file, pf, target)
 	}
+
 	return res, err
 }
 
@@ -49,6 +54,7 @@ func TypeDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos p
 // a field, typedef, function, or const under the cursor.
 func declarationTypeDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
 	var ft *syntax.FieldType
+
 	switch parent := target.parent.(type) {
 	case *syntax.Field:
 		ft = parent.Type
@@ -59,6 +65,7 @@ func declarationTypeDefinition(ctx context.Context, ss *cache.Snapshot, file uri
 	case *syntax.Const:
 		ft = parent.Type
 	}
+
 	if ft == nil {
 		return nil, nil
 	}
@@ -67,12 +74,15 @@ func declarationTypeDefinition(ctx context.Context, ss *cache.Snapshot, file uri
 	if err != nil {
 		return nil, err
 	}
+
 	if id == nil {
 		return nil, nil
 	}
+
 	loc, err := jumpInFile(ctx, ss, astFile, id)
 	if err != nil {
 		return nil, err
 	}
+
 	return []protocol.Location{loc}, nil
 }

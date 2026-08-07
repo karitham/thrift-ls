@@ -73,6 +73,7 @@ const UserKind kind = "1"
 		file uri.URI
 		pos  protocol.Position
 	}
+
 	tests := []struct {
 		name      string
 		args      args

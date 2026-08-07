@@ -30,6 +30,7 @@ func TestServerIncludePathsFlow(t *testing.T) {
 	srv.session.CreateView(uri.File(dir))
 	view, err := srv.session.ViewOf(uri.File(filepath.Join(dir, "app.thrift")))
 	assert.NoError(t, err)
+
 	snapshot, release := view.Snapshot()
 	defer release()
 

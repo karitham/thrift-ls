@@ -17,6 +17,7 @@ import (
 // process working directory.
 func TestConfigRelativeIncludePaths(t *testing.T) {
 	dir := t.TempDir()
+
 	cfgPath := filepath.Join(dir, "thriftls.json")
 	if err := os.WriteFile(cfgPath, []byte(`{"includePaths": ["project/base"]}`), 0o644); err != nil {
 		t.Fatal(err)
@@ -26,9 +27,11 @@ func TestConfigRelativeIncludePaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
+
 	if cfg.IncludePaths == nil || len(*cfg.IncludePaths) != 1 {
 		t.Fatalf("includePaths = %v", cfg.IncludePaths)
 	}
+
 	want := filepath.Join(dir, "project", "base")
 	if got := (*cfg.IncludePaths)[0]; got != want {
 		t.Errorf("includePaths[0] = %q, want %q", got, want)
@@ -40,6 +43,7 @@ func TestConfigRelativeIncludePaths(t *testing.T) {
 	baseFile := filepath.Join(dir, "project", "base", "types.thrift")
 	fsys := absMapFS{baseFile: []byte("struct T {}")}
 	r := NewWithFS(*cfg.IncludePaths, fsys)
+
 	cur := filepath.Join(dir, "project", "app.thrift")
 	if got := r.Resolve(cur, "types.thrift"); got != baseFile {
 		t.Errorf("Resolve = %q, want %q", got, baseFile)
@@ -54,6 +58,7 @@ func (m absMapFS) Stat(name string) (fs.FileInfo, error) {
 	if _, ok := m[name]; !ok {
 		return nil, &fs.PathError{Op: "stat", Path: name, Err: fs.ErrNotExist}
 	}
+
 	return absMapFileInfo{name: name}, nil
 }
 
@@ -62,6 +67,7 @@ func (m absMapFS) Open(name string) (fs.File, error) {
 	if !ok {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 	}
+
 	return &absMapFile{Reader: bytes.NewReader(data), info: absMapFileInfo{name: name}}, nil
 }
 
@@ -86,14 +92,17 @@ func (f *absMapFile) Close() error               { return nil }
 func TestConfigAbsoluteIncludePaths(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "thriftls.json")
+
 	abs := filepath.Join(dir, "elsewhere")
 	if err := os.WriteFile(cfgPath, []byte(`{"includePaths": ["`+abs+`"]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
+
 	cfg, err := options.Load(cfgPath)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
+
 	if got := (*cfg.IncludePaths)[0]; got != abs {
 		t.Errorf("includePaths[0] = %q, want %q", got, abs)
 	}

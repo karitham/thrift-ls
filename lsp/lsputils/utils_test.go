@@ -16,6 +16,7 @@ func Test_IncludeURI(t *testing.T) {
 		cur         uri.URI
 		includePath string
 	}
+
 	tests := []struct {
 		name string
 		args args
@@ -67,6 +68,7 @@ include "../../user.extra.thrift"
 service Demo {
   user.Test Api(1:user.Test2 arg1, 2:user.Test3 arg2) throws (1:user.Error1 err)
 }`
+
 	ast, errs := syntax.Parse([]byte(file))
 	for _, e := range errs {
 		if e.Severity == syntax.SeverityError {
@@ -78,6 +80,7 @@ service Demo {
 		ast         *syntax.Document
 		includeName string
 	}
+
 	tests := []struct {
 		name string
 		args args
@@ -111,6 +114,7 @@ func TestGetIncludeName(t *testing.T) {
 	type args struct {
 		file uri.URI
 	}
+
 	tests := []struct {
 		name string
 		args args
@@ -150,6 +154,7 @@ func TestIncludeNames(t *testing.T) {
 		cur      uri.URI
 		includes []*syntax.Include
 	}
+
 	tests := []struct {
 		name             string
 		args             args
@@ -192,9 +197,9 @@ func TestIncludeURIWithPaths(t *testing.T) {
 	//     shared.thrift    (exists)
 	//   service/
 	//     order.thrift   (exists)
-
 	tmpDir, err := os.MkdirTemp("", "thrift-test")
 	assert.NoError(t, err)
+
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	baseDir := filepath.Join(tmpDir, "base")
@@ -267,6 +272,7 @@ func TestParseIdent(t *testing.T) {
 		includes   []*syntax.Include
 		identifier string
 	}
+
 	tests := []struct {
 		name        string
 		args        args

@@ -13,10 +13,12 @@ import (
 // DocumentSymbols returns the document symbols of a file, in source order.
 func DocumentSymbols(ctx context.Context, ss *cache.Snapshot, file uri.URI) []*protocol.DocumentSymbol {
 	res := make([]*protocol.DocumentSymbol, 0)
+
 	pf, err := ss.Parse(ctx, file)
 	if err != nil {
 		return res
 	}
+
 	if pf.AST() == nil {
 		return res
 	}
@@ -28,6 +30,7 @@ func DocumentSymbols(ctx context.Context, ss *cache.Snapshot, file uri.URI) []*p
 			res = append(res, child)
 		}
 	}
+
 	return res
 }
 
@@ -38,7 +41,9 @@ func nameRange(doc *syntax.Document, id *syntax.Identifier) protocol.Range {
 	if id == nil {
 		return protocol.Range{}
 	}
+
 	start, end := doc.Range(id)
+
 	return protocol.Range{
 		Start: protocol.Position{
 			Line:      uint32(start.Line - 1),
@@ -72,6 +77,7 @@ func nodeSymbol(doc *syntax.Document, node syntax.Node) *protocol.DocumentSymbol
 	case *syntax.Service:
 		return serviceSymbol(doc, v)
 	}
+
 	return nil
 }
 
@@ -89,6 +95,7 @@ func structSymbol(doc *syntax.Document, st *syntax.Struct, detail string, kind p
 			res.Children = append(res.Children, *child)
 		}
 	}
+
 	return res
 }
 
@@ -109,6 +116,7 @@ func enumSymbol(doc *syntax.Document, enum *syntax.Enum) *protocol.DocumentSymbo
 		}
 		res.Children = append(res.Children, *child)
 	}
+
 	return res
 }
 
@@ -128,6 +136,7 @@ func serviceSymbol(doc *syntax.Document, svc *syntax.Service) *protocol.Document
 		}
 		res.Children = append(res.Children, *child)
 	}
+
 	return res
 }
 

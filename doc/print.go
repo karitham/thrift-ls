@@ -3,6 +3,7 @@ package doc
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 )
 
@@ -47,8 +48,10 @@ func (i indentation) add(o Options) indentation {
 	if o.Indent == "" {
 		o.Indent = strings.Repeat(" ", o.TabWidth)
 	}
+
 	i.value += o.Indent
 	i.length += o.TabWidth
+
 	return i
 }
 
@@ -56,11 +59,13 @@ func (i indentation) align(n int, o Options) indentation {
 	if o.Indent != "\t" {
 		i.value += strings.Repeat(" ", n)
 		i.length += n
+
 		return i
 	}
 	// With tabs, a numeric alignment renders as one tab, matching Prettier.
 	i.value += "\t"
 	i.length += o.TabWidth
+
 	return i
 }
 
@@ -71,18 +76,23 @@ func Print(d Doc, o Options) (string, error) {
 	if o.PrintWidth <= 0 {
 		return "", fmt.Errorf("doc: PrintWidth must be positive, got %d", o.PrintWidth)
 	}
+
 	if o.TabWidth <= 0 {
 		return "", fmt.Errorf("doc: TabWidth must be positive, got %d", o.TabWidth)
 	}
+
 	if o.NewLine == "" {
 		o.NewLine = "\n"
 	}
+
 	if o.Indent == "" {
 		o.Indent = strings.Repeat(" ", o.TabWidth)
 	}
 
 	propagateBreaks(d)
+
 	p := &printer{o: o, groupMode: map[int]mode{}}
+
 	return p.run(d)
 }
 
@@ -104,13 +114,17 @@ func (p *printer) write(s string) {
 // columns were removed.
 func (p *printer) trim() int {
 	n := 0
-	for i := len(p.out) - 1; i >= 0; i-- {
-		if p.out[i] != ' ' && p.out[i] != '\t' {
+
+	for _, v := range slices.Backward(p.out) {
+		if v != ' ' && v != '\t' {
 			break
 		}
+
 		n++
 	}
+
 	p.out = p.out[:len(p.out)-n]
+
 	return n
 }
 
@@ -128,14 +142,15 @@ func (p *printer) run(d Doc) (string, error) {
 			if v != "" {
 				s := string(v)
 				p.write(s)
+
 				if len(commands) > 0 {
 					p.position += stringWidth(s)
 				}
 			}
 
 		case Concat:
-			for i := len(v) - 1; i >= 0; i-- {
-				commands = append(commands, command{indentation: cmd.indentation, mode: cmd.mode, doc: v[i]})
+			for _, v0 := range slices.Backward(v) {
+				commands = append(commands, command{indentation: cmd.indentation, mode: cmd.mode, doc: v0})
 			}
 
 		case *indent:
@@ -150,6 +165,7 @@ func (p *printer) run(d Doc) (string, error) {
 		case *group:
 			{
 				gcmd := p.printGroup(cmd, v, commands)
+
 				commands = append(commands, gcmd)
 				if v.id != 0 {
 					p.groupMode[v.id] = gcmd.mode
@@ -165,12 +181,14 @@ func (p *printer) run(d Doc) (string, error) {
 					groupMode = modeFlat
 				}
 			}
+
 			var contents Doc
 			if groupMode == modeBreak {
 				contents = v.breakDoc
 			} else {
 				contents = v.flatDoc
 			}
+
 			if contents != nil {
 				commands = append(commands, command{indentation: cmd.indentation, mode: cmd.mode, doc: contents})
 			}
@@ -191,12 +209,14 @@ func (p *printer) run(d Doc) (string, error) {
 						p.write(" ")
 						p.position++
 					}
+
 					break
 				}
 				// A hard line printed in flat mode invalidates earlier
 				// measurements of enclosing groups; the next group must
 				// remeasure.
 				p.shouldRemeasure = true
+
 				fallthrough
 
 			case modeBreak:
@@ -204,12 +224,15 @@ func (p *printer) run(d Doc) (string, error) {
 					// Print the pending end-of-line suffixes before the
 					// newline, then the line itself.
 					commands = append(commands, cmd)
-					for i := len(p.lineSuffix) - 1; i >= 0; i-- {
-						commands = append(commands, p.lineSuffix[i])
+					for _, v := range slices.Backward(p.lineSuffix) {
+						commands = append(commands, v)
 					}
+
 					p.lineSuffix = nil
+
 					break
 				}
+
 				if v.Literal {
 					p.write(newLine)
 					p.position = 0
@@ -230,9 +253,10 @@ func (p *printer) run(d Doc) (string, error) {
 		// Flush remaining suffixes at the end of the document, in case there
 		// is no line break after them.
 		if len(commands) == 0 && len(p.lineSuffix) > 0 {
-			for i := len(p.lineSuffix) - 1; i >= 0; i-- {
-				commands = append(commands, p.lineSuffix[i])
+			for _, v := range slices.Backward(p.lineSuffix) {
+				commands = append(commands, v)
 			}
+
 			p.lineSuffix = nil
 		}
 	}
@@ -248,6 +272,7 @@ func (p *printer) printGroup(cmd command, g *group, rest []command) command {
 		if g.brk {
 			m = modeBreak
 		}
+
 		return command{indentation: cmd.indentation, mode: m, doc: g.doc}
 	}
 
@@ -290,18 +315,22 @@ func (p *printer) fits(next command, rest []command, remainingWidth int, hasLine
 	// output is only used for width counting because trim needs to look
 	// backwards for spaces.
 	var output strings.Builder
+
 	commands := []command{next}
 
 	for remainingWidth >= 0 {
 		if p.fitsDBG {
 			fmt.Printf("  fitloop rem=%d cmds=%d\n", remainingWidth, len(commands))
 		}
+
 		if len(commands) == 0 {
 			if restIndex == 0 {
 				return true
 			}
+
 			restIndex--
 			commands = append(commands, rest[restIndex])
+
 			continue
 		}
 
@@ -313,18 +342,21 @@ func (p *printer) fits(next command, rest []command, remainingWidth int, hasLine
 		case Text:
 			if v != "" {
 				s := string(v)
+
 				if hasPendingSpace {
 					output.WriteString(" ")
+
 					remainingWidth--
 					hasPendingSpace = false
 				}
+
 				output.WriteString(s)
 				remainingWidth -= stringWidth(s)
 			}
 
 		case Concat:
-			for i := len(v) - 1; i >= 0; i-- {
-				commands = append(commands, command{indentation: cmd.indentation, mode: cmd.mode, doc: v[i]})
+			for _, v0 := range slices.Backward(v) {
+				commands = append(commands, command{indentation: cmd.indentation, mode: cmd.mode, doc: v0})
 			}
 
 		case *indent, *align:
@@ -338,14 +370,17 @@ func (p *printer) fits(next command, rest []command, remainingWidth int, hasLine
 			if v.brk && cmd.mode == modeFlat {
 				return false
 			}
+
 			groupMode := cmd.mode
 			if v.brk {
 				groupMode = modeBreak
 			}
+
 			contents := v.doc
 			if v.expanded != nil && groupMode == modeBreak {
 				contents = v.expanded[len(v.expanded)-1]
 			}
+
 			commands = append(commands, command{indentation: cmd.indentation, mode: groupMode, doc: contents})
 
 		case *ifBreak:
@@ -357,12 +392,14 @@ func (p *printer) fits(next command, rest []command, remainingWidth int, hasLine
 					groupMode = modeFlat
 				}
 			}
+
 			var contents Doc
 			if groupMode == modeBreak {
 				contents = v.breakDoc
 			} else {
 				contents = v.flatDoc
 			}
+
 			if contents != nil {
 				commands = append(commands, command{indentation: cmd.indentation, mode: cmd.mode, doc: contents})
 			}
@@ -371,6 +408,7 @@ func (p *printer) fits(next command, rest []command, remainingWidth int, hasLine
 			if cmd.mode == modeBreak || v.Hard {
 				return true
 			}
+
 			if !v.Soft {
 				hasPendingSpace = true
 			}
@@ -384,6 +422,7 @@ func (p *printer) fits(next command, rest []command, remainingWidth int, hasLine
 			}
 		}
 	}
+
 	return false
 }
 
@@ -394,17 +433,21 @@ func contentsOf(d Doc) Doc {
 	case *align:
 		return v.doc
 	}
+
 	return nil
 }
 
 func trimTrailingWidth(s string) int {
 	n := 0
+
 	for i := len(s) - 1; i >= 0; i-- {
 		if s[i] != ' ' && s[i] != '\t' {
 			break
 		}
+
 		n++
 	}
+
 	return n
 }
 
@@ -413,6 +456,7 @@ func trimTrailingWidth(s string) int {
 // place, matching Prettier's traversal.
 func propagateBreaks(d Doc) {
 	visited := map[*group]bool{}
+
 	var stack []*group
 
 	enter := func(d Doc) bool {
@@ -424,8 +468,10 @@ func propagateBreaks(d Doc) {
 			if visited[v] {
 				return false
 			}
+
 			visited[v] = true
 		}
+
 		return true
 	}
 	exit := func(d Doc) {
@@ -449,6 +495,7 @@ func traverseDoc(d Doc, enter func(Doc) bool, exit func(Doc), includeConditional
 	if d == nil || !enter(d) {
 		return
 	}
+
 	switch v := d.(type) {
 	case Concat:
 		for _, part := range v {
@@ -460,6 +507,7 @@ func traverseDoc(d Doc, enter func(Doc) bool, exit func(Doc), includeConditional
 				traverseDoc(state, enter, exit, includeConditionalGroups)
 			}
 		}
+
 		traverseDoc(v.doc, enter, exit, includeConditionalGroups)
 	case *indent:
 		traverseDoc(v.doc, enter, exit, includeConditionalGroups)
@@ -471,5 +519,6 @@ func traverseDoc(d Doc, enter func(Doc) bool, exit func(Doc), includeConditional
 	case *lineSuffix:
 		traverseDoc(v.doc, enter, exit, includeConditionalGroups)
 	}
+
 	exit(d)
 }

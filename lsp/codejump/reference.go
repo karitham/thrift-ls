@@ -26,6 +26,7 @@ var validReferenceDefinitionType = map[DefinitionKind]struct{}{
 // the cursor: type definitions, constant values, enum values, and services.
 func Reference(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) (res []protocol.Location, err error) {
 	res = make([]protocol.Location, 0)
+
 	pf, target, err := resolveTarget(ctx, ss, file, pos)
 	if err != nil {
 		return res, err
@@ -37,26 +38,31 @@ func Reference(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protoc
 		if err != nil {
 			return nil, err
 		}
+
 		return hits(refs), nil
 	case TargetConstValue:
 		refs, err := searchConstValueReferences(ctx, ss, file, pf, target)
 		if err != nil {
 			return nil, err
 		}
+
 		return hits(refs), nil
 	case TargetService:
 		refs, err := searchServiceReferences(ctx, ss, file, target.identifier().Text)
 		if err != nil {
 			return nil, err
 		}
+
 		return hits(refs), nil
 	case TargetDefinition:
 		refs, err := searchDefinitionReferences(ctx, ss, file, pf, target)
 		if err != nil {
 			return nil, err
 		}
+
 		return hits(refs), nil
 	}
+
 	return res, err
 }
 
@@ -73,18 +79,22 @@ func searchDefinitionReferences(ctx context.Context, ss *cache.Snapshot, file ur
 	switch parent.(type) {
 	case *syntax.Const:
 		typeName := fmt.Sprintf("%s.%s", lsputils.GetIncludeName(file), id.Text)
+
 		return searchConstValueIdentifierReferences(ctx, ss, file, typeName)
 	case *syntax.EnumValue:
 		enum, ok := grandparent(target.path).(*syntax.Enum)
 		if !ok {
 			return res, err
 		}
+
 		typeName := fmt.Sprintf("%s.%s.%s", lsputils.GetIncludeName(file), enum.Name.Text, id.Text)
+
 		return searchConstValueIdentifierReferences(ctx, ss, file, typeName)
 	case *syntax.Service:
 		svcName := id.Text
 		if strings.Contains(svcName, ".") {
 			include, _ := lsputils.ParseIdent(file, pf.AST().Includes(), svcName)
+
 			resolver := ss.Resolver()
 			if path := resolver.GetIncludePath(pf.AST(), include); path != "" {
 				file = resolver.ResolveInclude(file, path)
@@ -92,6 +102,7 @@ func searchDefinitionReferences(ctx context.Context, ss *cache.Snapshot, file ur
 		} else {
 			svcName = fmt.Sprintf("%s.%s", lsputils.GetIncludeName(file), svcName)
 		}
+
 		return searchServiceReferences(ctx, ss, file, svcName)
 	}
 
@@ -99,10 +110,13 @@ func searchDefinitionReferences(ctx context.Context, ss *cache.Snapshot, file ur
 	if !ok {
 		return res, err
 	}
+
 	if _, ok := validReferenceDefinitionType[kind]; !ok {
 		return res, err
 	}
+
 	typeName := fmt.Sprintf("%s.%s", lsputils.GetIncludeName(file), id.Text)
+
 	return searchIdentifierReferences(ctx, ss, file, typeName, kind)
 }
 
@@ -110,6 +124,7 @@ func grandparent(path []syntax.Node) syntax.Node {
 	if len(path) < 3 {
 		return nil
 	}
+
 	return path[len(path)-3]
 }
 
@@ -134,12 +149,14 @@ func definitionKindOf(n syntax.Node) (DefinitionKind, bool) {
 	case *syntax.Service:
 		return DefinitionService, true
 	}
+
 	return DefinitionNone, false
 }
 
 func searchTypeNameReferences(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) (res []referenceHit, err error) {
 	res = make([]referenceHit, 0)
 	ft := target.parent.(*syntax.FieldType)
+
 	typeName := typeReferenceName(ft)
 	if typeName == "" || IsBasicType(typeName) {
 		return res, err
@@ -150,13 +167,16 @@ func searchTypeNameReferences(ctx context.Context, ss *cache.Snapshot, file uri.
 	if err != nil {
 		return res, err
 	}
+
 	if identifierNode == nil {
 		return res, err
 	}
+
 	loc, err := jumpInFile(ctx, ss, definitionFile, identifierNode)
 	if err != nil {
 		return res, err
 	}
+
 	res = append(res, referenceHit{loc: loc, text: identifierNode.Text})
 
 	// Search usages of the type name.
@@ -164,7 +184,9 @@ func searchTypeNameReferences(ctx context.Context, ss *cache.Snapshot, file uri.
 	if err != nil {
 		return res, err
 	}
+
 	res = append(res, locations...)
+
 	return res, err
 }
 
@@ -175,6 +197,7 @@ func searchServiceReferences(ctx context.Context, ss *cache.Snapshot, file uri.U
 	if err != nil {
 		return nil, err
 	}
+
 	res = append(res, locations...)
 
 	for _, referenceFile := range referenceFiles(ss, file) {
@@ -182,8 +205,10 @@ func searchServiceReferences(ctx context.Context, ss *cache.Snapshot, file uri.U
 		if err != nil {
 			return nil, err
 		}
+
 		res = append(res, locations...)
 	}
+
 	return res, err
 }
 
@@ -194,9 +219,11 @@ func referenceFiles(ss *cache.Snapshot, file uri.URI) []uri.URI {
 	if includeNode == nil {
 		return nil
 	}
+
 	if len(includeNode.InDegree()) == 0 && len(includeNode.OutDegree()) == 0 {
 		ss.Graph().Debug()
 	}
+
 	return includeNode.InDegree()
 }
 
@@ -205,6 +232,7 @@ func searchServiceDefinitionReferences(ctx context.Context, ss *cache.Snapshot, 
 	if err != nil {
 		return res, err
 	}
+
 	if pf.AST() == nil {
 		return res, err
 	}
@@ -213,8 +241,10 @@ func searchServiceDefinitionReferences(ctx context.Context, ss *cache.Snapshot, 
 		if svc.Extends == nil || svc.Extends.Text != svcName {
 			continue
 		}
+
 		res = append(res, referenceHit{loc: jump(file, pf.AST(), svc.Extends), text: svc.Extends.Text})
 	}
+
 	return res, err
 }
 
@@ -226,6 +256,7 @@ func searchIdentifierReferences(ctx context.Context, ss *cache.Snapshot, file ur
 	if err != nil {
 		return nil, err
 	}
+
 	res = append(res, locations...)
 
 	for _, referenceFile := range referenceFiles(ss, file) {
@@ -233,8 +264,10 @@ func searchIdentifierReferences(ctx context.Context, ss *cache.Snapshot, file ur
 		if err != nil {
 			return nil, err
 		}
+
 		res = append(res, locations...)
 	}
+
 	return res, err
 }
 
@@ -246,6 +279,7 @@ func searchDefinitionIdentifierReferences(ctx context.Context, ss *cache.Snapsho
 	if err != nil {
 		return res, err
 	}
+
 	if pf.AST() == nil {
 		return res, err
 	}
@@ -254,19 +288,25 @@ func searchDefinitionIdentifierReferences(ctx context.Context, ss *cache.Snapsho
 		if ft == nil || typeReferenceName(ft) != typeName {
 			return
 		}
+
 		res = append(res, referenceHit{loc: jump(file, pf.AST(), ft.Ident), text: ft.Ident.Text})
 	}
+
 	var searchFieldType func(ft *syntax.FieldType)
+
 	searchFieldType = func(ft *syntax.FieldType) {
 		if ft == nil {
 			return
 		}
+
 		if ft.KeyType != nil {
 			searchFieldType(ft.KeyType)
 		}
+
 		if ft.ValueType != nil {
 			searchFieldType(ft.ValueType)
 		}
+
 		jumpFieldType(ft)
 	}
 	jumpField := func(field *syntax.Field) {
@@ -282,11 +322,13 @@ func searchDefinitionIdentifierReferences(ctx context.Context, ss *cache.Snapsho
 		for _, fn := range svc.Functions {
 			searchFieldType(fn.Type)
 			processStructLike(fn.Args)
+
 			if fn.Throws != nil {
 				processStructLike(fn.Throws.Fields)
 			}
 		}
 	}
+
 	if definitionType == DefinitionException {
 		return res, err
 	}
@@ -294,18 +336,23 @@ func searchDefinitionIdentifierReferences(ctx context.Context, ss *cache.Snapsho
 	for _, st := range pf.AST().Structs() {
 		processStructLike(st.Fields)
 	}
+
 	for _, st := range pf.AST().Unions() {
 		processStructLike(st.Fields)
 	}
+
 	for _, st := range pf.AST().Exceptions() {
 		processStructLike(st.Fields)
 	}
+
 	for _, typedef := range pf.AST().Typedefs() {
 		searchFieldType(typedef.Type)
 	}
+
 	for _, cst := range pf.AST().Consts() {
 		searchFieldType(cst.Type)
 	}
+
 	return res, err
 }
 
@@ -317,20 +364,25 @@ func searchConstValueReferences(ctx context.Context, ss *cache.Snapshot, file ur
 	if err != nil {
 		return res, err
 	}
+
 	if identifierNode == nil {
 		return res, err
 	}
+
 	loc, err := jumpInFile(ctx, ss, definitionFile, identifierNode)
 	if err != nil {
 		return res, err
 	}
+
 	res = append(res, referenceHit{loc: loc, text: identifierNode.Text})
 
 	locations, err := searchConstValueIdentifierReferences(ctx, ss, definitionFile, value.Text)
 	if err != nil {
 		return res, err
 	}
+
 	res = append(res, locations...)
+
 	return res, err
 }
 
@@ -341,6 +393,7 @@ func searchConstValueIdentifierReferences(ctx context.Context, ss *cache.Snapsho
 	if err != nil {
 		return nil, err
 	}
+
 	res = append(res, locations...)
 
 	for _, referenceFile := range referenceFiles(ss, file) {
@@ -348,8 +401,10 @@ func searchConstValueIdentifierReferences(ctx context.Context, ss *cache.Snapsho
 		if err != nil {
 			return nil, err
 		}
+
 		res = append(res, locations...)
 	}
+
 	return res, err
 }
 
@@ -358,6 +413,7 @@ func searchConstValueIdentifierReference(ctx context.Context, ss *cache.Snapshot
 	if err != nil {
 		return res, err
 	}
+
 	if pf.AST() == nil {
 		return res, err
 	}
@@ -376,22 +432,28 @@ func searchConstValueIdentifierReference(ctx context.Context, ss *cache.Snapshot
 	for _, st := range pf.AST().Structs() {
 		processStructLike(st.Fields)
 	}
+
 	for _, st := range pf.AST().Unions() {
 		processStructLike(st.Fields)
 	}
+
 	for _, st := range pf.AST().Exceptions() {
 		processStructLike(st.Fields)
 	}
+
 	for _, cst := range pf.AST().Consts() {
 		jumpValue(cst.Value)
 	}
+
 	for _, svc := range pf.AST().Services() {
 		for _, fn := range svc.Functions {
 			processStructLike(fn.Args)
+
 			if fn.Throws != nil {
 				processStructLike(fn.Throws.Fields)
 			}
 		}
 	}
+
 	return res, err
 }
