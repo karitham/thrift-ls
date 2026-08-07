@@ -1366,6 +1366,25 @@ func TestFormatConstsOptions(t *testing.T) {
 			want: "const map<string, A> m = {\n  \"a\": 1,\n  \"b\": 2,\n}\n",
 		},
 		{
+			// A set value uses the list literal syntax, but its declared
+			// type selects the sets construct.
+			name: "sets forced comma with break",
+			src:  "const set<i32> s = [1, 2]",
+			opts: opts(func(o *Options) {
+				o.Separator.Set(ConstructSet, SeparatorComma)
+				o.Break.Set(ConstructSet, true)
+			}),
+			want: "const set<i32> s = [\n  1,\n  2,\n]\n",
+		},
+		{
+			name: "sets semicolon separators",
+			src:  "const set<A> s = [1, 2]",
+			opts: opts(func(o *Options) {
+				o.Separator.Set(ConstructSet, SeparatorSemicolon)
+			}),
+			want: "const set<A> s = [1; 2; ]\n",
+		},
+		{
 			name: "trailing separator never leaves a blank before the close",
 			src:  "const list<A> a = [\n  1,\n  2,\n]",
 			opts: opts(func(o *Options) {

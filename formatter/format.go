@@ -60,6 +60,7 @@ const (
 	ConstructThrows
 	ConstructList
 	ConstructMap
+	ConstructSet
 )
 
 // PerConstruct holds one option value per construct. The JSON tags make the
@@ -74,6 +75,7 @@ type PerConstruct[T any] struct {
 	Throws     T `json:"throws"`
 	Lists      T `json:"lists"`
 	Maps       T `json:"maps"`
+	Sets       T `json:"sets"`
 }
 
 // Get returns the value for the construct.
@@ -93,6 +95,8 @@ func (p PerConstruct[T]) Get(c Construct) T {
 		return p.Lists
 	case ConstructMap:
 		return p.Maps
+	case ConstructSet:
+		return p.Sets
 	}
 
 	return p.Structs
@@ -115,6 +119,8 @@ func (p *PerConstruct[T]) Set(c Construct, v T) {
 		p.Lists = v
 	case ConstructMap:
 		p.Maps = v
+	case ConstructSet:
+		p.Sets = v
 	default:
 		p.Structs = v
 	}
@@ -124,7 +130,7 @@ func (p *PerConstruct[T]) Set(c Construct, v T) {
 var AllConstructs = []Construct{
 	ConstructStruct, ConstructUnion, ConstructException,
 	ConstructEnum, ConstructArguments, ConstructThrows,
-	ConstructList, ConstructMap,
+	ConstructList, ConstructMap, ConstructSet,
 }
 
 // String returns the config key of the construct.
@@ -144,6 +150,8 @@ func (c Construct) String() string {
 		return "lists"
 	case ConstructMap:
 		return "maps"
+	case ConstructSet:
+		return "sets"
 	}
 
 	return "structs"
@@ -645,7 +653,7 @@ func (f *formatter) constant(v *syntax.Const) doc.Doc {
 	// outside the value's own group.
 	parts = append(parts, f.ownLineComments(value.TokStart())...)
 
-	parts = append(parts, f.constValue(value, value.TokEnd() == v.TokEnd()))
+	parts = append(parts, f.constValue(value, value.TokEnd() == v.TokEnd(), containerConstruct(v.Type)))
 	if value.TokEnd() < v.TokEnd() {
 		// Same-line comments after the value render at the value
 		// boundary, outside the value's own group, before the stray

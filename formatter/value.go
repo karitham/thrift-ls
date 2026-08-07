@@ -11,20 +11,40 @@ func isListSep(kind syntax.TokenKind) bool {
 	return kind == syntax.TokenComma || kind == syntax.TokenSemicolon
 }
 
+// containerConstruct returns the per-construct key of a declared container
+// type. Set values are written with the list literal syntax, so the
+// declared type is the only way to select the sets construct.
+func containerConstruct(t *syntax.FieldType) Construct {
+	if t == nil {
+		return ConstructList
+	}
+
+	switch t.Kind {
+	case syntax.TypeSet:
+		return ConstructSet
+	case syntax.TypeMap:
+		return ConstructMap
+	default:
+		return ConstructList
+	}
+}
+
 // constValue formats a constant value. Scalars render as a token run;
 // lists and maps are groups that stay on one line when they fit and break
-// with one entry per line otherwise. Every segment is a token run, so
-// comments inside the value are preserved. isLast reports whether the
-// value ends the enclosing declaration, in which case its trailing trivia
-// belongs to the declaration's trailing comments.
-func (f *formatter) constValue(v *syntax.ConstValue, isLast bool) doc.Doc {
+// with one entry per line otherwise. c is the construct whose separator
+// and break options apply to list literals — the declared container type
+// at the top level, the list construct for nested values. Every segment is
+// a token run, so comments inside the value are preserved. isLast reports
+// whether the value ends the enclosing declaration, in which case its
+// trailing trivia belongs to the declaration's trailing comments.
+func (f *formatter) constValue(v *syntax.ConstValue, isLast bool, c Construct) doc.Doc {
 	if v == nil {
 		return f.Concat()
 	}
 
 	switch v.Kind {
 	case syntax.ValueList:
-		return f.constList(v, isLast)
+		return f.constList(v, isLast, c)
 	case syntax.ValueMap:
 		return f.constMap(v, isLast)
 	default:
@@ -34,15 +54,15 @@ func (f *formatter) constValue(v *syntax.ConstValue, isLast bool) doc.Doc {
 	}
 }
 
-// constList formats "[ items ]" as a foldable group honoring the lists
-// separator and break options.
-func (f *formatter) constList(v *syntax.ConstValue, isLast bool) doc.Doc {
+// constList formats "[ items ]" as a foldable group honoring the c
+// construct's separator and break options.
+func (f *formatter) constList(v *syntax.ConstValue, isLast bool, c Construct) doc.Doc {
 	items := make([]constItem, len(v.List))
 	for i, item := range v.List {
-		items[i] = constItem{start: item.TokStart(), end: item.TokEnd(), doc: f.constValue(item, false)}
+		items[i] = constItem{start: item.TokStart(), end: item.TokEnd(), doc: f.constValue(item, false, ConstructList)}
 	}
 
-	return f.constItems(items, v.TokStart(), v.TokEnd(), ConstructList, isLast)
+	return f.constItems(items, v.TokStart(), v.TokEnd(), c, isLast)
 }
 
 // constMap formats "{ key: value, ... }" as a foldable group honoring the

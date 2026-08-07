@@ -232,7 +232,8 @@ the file being formatted or the workspace root (like Biome). Set the
     "arguments": "comma",
     "throws": "comma",
     "lists": "comma",
-    "maps": "comma"
+    "maps": "comma",
+    "sets": "comma"
   },
   "break": {
     "structs": true,
@@ -240,7 +241,8 @@ the file being formatted or the workspace root (like Biome). Set the
     "exceptions": true,
     "enums": true,
     "lists": true,
-    "maps": true
+    "maps": true,
+    "sets": true
   },
   "includePaths": ["/path/to/base"],
   "logLevel": 3
