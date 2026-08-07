@@ -186,7 +186,8 @@ func initializeResult() *protocol.InitializeResult {
 			DocumentLinkProvider: &protocol.DocumentLinkOptions{
 				ResolveProvider: new(false),
 			},
-			ColorProvider: protocol.Boolean(false),
+			ColorProvider:        protocol.Boolean(false),
+			FoldingRangeProvider: protocol.Boolean(true),
 			WorkspaceSymbolProvider: &protocol.WorkspaceSymbolOptions{
 				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
 					WorkDoneProgress: new(true),
