@@ -81,209 +81,6 @@ func definitionFiles(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast 
 	return files
 }
 
-// GetExceptionNode finds an exception declaration by name.
-func GetExceptionNode(ast *syntax.Document, name string) *syntax.Struct {
-	if ast == nil {
-		return nil
-	}
-
-	for _, excep := range ast.Exceptions() {
-		if excep.Name != nil && excep.Name.Text == name {
-			return excep
-		}
-	}
-
-	return nil
-}
-
-// GetStructNode finds a struct declaration by name.
-func GetStructNode(ast *syntax.Document, name string) *syntax.Struct {
-	if ast == nil {
-		return nil
-	}
-
-	for _, st := range ast.Structs() {
-		if st.Name != nil && st.Name.Text == name {
-			return st
-		}
-	}
-
-	return nil
-}
-
-// GetUnionNode finds a union declaration by name.
-func GetUnionNode(ast *syntax.Document, name string) *syntax.Struct {
-	if ast == nil {
-		return nil
-	}
-
-	for _, st := range ast.Unions() {
-		if st.Name != nil && st.Name.Text == name {
-			return st
-		}
-	}
-
-	return nil
-}
-
-// GetEnumNode finds an enum declaration by name.
-func GetEnumNode(ast *syntax.Document, name string) *syntax.Enum {
-	if ast == nil {
-		return nil
-	}
-
-	for _, st := range ast.Enums() {
-		if st.Name != nil && st.Name.Text == name {
-			return st
-		}
-	}
-
-	return nil
-}
-
-// GetEnumNodeByEnumValue finds the enum declaring an enum value reference
-// like "EnumName.VALUE" or a bare value name.
-func GetEnumNodeByEnumValue(ast *syntax.Document, enumValueName string) *syntax.Enum {
-	if ast == nil {
-		return nil
-	}
-
-	enumName, _, found := strings.Cut(enumValueName, ".")
-	if found {
-		return GetEnumNode(ast, enumName)
-	}
-
-	for _, enum := range ast.Enums() {
-		for _, value := range enum.Values {
-			if value.Name != nil && value.Name.Text == enumValueName {
-				return enum
-			}
-		}
-	}
-
-	return nil
-}
-
-// GetEnumValueIdentifierNode returns the identifier of an enum value
-// referenced as "EnumName.VALUE", or as a bare name.
-func GetEnumValueIdentifierNode(ast *syntax.Document, name string) *syntax.Identifier {
-	if ast == nil {
-		return nil
-	}
-
-	enumName, identifier, found := strings.Cut(name, ".")
-	if !found {
-		// Bare name: search all enum values.
-		for _, enum := range ast.Enums() {
-			for _, enumValue := range enum.Values {
-				if enumValue.Name != nil && enumValue.Name.Text == name {
-					return enumValue.Name
-				}
-			}
-		}
-
-		return nil
-	}
-
-	for _, enum := range ast.Enums() {
-		if enum.Name == nil || enum.Name.Text != enumName {
-			continue
-		}
-
-		for _, enumValue := range enum.Values {
-			if enumValue.Name != nil && enumValue.Name.Text == identifier {
-				return enumValue.Name
-			}
-		}
-	}
-
-	return nil
-}
-
-// GetConstNode finds a const declaration by name.
-func GetConstNode(ast *syntax.Document, name string) *syntax.Const {
-	if ast == nil {
-		return nil
-	}
-
-	for _, cst := range ast.Consts() {
-		if cst.Name != nil && cst.Name.Text == name {
-			return cst
-		}
-	}
-
-	return nil
-}
-
-// GetConstIdentifierNode returns the name identifier of a const
-// declaration.
-func GetConstIdentifierNode(ast *syntax.Document, name string) *syntax.Identifier {
-	if ast == nil {
-		return nil
-	}
-
-	for _, cst := range ast.Consts() {
-		if cst.Name != nil && cst.Name.Text == name {
-			return cst.Name
-		}
-	}
-
-	return nil
-}
-
-// GetTypedefNode finds a typedef declaration by name.
-func GetTypedefNode(ast *syntax.Document, name string) *syntax.Typedef {
-	if ast == nil {
-		return nil
-	}
-
-	for _, td := range ast.Typedefs() {
-		if td.Name != nil && td.Name.Text == name {
-			return td
-		}
-	}
-
-	return nil
-}
-
-// GetServiceNode finds a service declaration by name.
-func GetServiceNode(ast *syntax.Document, name string) *syntax.Service {
-	if ast == nil {
-		return nil
-	}
-
-	for _, svc := range ast.Services() {
-		if svc.Name != nil && svc.Name.Text == name {
-			return svc
-		}
-	}
-
-	return nil
-}
-
-var basicType = map[string]struct{}{
-	"map":    {},
-	"set":    {},
-	"list":   {},
-	"string": {},
-	"i16":    {},
-	"i32":    {},
-	"i64":    {},
-	"i8":     {},
-	"double": {},
-	"bool":   {},
-	"byte":   {},
-	"binary": {},
-	"uuid":   {},
-	"slist":  {},
-}
-
-var containerType = map[string]struct{}{
-	"map":  {},
-	"set":  {},
-	"list": {},
-}
-
 // IsBasicType reports whether t is a built-in base type.
 func IsBasicType(t string) bool {
 	_, ok := basicType[t]
@@ -321,4 +118,72 @@ func bareName(name string) string {
 	}
 
 	return name
+}
+
+var basicType = map[string]struct{}{
+	"bool":   {},
+	"byte":   {},
+	"i8":     {},
+	"i16":    {},
+	"i32":    {},
+	"i64":    {},
+	"double": {},
+	"string": {},
+	"binary": {},
+	"slist":  {},
+	"uuid":   {},
+}
+
+var containerType = map[string]struct{}{
+	"list": {},
+	"map":  {},
+	"set":  {},
+}
+
+// definitionMatches reports whether the node has the expected definition
+// kind.
+func definitionMatches(n syntax.Node, kind DefinitionKind) bool {
+	switch v := n.(type) {
+	case *syntax.Struct:
+		switch v.Kind {
+		case syntax.UnionDecl:
+			return kind == DefinitionUnion
+		case syntax.ExceptionDecl:
+			return kind == DefinitionException
+		}
+
+		return kind == DefinitionStruct
+	case *syntax.Enum:
+		return kind == DefinitionEnum
+	case *syntax.Typedef:
+		return kind == DefinitionTypedef
+	}
+
+	return false
+}
+
+// enumOfValue returns the enum declaring the value with the given name, or
+// nil.
+func enumOfValue(pf *cache.ParsedFile, name string) *syntax.Enum {
+	id := pf.EnumValues()[name]
+	if id == nil {
+		return nil
+	}
+
+	// The value identifier's parent enum is reachable through the node
+	// path; walk the document to find the enum containing the value.
+	for _, n := range pf.AST().Nodes {
+		enum, ok := n.(*syntax.Enum)
+		if !ok {
+			continue
+		}
+
+		for _, value := range enum.Values {
+			if value.Name == id {
+				return enum
+			}
+		}
+	}
+
+	return nil
 }

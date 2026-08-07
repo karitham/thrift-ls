@@ -42,17 +42,17 @@ func hoverService(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cac
 		return "", err
 	}
 
-	dstAst, err := parseDefinitionFile(ctx, ss, astFile)
+	dstPf, err := parseDefinitionFile(ctx, ss, astFile)
 	if err != nil {
 		return "", err
 	}
 
-	svc := GetServiceNode(dstAst, id.Text)
+	svc, _ := dstPf.Definitions()[id.Text].(*syntax.Service)
 	if svc == nil {
 		return "", nil
 	}
 
-	return formatNode(dstAst, svc)
+	return formatNode(dstPf.AST(), svc)
 }
 
 func hoverDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) (string, error) {
@@ -63,31 +63,17 @@ func hoverDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *
 		return "", err
 	}
 
-	dstAst, err := parseDefinitionFile(ctx, ss, astFile)
+	dstPf, err := parseDefinitionFile(ctx, ss, astFile)
 	if err != nil {
 		return "", err
 	}
 
-	var node syntax.Node
-
-	switch kind {
-	case DefinitionException:
-		node = GetExceptionNode(dstAst, id.Text)
-	case DefinitionStruct:
-		node = GetStructNode(dstAst, id.Text)
-	case DefinitionEnum:
-		node = GetEnumNode(dstAst, id.Text)
-	case DefinitionUnion:
-		node = GetUnionNode(dstAst, id.Text)
-	case DefinitionTypedef:
-		node = GetTypedefNode(dstAst, id.Text)
-	}
-
-	if node == nil {
+	node, ok := dstPf.Definitions()[id.Text]
+	if !ok || !definitionMatches(node, kind) {
 		return "", nil
 	}
 
-	return formatNode(dstAst, node)
+	return formatNode(dstPf.AST(), node)
 }
 
 func hoverConstValue(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) (string, error) {
@@ -96,17 +82,17 @@ func hoverConstValue(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *
 		return "", err
 	}
 
-	dstAst, err := parseDefinitionFile(ctx, ss, astFile)
+	dstPf, err := parseDefinitionFile(ctx, ss, astFile)
 	if err != nil {
 		return "", err
 	}
 
-	if dstEnum := GetEnumNodeByEnumValue(dstAst, id.Text); dstEnum != nil {
-		return formatNode(dstAst, dstEnum)
+	if dstEnum := enumOfValue(dstPf, id.Text); dstEnum != nil {
+		return formatNode(dstPf.AST(), dstEnum)
 	}
 
-	if dstConst := GetConstNode(dstAst, id.Text); dstConst != nil {
-		return formatNode(dstAst, dstConst)
+	if dstConst, ok := dstPf.Definitions()[id.Text].(*syntax.Const); ok {
+		return formatNode(dstPf.AST(), dstConst)
 	}
 
 	return "", nil

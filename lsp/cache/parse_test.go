@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParse(t *testing.T) {
@@ -67,4 +68,50 @@ struct Xtruct3
 			t.Logf("got: %v\n", got)
 		})
 	}
+}
+
+// TestParsedFileDefinitions pins the definition and enum-value indexes:
+// every top-level definition is reachable by name, enum values by name.
+func TestParsedFileDefinitions(t *testing.T) {
+	ss := BuildSnapshotForTest([]*FileChange{
+		{URI: "file:///tmp/test.thrift", Version: 0, Content: []byte(`struct S {
+	1: required string Name,
+}
+
+union U {
+	1: string x,
+}
+
+exception X {
+	1: string m,
+}
+
+enum Color {
+	RED,
+	GREEN,
+}
+
+service Fed {
+	void go(),
+}
+
+const i32 LIMIT = 1,
+typedef string PilotName`), From: FileChangeTypeDidOpen},
+	})
+
+	pf, err := ss.Parse(t.Context(), "file:///tmp/test.thrift")
+	require.NoError(t, err)
+
+	defs := pf.Definitions()
+	require.Len(t, defs, 7)
+
+	for _, name := range []string{"S", "U", "X", "Color", "Fed", "LIMIT", "PilotName"} {
+		_, ok := defs[name]
+		assert.True(t, ok, "definition %q missing", name)
+	}
+
+	values := pf.EnumValues()
+	require.Len(t, values, 2)
+	assert.NotNil(t, values["RED"])
+	assert.NotNil(t, values["GREEN"])
 }

@@ -216,6 +216,14 @@ type ParsedFile struct {
 
 	// tokens is the identifier set of ast, computed lazily once per parse.
 	tokens map[string]struct{}
+
+	// defs and enumValues index the file's definitions, computed lazily
+	// once per parse. A re-parse replaces the whole ParsedFile, so the
+	// caches never go stale.
+	defsOnce   sync.Once
+	defs       map[string]syntax.Node
+	enumOnce   sync.Once
+	enumValues map[string]*syntax.Identifier
 }
 
 func (p *ParsedFile) Mapper() *mapper.Mapper {
@@ -246,6 +254,55 @@ func (p *ParsedFile) Tokens() map[string]struct{} {
 	p.tokens = tokens
 
 	return tokens
+}
+
+// Definitions returns the file's top-level definitions indexed by name:
+// structs, unions, exceptions, enums, services, consts, and typedefs. The
+// node's concrete type identifies the definition kind.
+func (p *ParsedFile) Definitions() map[string]syntax.Node {
+	p.defsOnce.Do(func() {
+		p.defs = map[string]syntax.Node{}
+
+		if p.ast == nil {
+			return
+		}
+
+		for _, n := range p.ast.Nodes {
+			switch v := n.(type) {
+			case *syntax.Struct:
+				p.defs[v.Name.Text] = v
+			case *syntax.Enum:
+				p.defs[v.Name.Text] = v
+			case *syntax.Service:
+				p.defs[v.Name.Text] = v
+			case *syntax.Const:
+				p.defs[v.Name.Text] = v
+			case *syntax.Typedef:
+				p.defs[v.Name.Text] = v
+			}
+		}
+	})
+
+	return p.defs
+}
+
+// EnumValues returns the file's enum value names indexed by name.
+func (p *ParsedFile) EnumValues() map[string]*syntax.Identifier {
+	p.enumOnce.Do(func() {
+		p.enumValues = map[string]*syntax.Identifier{}
+
+		if p.ast == nil {
+			return
+		}
+
+		for _, enum := range p.ast.Enums() {
+			for _, value := range enum.Values {
+				p.enumValues[value.Name.Text] = value.Name
+			}
+		}
+	})
+
+	return p.enumValues
 }
 
 func (p *ParsedFile) AggregatedError() error {
