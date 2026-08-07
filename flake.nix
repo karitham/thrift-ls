@@ -1,5 +1,5 @@
 {
-  description = "thriftls: a Thrift language server and formatter";
+  description = "thrift-ls: a Thrift language server and formatter";
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs";
   };
@@ -12,11 +12,11 @@
       pkgsFor = system: import nixpkgs { inherit system; };
 
       # The language server / formatter binary for this module.
-      thriftls =
+      thriftLs =
         pkgs:
         pkgs.buildGoModule {
-          pname = "thriftls";
-          version = "0.1.0";
+          pname = "thrift-ls";
+          version = "0.1";
           src = nixpkgs.lib.cleanSource ./.;
           vendorHash = "sha256-zWy0x3yktLA8dtcbwzue3aB7a+SlqwWO86G3ZP8DgOQ=";
           ldflags = [
@@ -27,7 +27,7 @@
             description = "A Thrift language server and formatter";
             homepage = "https://github.com/karitham/thrift-ls";
             license = nixpkgs.lib.licenses.asl20;
-            mainProgram = "thriftls";
+            mainProgram = "thrift-ls";
           };
         };
 
@@ -43,10 +43,10 @@
       packages = forAllSystems (
         system:
         let
-          pkg = thriftls (pkgsFor system);
+          pkg = thriftLs (pkgsFor system);
         in
         {
-          thriftls = pkg;
+          "thrift-ls" = pkg;
           default = pkg;
         }
       );
@@ -64,6 +64,7 @@
                 go
                 treefmt
                 golangci-lint
+                nodejs_22
               ]
               ++ formatterTools pkgs;
           };

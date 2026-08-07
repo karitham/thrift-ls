@@ -22,6 +22,12 @@ go install github.com/karitham/thrift-ls@latest
 This installs the `thrift-ls` binary. It speaks LSP over stdio and doubles as
 a CLI formatter.
 
+Prebuilt binaries (`linux`/`darwin`/`windows`, `amd64`/`arm64`) and a VS Code
+extension (`thrift-ls-<version>.vsix`) are attached to
+[GitHub releases](https://github.com/karitham/thrift-ls/releases).
+
+`nix run github:karitham/thrift-ls` runs the flake package.
+
 ## Usage
 
 ```
@@ -69,14 +75,16 @@ server logs to `$TMPDIR/thrift-ls.log`; raise verbosity with `-logLevel`.
 
 #### neovim
 
-Install `thrift-ls` with [mason](https://github.com/williamboman/mason.nvim)
-(`MasonInstall thrift-ls`), then enable it via
-[nvim-lspconfig](https://github.com/neovim/nvim-lspconfig), which ships a
-`thrift-ls` config:
+[nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) ships a `thriftls`
+entry, named after the upstream project this is a fork of. Point it at the
+`thrift-ls` binary:
 
 ```lua
-vim.lsp.enable("thrift-ls")
+require("lspconfig").thriftls.setup({ cmd = { "thrift-ls" } })
 ```
+
+`MasonInstall thriftls` and nixvim's `thriftls` package install the upstream
+server, not this one — prefer `go install`, a release binary, or the flake.
 
 #### vim
 
@@ -88,9 +96,13 @@ let g:lsp_settings = { 'thrift': { 'cmd': ['thrift-ls'] } }
 
 #### vscode
 
-There is no first-party extension. Use any LSP client that accepts a raw
-server command, or a generic thrift language extension that lets you point
-at your own binary.
+Install the `thrift-ls-<version>.vsix` from the
+[releases page](https://github.com/karitham/thrift-ls/releases), or run the
+extension from source (`vscode/`). The extension is a thin LSP client: it
+finds `thrift-ls` on `PATH` (or via the `thrift-ls.path` setting), and offers
+to download the matching release binary on first use. Formatting — whole
+document, selection, and on-type — works through the server, so format-on-save
+needs no extra setup.
 
 ### As a formatter
 

@@ -1,0 +1,78 @@
+{
+  "name": "thrift-ls",
+  "displayName": "Thrift Language Server",
+  "description": "Language server and formatter for Apache Thrift IDL files",
+  "version": "0.1.0",
+  "publisher": "karitham",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Formatters",
+    "Linters"
+  ],
+  "keywords": [
+    "thrift",
+    "idl",
+    "lsp",
+    "formatter"
+  ],
+  "activationEvents": [
+    "onLanguage:thrift",
+    "onCommand:thrift-ls.downloadServer",
+    "onCommand:thrift-ls.openReleases"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "thrift",
+        "aliases": [
+          "Thrift",
+          "thrift"
+        ],
+        "extensions": [
+          ".thrift"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "thrift-ls.downloadServer",
+        "title": "Thrift: Download / Update Language Server"
+      },
+      {
+        "command": "thrift-ls.openReleases",
+        "title": "Thrift: Open Releases Page"
+      }
+    ],
+    "configuration": {
+      "title": "thrift-ls",
+      "properties": {
+        "thrift-ls.path": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Absolute path to the `thrift-ls` binary. Empty (default): search `PATH`, then prompt to download the latest release binary into the extension's storage."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.2.0",
+    "typescript": "^5.5.0"
+  }
+}

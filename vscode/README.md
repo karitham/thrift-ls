@@ -1,0 +1,54 @@
+# thrift-ls VS Code extension
+
+Language server and formatter for Apache Thrift IDL files, powered by the
+[thrift-ls](https://github.com/karitham/thrift-ls) binary. The server itself
+implements formatting (whole document, range, and on-type), completion,
+diagnostics, definition, references, rename, document symbols, folding, and
+semantic tokens, so the extension is a thin LSP client.
+
+## Install
+
+The extension does not bundle a binary. On first use it looks for `thrift-ls`
+in the following order:
+
+1. the `thrift-ls.path` setting (absolute path), or
+2. `thrift-ls` on `PATH`, or
+3. a previously downloaded copy in the extension's storage.
+
+If none is found, a prompt offers to download the latest release binary for
+your platform (`linux`/`darwin`/`windows`, `amd64`/`arm64`) and verify its
+SHA-256 against `checksums.txt` from the release.
+
+Manual installs:
+
+```bash
+go install github.com/karitham/thrift-ls@latest
+```
+
+or grab a binary from the [releases page](https://github.com/karitham/thrift-ls/releases)
+and put it on `PATH` (or point `thrift-ls.path` at it).
+
+## Features
+
+- Formatting (format on save, format selection, format on type)
+- Completion, go to definition, find references, rename, hover
+- Diagnostics, document symbols, folding, semantic tokens
+
+All server features are negotiated over LSP; no editor-specific code beyond the
+client. The `thrift-ls.downloadServer` command re-downloads the binary (use it
+to update), and `thrift-ls.openReleases` opens the releases page.
+
+## Development
+
+```bash
+npm install
+npm run compile     # typecheck + build out/
+npm run watch       # incremental
+npm run package     # build the .vsix
+```
+
+Run the extension in VS Code with the Extension Development Host
+(`F5` / `Debug: Start Debugging` from the Run view) after opening this folder.
+
+Syntax highlighting is not included; install a thrift grammar extension if you
+want colors.

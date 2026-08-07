@@ -1,2 +1,7 @@
 result
 *.test
+
+# vscode extension
+vscode/node_modules/
+vscode/out/
+vscode/*.vsix
