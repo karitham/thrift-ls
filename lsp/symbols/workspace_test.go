@@ -309,3 +309,47 @@ service Federation {
 		})
 	}
 }
+
+// TestWorkspaceSymbolsKinds pins the distinct symbol kinds: unions and
+// exceptions surface differently from plain structs.
+func TestWorkspaceSymbolsKinds(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"shapes.thrift": `struct Gundam {
+	1: required string Name,
+}
+
+union MobileArmor {
+	1: string loadout,
+}
+
+exception BayFull {
+	1: string message,
+}`,
+	})
+
+	session := cache.NewSession(cache.New(nil))
+	openTree(t, session, dir, nil)
+
+	syms := WorkspaceSymbols(t.Context(), session, "", 0)
+	byName := make(map[string]protocol.SymbolInformation, len(syms))
+	for _, s := range syms {
+		byName[s.Name] = s
+	}
+
+	tests := []struct {
+		name string
+		kind protocol.SymbolKind
+	}{
+		{"Gundam", protocol.SymbolKindStruct},
+		{"MobileArmor", protocol.SymbolKindInterface},
+		{"BayFull", protocol.SymbolKindClass},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sym, ok := byName[tt.name]
+			require.True(t, ok, "symbol %q missing", tt.name)
+			assert.Equal(t, tt.kind, sym.Kind)
+		})
+	}
+}

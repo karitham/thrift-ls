@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -167,9 +168,43 @@ func TestSemanticTokensEncoding(t *testing.T) {
 func TestSemanticTokensLegend(t *testing.T) {
 	assert.Equal(t, []string{
 		"keyword", "string", "number", "comment",
-		"type", "struct", "enum", "interface",
+		"type", "struct", "union", "exception", "enum", "interface",
 		"property", "function", "enumMember", "variable",
 	}, Legend())
 }
 
 var _ = protocol.SemanticTokens{}
+
+// TestSemanticTokensUnionException pins distinct token types for union and
+// exception definitions.
+func TestSemanticTokensUnionException(t *testing.T) {
+	src := `union MobileArmor {
+	1: string loadout,
+}
+
+exception BayFull {
+	1: string message,
+}`
+
+	got := semanticTokens(t, src)
+
+	var union, exception decodedToken
+	found := 0
+
+	for _, tok := range got {
+		switch tok.typ {
+		case tokUnion:
+			union = tok
+			found++
+		case tokException:
+			exception = tok
+			found++
+		}
+	}
+
+	require.Equal(t, 2, found)
+
+	lines := strings.Split(src, "\n")
+	assert.Equal(t, "MobileArmor", lines[union.line][union.char:union.char+union.length])
+	assert.Equal(t, "BayFull", lines[exception.line][exception.char:exception.char+exception.length])
+}

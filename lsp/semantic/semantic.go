@@ -14,10 +14,12 @@ import (
 
 // legend is the ordered list of token types; indexes into it are the
 // encoded token types. The server advertises it in the registration
-// options, so it must stay in sync with the constants below.
+// options, so it must stay in sync with the constants below. The types
+// follow thrift's own naming; "union" and "exception" are server-defined
+// additions to the standard semantic token types.
 var legend = []string{
 	"keyword", "string", "number", "comment",
-	"type", "struct", "enum", "interface",
+	"type", "struct", "union", "exception", "enum", "interface",
 	"property", "function", "enumMember", "variable",
 }
 
@@ -28,6 +30,8 @@ const (
 	tokComment
 	tokType
 	tokStruct
+	tokUnion
+	tokException
 	tokEnum
 	tokInterface
 	tokProperty
@@ -126,7 +130,15 @@ func definitionNames(doc *syntax.Document) map[int]int {
 	for _, n := range doc.Nodes {
 		switch v := n.(type) {
 		case *syntax.Struct:
-			names[v.Name.TokStart()] = tokStruct
+			switch v.Kind {
+			case syntax.UnionDecl:
+				names[v.Name.TokStart()] = tokUnion
+			case syntax.ExceptionDecl:
+				names[v.Name.TokStart()] = tokException
+			default:
+				names[v.Name.TokStart()] = tokStruct
+			}
+
 			for _, f := range v.Fields {
 				names[f.Name.TokStart()] = tokProperty
 			}

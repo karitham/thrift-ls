@@ -68,9 +68,9 @@ func nodeSymbol(doc *syntax.Document, node syntax.Node) *protocol.DocumentSymbol
 		case syntax.StructDecl:
 			return structSymbol(doc, v, "Struct", protocol.SymbolKindStruct)
 		case syntax.UnionDecl:
-			return structSymbol(doc, v, "Union", protocol.SymbolKindStruct)
+			return structSymbol(doc, v, "Union", protocol.SymbolKindInterface)
 		case syntax.ExceptionDecl:
-			return structSymbol(doc, v, "Exception", protocol.SymbolKindStruct)
+			return structSymbol(doc, v, "Exception", protocol.SymbolKindClass)
 		}
 	case *syntax.Enum:
 		return enumSymbol(doc, v)
