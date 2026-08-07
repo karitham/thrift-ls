@@ -98,35 +98,6 @@ func (f *formatter) groupedWith(prev, cur syntax.Node, sepMode SeparatorMode) bo
 		!f.commentBreaksGroup(prevEnd, cur.TokStart(), sep, sepMode)
 }
 
-// commentBreaksGroup reports whether a comment between the real tokens at
-// prevEnd and curStart renders on its own line — a visual break between
-// the items. A comment renders inline when it shares the previous
-// content's line, or when it follows the previous item's separator on the
-// separator's line and the separator text is emitted; everything else
-// starts its own line.
-func (f *formatter) commentBreaksGroup(prevEnd, curStart int, sep syntax.TokenKind, sepMode SeparatorMode) bool {
-	line := f.token(prevEnd).Line
-
-	for c := prevEnd + 1; c < curStart; c++ {
-		ct := f.token(c)
-		if !isComment(ct.Kind) {
-			continue
-		}
-
-		if ct.Line == line {
-			continue // inline with the content
-		}
-
-		if sep != 0 && sepEmits(sep, sepMode) && ct.Line == f.token(f.nextReal(prevEnd+1)).Line {
-			continue // inline after the emitted separator
-		}
-
-		return true
-	}
-
-	return false
-}
-
 // alignmentFor returns the column alignment for field i, or nil when
 // alignment is disabled. Alignment is scoped to the blank-line and comment
 // group the field belongs to; sepMode is the separator mode the enclosing
@@ -324,25 +295,6 @@ func computeEnumAlign(values []*syntax.EnumValue) *columnAlign {
 	}
 
 	return a
-}
-
-// nameOnlyComment reports whether a comment follows the name of a
-// name-only value (no content tokens) on the same source line, directly
-// or after the separator: with the separator text dropped it renders
-// against the name pad.
-func (f *formatter) nameOnlyComment(name int) bool {
-	for c := name + 1; c < len(f.toks); c++ {
-		ct := f.token(c)
-		if isComment(ct.Kind) {
-			return ct.Line == f.token(name).Line
-		}
-
-		if ct.Line != f.token(name).Line {
-			return false
-		}
-	}
-
-	return false
 }
 
 // nodeTrailingInline reports whether the same-line comments after the

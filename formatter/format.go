@@ -326,18 +326,6 @@ func padAt(pads []padEntry, idx int) string {
 	return out
 }
 
-// isComment reports whether the token kind is a comment trivia token.
-func isComment(k syntax.TokenKind) bool {
-	return syntax.IsComment(k)
-}
-
-// lineComment reports whether the token kind is a line comment or
-// annotation, which consumes the rest of its source line: whatever follows
-// always starts a fresh line.
-func lineComment(k syntax.TokenKind) bool {
-	return k == syntax.TokenLineComment || k == syntax.TokenAnnotation
-}
-
 // prevReal returns the index of the previous real (non-comment) token
 // strictly before idx, or -1.
 func (f *formatter) prevReal(idx int) int {
@@ -444,156 +432,6 @@ func (f *formatter) emitTokens(start, end int, o emitOpts) doc.Doc {
 	return doc.Concat(parts)
 }
 
-// suppressedSepComments renders the same-line comments of a suppressed
-// separator (the mode drops its text) that cannot share the previous
-// content's line: each starts its own line, so the output round-trips.
-func (f *formatter) suppressedSepComments(idx int) []doc.Doc {
-	parts := make([]doc.Doc, 0, 4)
-
-	for c := idx + 1; c < len(f.toks); c++ {
-		ct := f.token(c)
-		if !isComment(ct.Kind) || ct.Line != f.token(idx).Line {
-			break
-		}
-
-		parts = append(parts, doc.SoftLine)
-		parts = append(parts, f.blankLineDocs(ct.BlankLinesBefore, doc.HardLine)...)
-		parts = append(parts, doc.Text(trimComment(ct.Text)), doc.HardLine)
-	}
-
-	return parts
-}
-
-// commentsRun renders the comments strictly between the real tokens at
-// prev and cur (all stream entries in between are comments): a comment on
-// the previous token's line renders inline after it, a comment on its own
-// line renders on its own line and owns its line end. It reports whether
-// the run ended the line, in which case the caller must not emit the
-// canonical gap.
-func (f *formatter) commentsRun(prev, cur int) ([]doc.Doc, bool) {
-	parts := make([]doc.Doc, 0, 4)
-	lineEnded := false
-
-	for c := prev + 1; c < cur; c++ {
-		ct := f.token(c)
-		if ct.Line == f.token(prev).Line {
-			// Same-line: inline after the previous token. A line comment
-			// owns its line end.
-			parts = append(parts, doc.Text(" "), doc.Text(trimComment(ct.Text)))
-			if lineComment(ct.Kind) {
-				parts = append(parts, doc.HardLine)
-				lineEnded = true
-			} else {
-				lineEnded = false
-			}
-
-			continue
-		}
-
-		// Own-line: the comment starts its own line. The soft line
-		// collapses when the output already ended the line (the comment
-		// before it owns its line end) and provides the break otherwise.
-		parts = append(parts, doc.SoftLine)
-		parts = append(parts, f.blankLineDocs(ct.BlankLinesBefore, doc.HardLine)...)
-		parts = append(parts, doc.Text(trimComment(ct.Text)), doc.HardLine)
-		lineEnded = true
-	}
-
-	return parts, lineEnded
-}
-
-// ownLineComments renders the own-line comments in the gap before the real
-// token at idx: the comments between the previous real token and idx that
-// start their own source line, each preceded by its blank lines and
-// followed by a hard line, plus the blank lines between the last comment
-// and idx itself. Same-line comments in the gap belong to the previous
-// token's trailing and are emitted by the caller's trailing phase or the
-// next commentsRun.
-func (f *formatter) ownLineComments(idx int) []doc.Doc {
-	prev := f.prevReal(idx - 1)
-
-	parts := make([]doc.Doc, 0, 4)
-	first := true
-
-	for c := prev + 1; c < idx; c++ {
-		ct := f.token(c)
-		if prev >= 0 && ct.Line == f.token(prev).Line {
-			continue
-		}
-
-		if prev >= 0 {
-			// The soft line collapses when the output already ended the
-			// line and provides the break otherwise.
-			parts = append(parts, doc.SoftLine)
-		} else if first && ct.BlankLinesBefore > 0 {
-			// At file start there is no separator line before the first
-			// comment: N blank lines round-trip as N+1 newlines.
-			parts = append(parts, doc.HardLine)
-		}
-
-		first = false
-
-		parts = append(parts, f.blankLineDocs(ct.BlankLinesBefore, doc.HardLine)...)
-		parts = append(parts, doc.Text(trimComment(ct.Text)), doc.HardLine)
-	}
-
-	if len(parts) > 0 && f.token(idx).BlankLinesBefore > 0 {
-		parts = append(parts, f.blankLineDocs(f.token(idx).BlankLinesBefore, doc.HardLine)...)
-	}
-
-	return parts
-}
-
-// sameLineComments renders the same-line comments after the real token at
-// idx: comments sharing its source line, each preceded by a space and —
-// for line comments — ending with a hard line.
-func (f *formatter) sameLineComments(idx int) []doc.Doc {
-	parts := make([]doc.Doc, 0, 4)
-
-	for c := idx + 1; c < len(f.toks); c++ {
-		ct := f.token(c)
-		if !isComment(ct.Kind) || ct.Line != f.token(idx).Line {
-			break
-		}
-
-		parts = append(parts, doc.Text(" "), doc.Text(trimComment(ct.Text)))
-		if lineComment(ct.Kind) {
-			parts = append(parts, doc.HardLine)
-		}
-	}
-
-	return parts
-}
-
-// hasOwnLineComments reports whether the gap before the real token at idx
-// contains an own-line comment.
-func (f *formatter) hasOwnLineComments(idx int) bool {
-	prev := f.prevReal(idx - 1)
-	for c := prev + 1; c < idx; c++ {
-		if prev < 0 || f.token(c).Line != f.token(prev).Line {
-			return true
-		}
-	}
-
-	return false
-}
-
-// hasSameLineComments reports whether the real token at idx has same-line
-// comments after it.
-func (f *formatter) hasSameLineComments(idx int) bool {
-	c := idx + 1
-	if c >= len(f.toks) {
-		return false
-	}
-
-	ct := f.token(c)
-	if !isComment(ct.Kind) || ct.Line != f.token(idx).Line {
-		return false
-	}
-
-	return true
-}
-
 // tokenGap returns the canonical gap between two adjacent real tokens:
 // nothing when the previous token's same-line comments already ended the
 // line, the canonical spacing otherwise.
@@ -603,23 +441,6 @@ func (f *formatter) tokenGap(prev, cur int) doc.Doc {
 	}
 
 	return doc.Text(rawTokenGap(f.token(prev), f.token(cur)))
-}
-
-// sameLineEndsLine reports whether the token's same-line comments end with
-// a line comment, which owns its line end.
-func (f *formatter) sameLineEndsLine(idx int) bool {
-	for c := idx + 1; c < len(f.toks); c++ {
-		ct := f.token(c)
-		if !isComment(ct.Kind) || ct.Line != f.token(idx).Line {
-			break
-		}
-
-		if lineComment(ct.Kind) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // foldBreak is the foldable gap after an opening token or separating
