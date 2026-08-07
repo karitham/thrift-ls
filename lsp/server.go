@@ -3,6 +3,8 @@ package lsp
 import (
 	"context"
 	"log/slog"
+	"slices"
+	"strings"
 	"sync"
 
 	"go.lsp.dev/protocol"
@@ -10,7 +12,7 @@ import (
 
 	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/lsp/symbols"
+	"github.com/karitham/thrift-ls/lsp/source"
 )
 
 type Server struct {
@@ -51,17 +53,11 @@ func (s *Server) Initialize(ctx context.Context, params *protocol.InitializePara
 }
 
 func (s *Server) Initialized(ctx context.Context, params *protocol.InitializedParams) (err error) {
-	// The workspace walk parses every thrift file to warm the cache; it
-	// runs once, off the request path, so the initialize handshake and
-	// early requests never block on it.
-	s.workspaceWalkOnce.Do(func() {
-		go func() {
-			for _, folder := range s.folders {
-				s.walkFoldersThriftFile(folder)
-			}
-		}()
-	})
-
+	// The workspace walk starts at the end of initialize, not here: this
+	// method is a notification, which is fire-and-forget, while initialize
+	// is a request — a client that drops the notification (or never sends
+	// it) would otherwise leave the workspace unindexed until the first
+	// edit.
 	return nil
 }
 
@@ -251,7 +247,29 @@ func (s *Server) SignatureHelp(ctx context.Context, params *protocol.SignatureHe
 }
 
 func (s *Server) Symbols(ctx context.Context, params *protocol.WorkspaceSymbolParams) (result protocol.WorkspaceSymbolResult, err error) {
-	return protocol.SymbolInformationSlice(symbols.WorkspaceSymbols(ctx, s.session, params.Query, 1000)), nil
+	views := s.session.Views()
+	slices.SortFunc(views, func(a, b *cache.View) int {
+		return strings.Compare(string(a.Folder()), string(b.Folder()))
+	})
+
+	const maxResults = 1000
+
+	var res []protocol.SymbolInformation
+
+	for _, view := range views {
+		ss, release := view.Snapshot()
+
+		syms := source.WorkspaceSymbols(ctx, ss, view.KnownFiles(), params.Query, maxResults-len(res))
+
+		release()
+
+		res = append(res, syms...)
+		if len(res) >= maxResults {
+			break
+		}
+	}
+
+	return protocol.SymbolInformationSlice(res), nil
 }
 
 func (s *Server) TypeDefinition(ctx context.Context, params *protocol.TypeDefinitionParams) (result protocol.DefinitionResult, err error) {

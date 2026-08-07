@@ -472,9 +472,9 @@ func symbolNames(syms protocol.SymbolInformationSlice) []string {
 }
 
 // Test_InitializeDefersTheWorkspaceWalk pins the startup flow: initialize
-// returns without touching the workspace, and the walk runs once on the
-// Initialized notification, registering every thrift file under the
-// workspace folder.
+// returns without blocking on the workspace, the walk runs asynchronously
+// from initialize (not the Initialized notification), and registers every
+// thrift file under the workspace folder.
 func Test_InitializeDefersTheWorkspaceWalk(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		dir := t.TempDir()
@@ -490,11 +490,6 @@ func Test_InitializeDefersTheWorkspaceWalk(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-
-		// The walk is deferred: nothing is known yet, and no view exists.
-		assert.Empty(t, srv.session.Views())
-
-		require.NoError(t, srv.Initialized(t.Context(), &protocol.InitializedParams{}))
 
 		synctest.Wait()
 

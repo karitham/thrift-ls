@@ -11,7 +11,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/lsp/semantic"
+	"github.com/karitham/thrift-ls/lsp/source"
 )
 
 func (s *Server) initialize(ctx context.Context, params *protocol.InitializeParams) (result *protocol.InitializeResult, err error) {
@@ -43,9 +43,19 @@ func (s *Server) initialize(ctx context.Context, params *protocol.InitializePara
 
 	slog.Debug("initialized folders", "folders", folders)
 
-	// The walk happens on the Initialized notification; the session's
-	// once-guard keeps it from running twice.
 	s.folders = folders
+
+	// Kick off the workspace walk immediately, off the request path, so
+	// the workspace is indexed by the time the client makes its first
+	// request. The walk is async (it parses every thrift file) and the
+	// once-guard keeps it from running twice.
+	s.workspaceWalkOnce.Do(func() {
+		go func() {
+			for _, folder := range s.folders {
+				s.walkFoldersThriftFile(folder)
+			}
+		}()
+	})
 
 	return initializeResult(), nil
 }
@@ -224,7 +234,7 @@ func initializeResult() *protocol.InitializeResult {
 						WorkDoneProgress: new(true),
 					},
 					Legend: protocol.SemanticTokensLegend{
-						TokenTypes:     semantic.Legend(),
+						TokenTypes:     source.Legend(),
 						TokenModifiers: []string{},
 					},
 					Full: &protocol.SemanticTokensFullDelta{

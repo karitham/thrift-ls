@@ -12,7 +12,6 @@ import (
 
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/lsputils"
 	"github.com/karitham/thrift-ls/resolver"
 	"github.com/karitham/thrift-ls/syntax"
 )
@@ -101,12 +100,6 @@ func (r *Resolver) ResolveInclude(cur uri.URI, includePath string) uri.URI {
 	return uri.File(resolvedPath)
 }
 
-// ResolveIncludeWithText resolves an include path using the raw text from the AST.
-// This is more efficient when the include text is already available.
-func (r *Resolver) ResolveIncludeWithText(cur uri.URI, includeText string) uri.URI {
-	return r.ResolveInclude(cur, includeText)
-}
-
 // GetIncludePath returns the include path text for a given include name.
 // Returns empty string if not found.
 func (r *Resolver) GetIncludePath(ast *syntax.Document, includeName string) string {
@@ -115,7 +108,7 @@ func (r *Resolver) GetIncludePath(ast *syntax.Document, includeName string) stri
 			continue
 		}
 
-		path := lsputils.IncludePathText(include)
+		path := include.PathText()
 
 		name := getIncludeNameFromPath(path)
 		if name == includeName {
@@ -150,9 +143,6 @@ type Snapshot struct {
 
 	view *View
 
-	// ctx is used to cancel background job
-	ctx context.Context
-
 	refCount sync.WaitGroup
 
 	files *FilesMap
@@ -168,7 +158,6 @@ func NewSnapshot(view *View, includePaths []string) *Snapshot {
 		id:   rand.Int63(),
 		view: view,
 
-		ctx:         context.Background(),
 		refCount:    sync.WaitGroup{},
 		context:     NewContext(),
 		parsedCache: NewParseCaches(),
@@ -285,7 +274,6 @@ func (s *Snapshot) clone() (*Snapshot, func()) {
 	snap := &Snapshot{
 		id:   rand.Int63(),
 		view: s.view,
-		ctx:  context.Background(),
 		// TODO(jpf): file change 没有更新，导致读到旧的缓存
 		files: s.files.Clone(),
 		// files: &FilesMap{

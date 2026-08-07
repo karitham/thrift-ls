@@ -11,7 +11,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/lsp/completion"
+	"github.com/karitham/thrift-ls/lsp/source"
 	"github.com/karitham/thrift-ls/lsp/types"
 )
 
@@ -190,28 +190,24 @@ func (s *Server) diagnose(ctx context.Context, ss *cache.Snapshot, affected []ur
 }
 
 func (s *Server) completion(ctx context.Context, params *protocol.CompletionParams) (*protocol.CompletionList, error) {
-	snapshot, release, fh, err := s.getFileContext(ctx, params.TextDocument.URI)
-	if err != nil {
-		return nil, err
-	}
-	defer release()
+	return withFile(ctx, s.session, params.TextDocument.URI, func(ss *cache.Snapshot, fh cache.FileHandle) (*protocol.CompletionList, error) {
+		items, rng, truncated, err := source.DefaultTokenCompletion.Completion(ctx, ss, &source.CompletionRequest{
+			TriggerKind: 0,
+			Pos: types.Position{
+				Line:      params.Position.Line,
+				Character: params.Position.Character,
+			},
+			Fh: fh,
+		})
+		if err != nil {
+			return nil, err
+		}
 
-	items, rng, truncated, err := completion.DefaultTokenCompletion.Completion(ctx, snapshot, &completion.CompletionRequest{
-		TriggerKind: 0,
-		Pos: types.Position{
-			Line:      params.Position.Line,
-			Character: params.Position.Character,
-		},
-		Fh: fh,
+		return toLspCompletionList(items, rng, truncated), nil
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return toLspCompletionList(items, rng, truncated), nil
 }
 
-func toLspCompletionList(items []*completion.CompletionItem, rng protocol.Range, truncated bool) *protocol.CompletionList {
+func toLspCompletionList(items []*source.CompletionItem, rng protocol.Range, truncated bool) *protocol.CompletionList {
 	list := &protocol.CompletionList{
 		IsIncomplete: truncated,
 	}
@@ -236,24 +232,4 @@ func toLspCompletionList(items []*completion.CompletionItem, rng protocol.Range,
 	}
 
 	return list
-}
-
-func (s *Server) getFileContext(ctx context.Context, uri uri.URI) (ss *cache.Snapshot, release func(), fh cache.FileHandle, err error) {
-	var view *cache.View
-
-	view, err = s.session.ViewOf(uri)
-	if err != nil {
-		return ss, release, fh, err
-	}
-
-	ss, release = view.Snapshot()
-
-	fh, err = ss.ReadFile(ctx, uri)
-	if err != nil {
-		release()
-
-		return ss, release, fh, err
-	}
-
-	return ss, release, fh, err
 }

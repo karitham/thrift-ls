@@ -6,43 +6,36 @@ import (
 
 	"go.lsp.dev/protocol"
 
-	"github.com/karitham/thrift-ls/lsp/codejump"
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/lsp/source"
 )
 
 func (s *Server) hover(ctx context.Context, params *protocol.HoverParams) (*protocol.Hover, error) {
-	file := params.TextDocument.URI
+	return withSnapshot(ctx, s.session, params.TextDocument.URI, func(ss *cache.Snapshot) (*protocol.Hover, error) {
+		content, err := source.Hover(ctx, ss, params.TextDocument.URI, params.Position)
+		if err != nil {
+			return nil, err
+		}
 
-	view, err := s.session.ViewOf(file)
-	if err != nil {
-		return nil, err
-	}
+		if content == "" {
+			return nil, nil
+		}
 
-	ss, release := view.Snapshot()
-	defer release()
+		markdownPrefix := "```thrift\n"
+		if strings.HasPrefix(content, "\n") {
+			markdownPrefix = "```thrift"
+		}
 
-	content, err := codejump.Hover(ctx, ss, params.TextDocument.URI, params.Position)
-	if err != nil {
-		return nil, err
-	}
+		markdownSuffix := "\n```"
+		if strings.HasSuffix(content, "\n") {
+			markdownSuffix = "```"
+		}
 
-	if content == "" {
-		return nil, nil
-	}
-
-	markdown_prefix := "```thrift\n"
-	if strings.HasPrefix(content, "\n") {
-		markdown_prefix = "```thrift"
-	}
-
-	markdown_suffix := "\n```"
-	if strings.HasSuffix(content, "\n") {
-		markdown_suffix = "```"
-	}
-
-	return &protocol.Hover{
-		Contents: &protocol.MarkupContent{
-			Kind:  protocol.MarkupKindMarkdown,
-			Value: markdown_prefix + content + markdown_suffix,
-		},
-	}, nil
+		return &protocol.Hover{
+			Contents: &protocol.MarkupContent{
+				Kind:  protocol.MarkupKindMarkdown,
+				Value: markdownPrefix + content + markdownSuffix,
+			},
+		}, nil
+	})
 }

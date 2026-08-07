@@ -5,24 +5,17 @@ import (
 
 	"go.lsp.dev/protocol"
 
-	"github.com/karitham/thrift-ls/lsp/semantic"
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/lsp/source"
 )
 
 func (s *Server) semanticTokensFull(ctx context.Context, params *protocol.SemanticTokensParams) (*protocol.SemanticTokens, error) {
-	file := params.TextDocument.URI
+	return withSnapshot(ctx, s.session, params.TextDocument.URI, func(ss *cache.Snapshot) (*protocol.SemanticTokens, error) {
+		data, err := source.Tokens(ctx, ss, params.TextDocument.URI)
+		if err != nil {
+			return nil, err
+		}
 
-	view, err := s.session.ViewOf(file)
-	if err != nil {
-		return nil, err
-	}
-
-	ss, release := view.Snapshot()
-	defer release()
-
-	data, err := semantic.Tokens(ctx, ss, file)
-	if err != nil {
-		return nil, err
-	}
-
-	return &protocol.SemanticTokens{Data: data}, nil
+		return &protocol.SemanticTokens{Data: data}, nil
+	})
 }

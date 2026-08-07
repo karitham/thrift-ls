@@ -9,7 +9,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/lsp/diagnostic"
+	"github.com/karitham/thrift-ls/lsp/source"
 )
 
 func (s *Server) diagnostic(ctx context.Context, ss *cache.Snapshot, file uri.URI) error {
@@ -20,7 +20,7 @@ func (s *Server) diagnostic(ctx context.Context, ss *cache.Snapshot, file uri.UR
 	slog.Debug("diagnostic called")
 	defer slog.Debug("diagnostic finished")
 
-	diag := diagnostic.NewDiagnostic()
+	diag := source.NewDiagnostic()
 
 	diagRes, err := diag.Diagnostic(ctx, ss, []uri.URI{file})
 	if err != nil {

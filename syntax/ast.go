@@ -1,5 +1,7 @@
 package syntax
 
+import "strings"
+
 // This file defines the abstract syntax tree produced by the parser.
 //
 // Every node spans a contiguous range of tokens in the Document's token
@@ -90,6 +92,16 @@ type ConstValue struct {
 type Include struct {
 	nodeBase
 	Path *Token // the path string literal
+}
+
+// PathText returns the include path without its quotes. The token keeps
+// the raw literal text, including the surrounding quotes.
+func (i *Include) PathText() string {
+	if i == nil || i.Path == nil {
+		return ""
+	}
+
+	return strings.Trim(i.Path.Text, "\"'")
 }
 
 // CPPInclude is a C++ include: cpp_include "path".
