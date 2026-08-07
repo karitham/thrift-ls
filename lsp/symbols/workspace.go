@@ -48,27 +48,33 @@ func WorkspaceSymbols(ctx context.Context, session *cache.Session, query string,
 }
 
 // documentSymbolsFlat returns the document symbols of a file flattened
-// into workspace symbols; the location points at the symbol's name.
+// into workspace symbols: each child carries its parent's name as the
+// container, and the location points at the symbol's name.
 func documentSymbolsFlat(ctx context.Context, ss *cache.Snapshot, file uri.URI) []protocol.SymbolInformation {
 	syms := make([]protocol.SymbolInformation, 0, 16)
 
 	for _, sym := range DocumentSymbols(ctx, ss, file) {
-		flattenSymbol(sym, file, &syms)
+		flattenSymbol(sym, file, "", &syms)
 	}
 
 	return syms
 }
 
-func flattenSymbol(sym *protocol.DocumentSymbol, file uri.URI, out *[]protocol.SymbolInformation) {
-	*out = append(*out, protocol.SymbolInformation{
+func flattenSymbol(sym *protocol.DocumentSymbol, file uri.URI, container string, out *[]protocol.SymbolInformation) {
+	info := protocol.SymbolInformation{
 		BaseSymbolInformation: protocol.BaseSymbolInformation{
 			Name: sym.Name,
 			Kind: sym.Kind,
 		},
 		Location: protocol.Location{URI: file, Range: sym.SelectionRange},
-	})
+	}
+	if container != "" {
+		info.ContainerName = new(container)
+	}
+
+	*out = append(*out, info)
 
 	for i := range sym.Children {
-		flattenSymbol(&sym.Children[i], file, out)
+		flattenSymbol(&sym.Children[i], file, sym.Name, out)
 	}
 }

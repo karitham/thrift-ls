@@ -256,3 +256,56 @@ typedef string PilotName`,
 		})
 	}
 }
+
+// TestWorkspaceSymbolsContainerName pins the container name of nested
+// symbols: each member carries its enclosing definition's name.
+func TestWorkspaceSymbolsContainerName(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"shapes.thrift": `struct MobileSuit {
+	1: required string Name,
+}
+
+enum ZeonForces {
+	ZAKU_I = 1,
+}
+
+service Federation {
+	void Deploy(1: string suitName),
+}`,
+	})
+
+	session := cache.NewSession(cache.New(nil))
+	openTree(t, session, dir, nil)
+
+	tests := []struct {
+		name      string
+		container *string
+	}{
+		{"MobileSuit", nil},
+		{"Name", new("MobileSuit")},
+		{"ZAKU_I", new("ZeonForces")},
+		{"Deploy", new("Federation")},
+	}
+
+	syms := WorkspaceSymbols(t.Context(), session, "", 0)
+	byName := make(map[string]protocol.SymbolInformation, len(syms))
+	for _, s := range syms {
+		byName[s.Name] = s
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sym, ok := byName[tt.name]
+			require.True(t, ok, "symbol %q missing", tt.name)
+
+			if tt.container == nil {
+				assert.Nil(t, sym.ContainerName)
+
+				return
+			}
+
+			require.NotNil(t, sym.ContainerName)
+			assert.Equal(t, *tt.container, *sym.ContainerName)
+		})
+	}
+}

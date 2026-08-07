@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/synctest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -468,4 +469,51 @@ func symbolNames(syms protocol.SymbolInformationSlice) []string {
 	}
 
 	return names
+}
+
+// Test_InitializeDefersTheWorkspaceWalk pins the startup flow: initialize
+// returns without touching the workspace, and the walk runs once on the
+// Initialized notification, registering every thrift file under the
+// workspace folder.
+func Test_InitializeDefersTheWorkspaceWalk(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "a.thrift"), []byte("struct FromA {}"), 0o644))
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "nested"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "nested", "b.thrift"), []byte("struct FromB {}"), 0o644))
+
+		srv := NewServer(cache.New(nil), nil, formatter.Options{})
+
+		_, err := srv.Initialize(t.Context(), &protocol.InitializeParams{
+			WorkspaceFoldersInitializeParams: protocol.WorkspaceFoldersInitializeParams{
+				WorkspaceFolders: protocol.NewNullable([]protocol.WorkspaceFolder{{URI: uri.File(dir)}}),
+			},
+		})
+		require.NoError(t, err)
+
+		// The walk is deferred: nothing is known yet, and no view exists.
+		assert.Empty(t, srv.session.Views())
+
+		require.NoError(t, srv.Initialized(t.Context(), &protocol.InitializedParams{}))
+
+		synctest.Wait()
+
+		// The walk registered the folder as a view and marked both files
+		// known — including the nested one.
+		views := srv.session.Views()
+		require.Len(t, views, 1)
+		assert.Equal(t, uri.File(dir), views[0].Folder())
+
+		known := views[0].KnownFiles()
+		assert.Contains(t, known, uri.File(filepath.Join(dir, "a.thrift")))
+		assert.Contains(t, known, uri.File(filepath.Join(dir, "nested", "b.thrift")))
+
+		// Workspace symbols resolve from the walked files.
+		files, err := srv.Symbols(t.Context(), &protocol.WorkspaceSymbolParams{Query: ""})
+		require.NoError(t, err)
+
+		syms, ok := files.(protocol.SymbolInformationSlice)
+		require.True(t, ok)
+		assert.Equal(t, []string{"FromA", "FromB"}, symbolNames(syms))
+	})
 }

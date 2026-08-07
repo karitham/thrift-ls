@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"go.lsp.dev/protocol"
+	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/lsp/cache"
@@ -17,6 +18,11 @@ type Server struct {
 
 	client     protocol.Client
 	formatOpts formatter.Options
+
+	// folders are the workspace folders from the initialize request; the
+	// walk starts on the Initialized notification so the initialize
+	// handshake never blocks on parsing the workspace.
+	folders []uri.URI
 }
 
 func NewServer(c *cache.Cache, client protocol.Client, formatOpts formatter.Options) *Server {
@@ -36,6 +42,17 @@ func (s *Server) Initialize(ctx context.Context, params *protocol.InitializePara
 }
 
 func (s *Server) Initialized(ctx context.Context, params *protocol.InitializedParams) (err error) {
+	// The workspace walk parses every thrift file to warm the cache; it
+	// runs once, off the request path, so the initialize handshake and
+	// early requests never block on it.
+	s.session.Initialize(func() {
+		go func() {
+			for _, folder := range s.folders {
+				s.walkFoldersThriftFile(folder)
+			}
+		}()
+	})
+
 	return nil
 }
 

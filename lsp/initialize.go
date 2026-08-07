@@ -42,19 +42,20 @@ func (s *Server) initialize(ctx context.Context, params *protocol.InitializePara
 
 	slog.Debug("initialized folders", "folders", folders)
 
-	if len(folders) > 0 {
-		s.session.Initialize(func() {
-			for i := range folders {
-				s.walkFoldersThriftFile(folders[i])
-			}
-		})
-	}
+	// The walk happens on the Initialized notification; the session's
+	// once-guard keeps it from running twice.
+	s.folders = folders
 
 	return initializeResult(), nil
 }
 
 func (s *Server) walkFoldersThriftFile(folder uri.URI) {
 	slog.Debug("walk dir", "folder", folder.Path())
+
+	// The view is the folder itself, so files in nested directories
+	// resolve to it via ContainsFile.
+	s.session.AddView(folder)
+
 	// WalkDir walk files with lexical order
 	_ = filepath.WalkDir(folder.Path(), func(path string, d fs.DirEntry, err error) error {
 		slog.Debug("walking", "path", path)
