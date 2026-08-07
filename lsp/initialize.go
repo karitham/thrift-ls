@@ -122,8 +122,9 @@ func (s *Server) walkFoldersThriftFile(folder uri.URI) {
 	// resolve to it via ContainsFile.
 	s.session.AddView(folder)
 
-	// WalkDir walk files with lexical order
-	_ = filepath.WalkDir(folder.Path(), func(path string, d fs.DirEntry, err error) error {
+	// WalkDir walk files with lexical order. FsPath, not Path: Path keeps
+	// the leading slash before a Windows drive letter, which Win32 rejects.
+	_ = filepath.WalkDir(folder.FsPath(), func(path string, d fs.DirEntry, err error) error {
 		slog.Debug("walking", "path", path)
 
 		if err != nil {

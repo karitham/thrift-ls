@@ -58,7 +58,7 @@ type includeProvider struct{}
 func (includeProvider) Kind() ContextKind { return CtxIncludePath }
 
 func (includeProvider) Candidates(_ context.Context, ss *cache.Snapshot, file uri.URI, c Context) []Candidate {
-	return ListDirAndFiles(filepath.Dir(file.Path()), ss.Resolver().IncludePaths(), c.Prefix)
+	return ListDirAndFiles(filepath.Dir(file.FsPath()), ss.Resolver().IncludePaths(), c.Prefix)
 }
 
 type typeProvider struct{}

@@ -12,11 +12,28 @@ import (
 // paths.
 type absFS struct{ fsys fs.FS }
 
+// isWindowsPath reports whether name is a native Windows path (drive letter
+// or backslash separators). Such names cannot go through an fs.FS, which
+// only accepts slash-separated relative names; the underlying fs is the
+// real filesystem anyway (tests use POSIX names), so go straight to the OS.
+func isWindowsPath(name string) bool {
+	return strings.Contains(name, `\`) ||
+		(len(name) >= 2 && name[1] == ':' && (name[0]|0x20) >= 'a' && (name[0]|0x20) <= 'z')
+}
+
 func (a absFS) Open(name string) (fs.File, error) {
+	if isWindowsPath(name) {
+		return os.Open(name)
+	}
+
 	return a.fsys.Open(strings.TrimPrefix(name, "/"))
 }
 
 func (a absFS) Stat(name string) (fs.FileInfo, error) {
+	if isWindowsPath(name) {
+		return os.Stat(name)
+	}
+
 	return fs.Stat(a.fsys, strings.TrimPrefix(name, "/"))
 }
 
@@ -77,37 +94,4 @@ func (r *Resolver) exists(path string) bool {
 	_, err := fs.Stat(r.fsys, path)
 
 	return err == nil
-}
-
-// IncludeCall is a function that resolves and reads an include file.
-type IncludeCall func(include string) (filename string, content []byte, err error)
-
-// ResolveContent resolves an include path and reads the file content.
-func (r *Resolver) ResolveContent(currentFile, includePath string) (filename string, content []byte, err error) {
-	filename = r.Resolve(currentFile, includePath)
-
-	content, err = fs.ReadFile(r.fsys, filename)
-	if err != nil {
-		return filename, nil, err
-	}
-
-	return filename, content, nil
-}
-
-// IncludeCall creates an IncludeCall function for the given file. The
-// returned function resolves includes using include paths first, then falls
-// back to relative resolution from initialFile.
-func (r *Resolver) IncludeCall(initialFile string) IncludeCall {
-	return func(include string) (filename string, content []byte, err error) {
-		for _, ip := range r.includePaths {
-			candidatePath := filepath.Join(ip, include)
-			if r.exists(candidatePath) {
-				content, err = fs.ReadFile(r.fsys, candidatePath)
-
-				return candidatePath, content, err
-			}
-		}
-
-		return r.ResolveContent(initialFile, include)
-	}
 }

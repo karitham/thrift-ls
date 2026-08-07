@@ -1,7 +1,7 @@
 package source
 
 import (
-	"path/filepath"
+	"path"
 	"sort"
 	"strings"
 
@@ -13,14 +13,11 @@ import (
 // includeNameOf returns the include name of a file URI: the base name
 // without extension. file:///base.thrift -> "base".
 func includeNameOf(file uri.URI) string {
-	fileName := file.Path()
+	// URI paths are always slash-separated, even for Windows drive
+	// letters, so path (not filepath) is the matching stdlib.
+	fileName := path.Base(file.Path())
 
-	index := strings.LastIndexByte(fileName, filepath.Separator)
-	if index != -1 {
-		fileName = string(fileName[index+1:])
-	}
-
-	index = strings.LastIndexByte(fileName, '.')
+	index := strings.LastIndexByte(fileName, '.')
 	if index == -1 {
 		return fileName
 	}
@@ -57,8 +54,8 @@ func parseIdent(cur uri.URI, includes []*syntax.Include, identifier string) (inc
 // includeNames returns include names from include ast nodes
 func includeNames(cur uri.URI, includes []*syntax.Include) (includeNames []string) {
 	for _, inc := range includes {
-		if path := inc.PathText(); path != "" {
-			u := uri.File(filepath.Join(filepath.Dir(cur.Path()), path))
+		if p := inc.PathText(); p != "" {
+			u := uri.File(path.Join(path.Dir(cur.Path()), p))
 			includeNames = append(includeNames, includeNameOf(u))
 		}
 	}

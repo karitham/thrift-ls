@@ -44,7 +44,7 @@ func (h *DiskFile) Content() ([]byte, error) { return h.content, h.err }
 
 // ReadFile stats and (maybe) reads the file, updates the cache, and returns it.
 func (fs *memoizedFS) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, error) {
-	id, mtime, err := GetFileID(uri.Path())
+	id, mtime, err := GetFileID(uri.FsPath())
 	if err != nil {
 		// file does not exist
 		return &DiskFile{
@@ -124,7 +124,10 @@ func readFile(ctx context.Context, uri uri.URI, mtime time.Time) (*DiskFile, err
 	// ID, or whose mtime differs from the given mtime. However, in these cases
 	// we expect the client to notify of a subsequent file change, and the file
 	// content should be eventually consistent.
-	content, err := os.ReadFile(uri.Path()) // ~20us
+	// FsPath, not Path: Path keeps the leading slash before a Windows drive
+	// letter ("/c:/dir/x.thrift"), which Win32 rejects with an invalid-name
+	// error.
+	content, err := os.ReadFile(uri.FsPath()) // ~20us
 	if err != nil {
 		content = nil // just in case
 	}

@@ -94,7 +94,9 @@ func (r *Resolver) IncludePaths() []string {
 // ResolveInclude resolves an include path to a file URI.
 // It first tries relative to the current file, then tries each include path.
 func (r *Resolver) ResolveInclude(cur uri.URI, includePath string) uri.URI {
-	filePath := cur.Path()
+	// FsPath, not Path: Path keeps the leading slash before a Windows drive
+	// letter ("/c:/dir/x.thrift"), which breaks the resolver's filepath ops.
+	filePath := cur.FsPath()
 	resolvedPath := r.central.Resolve(filePath, includePath)
 
 	return uri.File(resolvedPath)

@@ -2,6 +2,7 @@ package source
 
 import (
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -38,7 +39,7 @@ func ListDirAndFiles(dir string, includePaths []string, prefix string) []Candida
 	var res []Candidate
 
 	for _, root := range roots {
-		entries, err := os.ReadDir(filepath.Join(root, dirPart))
+		entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(dirPart)))
 		if err != nil {
 			continue
 		}
@@ -53,9 +54,9 @@ func ListDirAndFiles(dir string, includePaths []string, prefix string) []Candida
 
 			switch {
 			case e.IsDir():
-				text = filepath.Join(dirPart, name) + "/"
+				text = path.Join(dirPart, name) + "/"
 			case strings.HasSuffix(name, ".thrift"):
-				text = filepath.Join(dirPart, name)
+				text = path.Join(dirPart, name)
 			default:
 				continue
 			}
