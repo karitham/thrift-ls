@@ -307,11 +307,20 @@ func (s *Server) OutgoingCalls(ctx context.Context, params *protocol.CallHierarc
 }
 
 func (s *Server) SemanticTokensFull(ctx context.Context, params *protocol.SemanticTokensParams) (result *protocol.SemanticTokens, err error) {
-	return nil, nil
+	return s.semanticTokensFull(ctx, params)
 }
 
 func (s *Server) SemanticTokensFullDelta(ctx context.Context, params *protocol.SemanticTokensDeltaParams) (result protocol.SemanticTokensDeltaResult, err error) {
-	return nil, nil
+	// No delta tracking: answer every request with the full token set,
+	// which is a valid delta response.
+	tokens, err := s.semanticTokensFull(ctx, &protocol.SemanticTokensParams{
+		TextDocument: params.TextDocument,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return tokens, nil
 }
 
 func (s *Server) SemanticTokensRange(ctx context.Context, params *protocol.SemanticTokensRangeParams) (result *protocol.SemanticTokens, err error) {

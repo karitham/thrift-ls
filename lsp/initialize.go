@@ -11,6 +11,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/lsp/semantic"
 )
 
 func (s *Server) initialize(ctx context.Context, params *protocol.InitializeParams) (result *protocol.InitializeResult, err error) {
@@ -224,9 +225,13 @@ func initializeResult() *protocol.InitializeResult {
 						WorkDoneProgress: new(true),
 					},
 					Legend: protocol.SemanticTokensLegend{
-						TokenTypes:     []string{},
+						TokenTypes:     semantic.Legend(),
 						TokenModifiers: []string{},
 					},
+					Full: &protocol.SemanticTokensFullDelta{
+						Delta: new(true),
+					},
+					Range: protocol.Boolean(false),
 				},
 				StaticRegistrationOptions: protocol.StaticRegistrationOptions{
 					ID: new("thriftls"),
