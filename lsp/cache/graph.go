@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -55,8 +56,78 @@ func NewIncludeGraph() *IncludeGraph {
 	}
 }
 
+// Includes returns the files file includes directly, sorted ascending by
+// URI. The read lock is held during the walk, so no node clones are
+// needed.
+func (g *IncludeGraph) Includes(file uri.URI) []uri.URI {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	return g.includesLocked(file)
+}
+
+// Includers returns the files that include file directly, in graph order.
+func (g *IncludeGraph) Includers(file uri.URI) []uri.URI {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	return g.includersLocked(file)
+}
+
+// Dependents returns every file that directly or transitively includes
+// file, including file itself when it transitively includes itself. The
+// result is sorted ascending by URI and cycle-safe.
+func (g *IncludeGraph) Dependents(file uri.URI) []uri.URI {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	deps := make([]uri.URI, 0)
+	seen := make(map[uri.URI]struct{})
+
+	var walk func(f uri.URI)
+
+	walk = func(f uri.URI) {
+		for _, dependent := range g.includersLocked(f) {
+			if _, ok := seen[dependent]; ok {
+				continue
+			}
+
+			seen[dependent] = struct{}{}
+			deps = append(deps, dependent)
+			walk(dependent)
+		}
+	}
+
+	walk(file)
+	slices.Sort(deps)
+
+	return deps
+}
+
+// includesLocked returns file's direct includes; callers must hold g.mu.
+func (g *IncludeGraph) includesLocked(file uri.URI) []uri.URI {
+	node := g.mapper[file]
+	if node == nil {
+		return nil
+	}
+
+	return node.outdegree
+}
+
+// includersLocked returns file's direct includers; callers must hold g.mu.
+func (g *IncludeGraph) includersLocked(file uri.URI) []uri.URI {
+	node := g.mapper[file]
+	if node == nil {
+		return nil
+	}
+
+	return node.indegree
+}
+
 // Get returns a copy of file's node. The graph's nodes are mutated in place
 // by Set and removeWithoutLock, so a live node must never escape the lock.
+// Prefer the locked walk methods (Includes, Includers, Dependents), which
+// avoid the copy.
 func (g *IncludeGraph) Get(file uri.URI) *IncludeNode {
 	g.mu.RLock()
 	defer g.mu.RUnlock()

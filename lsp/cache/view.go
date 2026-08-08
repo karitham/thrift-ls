@@ -164,7 +164,7 @@ func (v *View) FileChange(ctx context.Context, changes []*FileChange, postFns ..
 
 	for _, uri := range uris {
 		if _, err := newSnapshot.Parse(ctx, uri); err != nil {
-			slog.Error("parse error", "err", err)
+			slog.Warn("parse error", "err", err)
 		}
 	}
 

@@ -22,22 +22,12 @@ func NewIncludeDeps() *IncludeDeps {
 
 // Includes returns the files file includes directly, sorted ascending by URI.
 func (c *IncludeDeps) Includes(file uri.URI) []uri.URI {
-	node := c.graph.Get(file)
-	if node == nil {
-		return nil
-	}
-
-	return node.OutDegree()
+	return c.graph.Includes(file)
 }
 
 // Includers returns the files that include file directly, in graph order.
 func (c *IncludeDeps) Includers(file uri.URI) []uri.URI {
-	node := c.graph.Get(file)
-	if node == nil {
-		return nil
-	}
-
-	return node.InDegree()
+	return c.graph.Includers(file)
 }
 
 // Register replaces file's include edges, resolving them via resolve the same
@@ -58,34 +48,7 @@ func (c *IncludeDeps) Register(file uri.URI, includes []*syntax.Include, resolve
 // including file itself when it transitively includes itself. The result is
 // sorted ascending by URI and cycle-safe.
 func (c *IncludeDeps) Dependents(file uri.URI) []uri.URI {
-	deps := make([]uri.URI, 0)
-	seen := make(map[uri.URI]struct{})
-
-	var walk func(f uri.URI)
-
-	walk = func(f uri.URI) {
-		node := c.graph.Get(f)
-		if node == nil {
-			return
-		}
-
-		for _, dependent := range node.InDegree() {
-			if _, ok := seen[dependent]; ok {
-				continue
-			}
-
-			seen[dependent] = struct{}{}
-			deps = append(deps, dependent)
-
-			walk(dependent)
-		}
-	}
-
-	walk(file)
-
-	slices.Sort(deps)
-
-	return deps
+	return c.graph.Dependents(file)
 }
 
 // Forget removes file's edges and returns its former dependents.

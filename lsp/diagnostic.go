@@ -24,7 +24,7 @@ func (s *Server) diagnostic(ctx context.Context, ss *cache.Snapshot, file uri.UR
 
 	diagRes, err := diag.Diagnostic(ctx, ss, []uri.URI{file})
 	if err != nil {
-		slog.Error("diagnostic failed", "err", err)
+		logError("diagnostic failed", err)
 	}
 
 	slog.Debug("publish diagnostic result", "count", len(diagRes))

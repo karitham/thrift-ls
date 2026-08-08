@@ -38,7 +38,7 @@ func parseDefinitionFile(ctx context.Context, ss *cache.Snapshot, file uri.URI) 
 	}
 
 	if len(pf.Errors()) > 0 {
-		slog.Error("parse error", "errs", pf.Errors())
+		slog.Warn("parse error", "errs", pf.Errors())
 	}
 
 	if pf.AST() == nil {

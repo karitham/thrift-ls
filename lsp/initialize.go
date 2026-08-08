@@ -48,7 +48,7 @@ func (s *Server) initialize(params *protocol.InitializeParams) (result *protocol
 	// config; didChangeConfiguration updates them later.
 	if len(params.InitializationOptions) > 0 {
 		if patch, err := lspSettings(params.InitializationOptions); err != nil {
-			slog.Error("initializationOptions rejected", "err", err)
+			logError("initializationOptions rejected", err)
 		} else {
 			s.setWorkspaceSettings(*patch)
 		}
@@ -128,7 +128,7 @@ func (s *Server) walkFoldersThriftFile(folder uri.URI) {
 			Content: []byte{},
 			From:    cache.FileChangeTypeInitialize,
 		}); err != nil {
-			slog.Error("openFile failed", "err", err)
+			slog.Warn("openFile failed", "err", err)
 		}
 
 		// always return nil to continue parse

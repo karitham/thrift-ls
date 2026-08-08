@@ -3,7 +3,6 @@ package lsp
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"path"
 	"strings"
 
@@ -184,7 +183,7 @@ func (s *Server) postDiagnostics(ctx context.Context, view *cache.View) func([]u
 func (s *Server) diagnose(ctx context.Context, ss *cache.Snapshot, affected []uri.URI) {
 	for i := range affected {
 		if err := s.diagnostic(ctx, ss, affected[i]); err != nil {
-			slog.Error("diagnostic error", "err", err)
+			logError("diagnostic error", err)
 		}
 	}
 }

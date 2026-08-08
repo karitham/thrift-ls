@@ -3,6 +3,7 @@ package source
 import (
 	"bytes"
 	"context"
+	"errors"
 
 	"go.lsp.dev/protocol"
 
@@ -10,6 +11,12 @@ import (
 	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/lsp/mapper"
 )
+
+// ErrNotParseable is returned by Format when the document has parse
+// errors: it cannot be formatted safely. The Parse checker reports the
+// errors to the client, so callers skip formatting (nil edits) instead of
+// failing the request.
+var ErrNotParseable = errors.New("document does not parse")
 
 // Format returns the whole-document formatting of fh's content.
 func Format(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, opts formatter.Options) (string, error) {
@@ -19,7 +26,7 @@ func Format(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, opts f
 	}
 
 	if len(pf.Errors()) > 0 || pf.AST() == nil {
-		return "", pf.AggregatedError()
+		return "", ErrNotParseable
 	}
 
 	return formatter.Format(pf.AST(), opts)
@@ -35,6 +42,9 @@ func FormatDocument(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle
 	}
 
 	formatted, err := Format(ctx, ss, fh, opts)
+	if errors.Is(err, ErrNotParseable) {
+		return nil, nil // the Parse checker reports the errors
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -73,6 +83,9 @@ func FormatRange(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, o
 	}
 
 	formatted, err := Format(ctx, ss, fh, opts)
+	if errors.Is(err, ErrNotParseable) {
+		return nil, nil // the Parse checker reports the errors
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -259,4 +272,45 @@ func lineEnd(content []byte, offset int) int {
 	}
 
 	return len(content)
+}
+
+// OnTypeFormat formats the construct whose closing delimiter was just
+// typed: the whole struct/union/exception/enum/service block reflows. A
+// document that does not parse, or a position outside any construct,
+// formats nothing.
+func OnTypeFormat(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, opts formatter.Options, pos protocol.Position) ([]protocol.TextEdit, error) {
+	pf, err := ss.Parse(ctx, fh.URI())
+	if err != nil || pf.AST() == nil {
+		return nil, nil
+	}
+
+	rng := enclosingConstruct(pf, pos)
+	if rng == nil {
+		return nil, nil
+	}
+
+	return FormatRange(ctx, ss, fh, opts, *rng)
+}
+
+// enclosingConstruct returns the range of the top-level construct
+// containing pos — definitions never overlap, so at most one matches.
+func enclosingConstruct(pf *cache.ParsedFile, pos protocol.Position) *protocol.Range {
+	for _, n := range pf.AST().Nodes {
+		rng := nodeRange(pf, n)
+
+		if rangeContains(rng, pos) {
+			return &rng
+		}
+	}
+
+	return nil
+}
+
+// rangeContains reports whether pos lies within rng, inclusive on the end
+// (the typed closing delimiter sits on the construct's last character).
+func rangeContains(rng protocol.Range, pos protocol.Position) bool {
+	afterStart := pos.Line > rng.Start.Line || (pos.Line == rng.Start.Line && pos.Character >= rng.Start.Character)
+	beforeEnd := pos.Line < rng.End.Line || (pos.Line == rng.End.Line && pos.Character <= rng.End.Character)
+
+	return afterStart && beforeEnd
 }

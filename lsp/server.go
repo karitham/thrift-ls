@@ -73,7 +73,7 @@ func NewServer(c *cache.Cache, client protocol.Client, opts Options) *Server {
 // settings are rejected and the previous document stays in effect.
 func (s *Server) setWorkspaceSettings(overlay options.Patch) {
 	if _, err := overlay.Formatter(); err != nil {
-		slog.Error("workspace settings rejected", "err", err)
+		logError("workspace settings rejected", err)
 
 		return
 	}
@@ -109,7 +109,7 @@ func (s *Server) viewConfig(folder uri.URI) options.Patch {
 
 	cfgPath, err := options.FindConfig(folder.FsPath())
 	if err != nil {
-		slog.Error("config discovery failed", "dir", folder.FsPath(), "err", err)
+		logError("config discovery failed", Expected(err), "dir", folder.FsPath())
 
 		return s.defaultConfig()
 	}
@@ -120,7 +120,7 @@ func (s *Server) viewConfig(folder uri.URI) options.Patch {
 
 	cfg, err := options.Load(cfgPath)
 	if err != nil {
-		slog.Error("config file rejected", "path", cfgPath, "err", err)
+		logError("config file rejected", Expected(err), "path", cfgPath)
 
 		return s.defaultConfig()
 	}
@@ -161,7 +161,7 @@ func (s *Server) formatOptions(view *cache.View) formatter.Options {
 	if err != nil {
 		// Both layers were validated when stored; this is unreachable
 		// unless a view config was corrupted.
-		slog.Error("formatter options rejected", "err", err)
+		logError("formatter options rejected", err)
 
 		fopts, _ = view.Config().Formatter()
 	}
@@ -249,7 +249,16 @@ func (s *Server) CompletionResolve(ctx context.Context, params *protocol.Complet
 }
 
 func (s *Server) Declaration(ctx context.Context, params *protocol.DeclarationParams) (result protocol.DeclarationResult, err error) {
-	return protocol.LocationSlice{}, nil
+	// Thrift has no separate declaration concept: a declaration is the
+	// definition.
+	res, err := s.definition(ctx, &protocol.DefinitionParams{
+		TextDocumentPositionParams: params.TextDocumentPositionParams,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return protocol.LocationSlice(res), nil
 }
 
 func (s *Server) Definition(ctx context.Context, params *protocol.DefinitionParams) (result protocol.DefinitionResult, err error) {
@@ -275,7 +284,7 @@ func (s *Server) DidChangeConfiguration(ctx context.Context, params *protocol.Di
 
 	patch, err := lspSettings(params.Settings)
 	if err != nil {
-		slog.Error("didChangeConfiguration rejected", "err", err)
+		logError("didChangeConfiguration rejected", err)
 		return nil
 	}
 
@@ -365,7 +374,9 @@ func (s *Server) Implementation(ctx context.Context, params *protocol.Implementa
 }
 
 func (s *Server) OnTypeFormatting(ctx context.Context, params *protocol.DocumentOnTypeFormattingParams) (result []protocol.TextEdit, err error) {
-	return []protocol.TextEdit{}, nil
+	return withFile(ctx, s.session, params.TextDocument.URI, func(ss *cache.Snapshot, fh cache.FileHandle) ([]protocol.TextEdit, error) {
+		return source.OnTypeFormat(ctx, ss, fh, s.formatOptions(ss.View()), params.Position)
+	})
 }
 
 func (s *Server) PrepareRename(ctx context.Context, params *protocol.PrepareRenameParams) (result protocol.PrepareRenameResult, err error) {

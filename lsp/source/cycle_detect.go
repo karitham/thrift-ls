@@ -108,15 +108,15 @@ func cycleDetect(includesMap map[uri.URI][]Include) []CyclePair {
 func getIncludes(ctx context.Context, ss *cache.Snapshot, file uri.URI, includesMap *map[uri.URI][]Include) error {
 	pf, err := ss.Parse(ctx, file)
 	if err != nil {
-		slog.Error("parse failed", "file", file, "err", err)
-
 		return err
 	}
 
 	if pf.AST() == nil {
-		slog.Error("parse ast failed", "errs", pf.AggregatedError())
+		// The file does not parse; the Parse checker reports that. Cycle
+		// detection just skips it — its include edges are unknown.
+		slog.Debug("cycle check skipped: file does not parse", "file", file)
 
-		return pf.AggregatedError()
+		return nil
 	}
 
 	includes := pf.AST().Includes()
