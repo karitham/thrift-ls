@@ -43,6 +43,7 @@ func Test_EnumValueCheck_Diagnostic(t *testing.T) {
 					},
 					Severity: protocol.DiagnosticSeverityWarning,
 					Source:   protocol.NewOptional("thrift-ls"),
+					Code:     protocol.String(CodeImplicitEnumValue),
 					Message:  protocol.String("RED has no explicit value (implicitly 0)"),
 				},
 				{
@@ -52,6 +53,7 @@ func Test_EnumValueCheck_Diagnostic(t *testing.T) {
 					},
 					Severity: protocol.DiagnosticSeverityWarning,
 					Source:   protocol.NewOptional("thrift-ls"),
+					Code:     protocol.String(CodeImplicitEnumValue),
 					Message:  protocol.String("BLUE has no explicit value (implicitly 3)"),
 				},
 				{
@@ -61,6 +63,7 @@ func Test_EnumValueCheck_Diagnostic(t *testing.T) {
 					},
 					Severity: protocol.DiagnosticSeverityWarning,
 					Source:   protocol.NewOptional("thrift-ls"),
+					Code:     protocol.String(CodeImplicitEnumValue),
 					Message:  protocol.String("OMEGA has no explicit value (implicitly 17)"),
 				},
 			},
@@ -80,6 +83,7 @@ func Test_EnumValueCheck_Diagnostic(t *testing.T) {
 					},
 					Severity: protocol.DiagnosticSeverityWarning,
 					Source:   protocol.NewOptional("thrift-ls"),
+					Code:     protocol.String(CodeImplicitEnumValue),
 					Message:  protocol.String("B has no explicit value"),
 				},
 			},

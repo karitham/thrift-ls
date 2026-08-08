@@ -70,27 +70,12 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 // it.
 func diagnosticOverlaps(diags []protocol.Diagnostic, rng protocol.Range) bool {
 	for _, d := range diags {
-		if rangesOverlap(rng, d.Range) {
+		if source.RangesOverlap(rng, d.Range) {
 			return true
 		}
 	}
 
 	return false
-}
-
-// positionBefore reports a <= b.
-func positionBefore(a, b protocol.Position) bool {
-	if a.Line != b.Line {
-		return a.Line < b.Line
-	}
-
-	return a.Character <= b.Character
-}
-
-// rangesOverlap reports whether two ranges share at least one position,
-// degenerate single-point ranges included.
-func rangesOverlap(a, b protocol.Range) bool {
-	return positionBefore(a.Start, b.End) && positionBefore(b.Start, a.End)
 }
 
 // filterCodeActions keeps only the actions whose kind falls under one of

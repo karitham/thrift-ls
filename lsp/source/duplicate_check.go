@@ -183,6 +183,7 @@ func checkNames(pf *cache.ParsedFile, defs []named) []protocol.Diagnostic {
 			ret = append(ret, protocol.Diagnostic{
 				Range:    tokenRange(pf, nameToken(pf, d.id)),
 				Severity: protocol.DiagnosticSeverityError,
+				Code:     protocol.String(CodeDuplicateDef),
 				Source:   protocol.NewOptional("thrift-ls"),
 				Message:  protocol.String(fmt.Sprintf("duplicate %s %s", d.kind, d.id.Text)),
 			})
@@ -217,6 +218,7 @@ func checkEnumValues(pf *cache.ParsedFile, enum *syntax.Enum) []protocol.Diagnos
 			ret = append(ret, protocol.Diagnostic{
 				Range:    tokenRange(pf, enumValueNameToken(pf, mv.member)),
 				Severity: protocol.DiagnosticSeverityError,
+				Code:     protocol.String(CodeDuplicateEnumVal),
 				Source:   protocol.NewOptional("thrift-ls"),
 				Message:  protocol.String(fmt.Sprintf("enum value %d duplicates %s", mv.value, first)),
 			})
@@ -315,6 +317,7 @@ func duplicateValueDiagnostic(pf *cache.ParsedFile, v *syntax.ConstValue, kind s
 	return protocol.Diagnostic{
 		Range:    tokenRange(pf, &pf.AST().Tokens[v.TokStart()]),
 		Severity: protocol.DiagnosticSeverityError,
+		Code:     protocol.String(CodeDuplicateValue),
 		Source:   protocol.NewOptional("thrift-ls"),
 		Message:  protocol.String(fmt.Sprintf("duplicate %s %s", kind, v.Text)),
 	}

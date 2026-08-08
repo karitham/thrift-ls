@@ -88,6 +88,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDConflict),
 						Message:  protocol.String("field id conflict"),
 					},
 					{
@@ -103,6 +104,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDConflict),
 						Message:  protocol.String("field id conflict"),
 					},
 					{
@@ -118,6 +120,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDRange),
 						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 					{
@@ -133,6 +136,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDRange),
 						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 
@@ -150,6 +154,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDConflict),
 						Message:  protocol.String("field id conflict"),
 					},
 					{
@@ -165,6 +170,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDConflict),
 						Message:  protocol.String("field id conflict"),
 					},
 					{
@@ -180,6 +186,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDRange),
 						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 					{
@@ -195,6 +202,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDRange),
 						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 
@@ -212,6 +220,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDConflict),
 						Message:  protocol.String("field id conflict"),
 					},
 					{
@@ -227,6 +236,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDConflict),
 						Message:  protocol.String("field id conflict"),
 					},
 					{
@@ -242,6 +252,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDRange),
 						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 					{
@@ -257,6 +268,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDRange),
 						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 
@@ -274,6 +286,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDRange),
 						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 					{
@@ -289,6 +302,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDConflict),
 						Message:  protocol.String("field id conflict"),
 					},
 					{
@@ -304,6 +318,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDConflict),
 						Message:  protocol.String("field id conflict"),
 					},
 					{
@@ -319,6 +334,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDRange),
 						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 
@@ -336,6 +352,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDRange),
 						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 					{
@@ -351,6 +368,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDConflict),
 						Message:  protocol.String("field id conflict"),
 					},
 					{
@@ -366,6 +384,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDConflict),
 						Message:  protocol.String("field id conflict"),
 					},
 					{
@@ -381,6 +400,7 @@ service Demo {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeFieldIDRange),
 						Message:  protocol.String("field id should be a positive integer in [1, 32767]"),
 					},
 				},

@@ -77,6 +77,7 @@ func unusedIncludeDiagnostics(ctx context.Context, ss *cache.Snapshot, file uri.
 		ret = append(ret, protocol.Diagnostic{
 			Range:    nodeRange(pf, inc),
 			Severity: protocol.DiagnosticSeverityWarning,
+			Code:     protocol.String(CodeUnusedInclude),
 			Source:   protocol.NewOptional("thrift-ls"),
 			Message:  protocol.String(fmt.Sprintf("unused include %q", inc.PathText())),
 		})

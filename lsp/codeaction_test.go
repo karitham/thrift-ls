@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/lsp/source"
 )
 
 func Test_CodeAction(t *testing.T) {
@@ -35,6 +37,7 @@ func Test_CodeAction(t *testing.T) {
 			content: "enum E { A, B = 1 }\n",
 			context: protocol.CodeActionContext{Diagnostics: []protocol.Diagnostic{{
 				Range:   protocol.Range{Start: protocol.Position{Character: 10}, End: protocol.Position{Character: 11}},
+				Code:    protocol.String(source.CodeImplicitEnumValue),
 				Message: protocol.String("A has no explicit value (implicitly 0)"),
 			}}},
 			want: map[string]protocol.CodeActionKind{
@@ -47,6 +50,7 @@ func Test_CodeAction(t *testing.T) {
 			context: protocol.CodeActionContext{
 				Diagnostics: []protocol.Diagnostic{{
 					Range:   protocol.Range{Start: protocol.Position{Character: 10}, End: protocol.Position{Character: 11}},
+					Code:    protocol.String(source.CodeImplicitEnumValue),
 					Message: protocol.String("A has no enum value (implicitly 0)"),
 				}},
 				Only: []protocol.CodeActionKind{protocol.CodeActionKindQuickFix},
@@ -61,6 +65,7 @@ func Test_CodeAction(t *testing.T) {
 			context: protocol.CodeActionContext{
 				Diagnostics: []protocol.Diagnostic{{
 					Range:   protocol.Range{Start: protocol.Position{Character: 10}, End: protocol.Position{Character: 11}},
+					Code:    protocol.String(source.CodeImplicitEnumValue),
 					Message: protocol.String("A has no enum value (implicitly 0)"),
 				}},
 				Only: []protocol.CodeActionKind{protocol.CodeActionKindRefactorRewrite},
@@ -82,6 +87,7 @@ func Test_CodeAction(t *testing.T) {
 			context: protocol.CodeActionContext{
 				Diagnostics: []protocol.Diagnostic{{
 					Range:   protocol.Range{Start: protocol.Position{Line: 0, Character: 0}, End: protocol.Position{Line: 0, Character: 22}},
+					Code:    protocol.String(source.CodeUnusedInclude),
 					Message: protocol.String(`unused include "shared.thrift"`),
 				}},
 			},
@@ -96,6 +102,7 @@ func Test_CodeAction(t *testing.T) {
 			context: protocol.CodeActionContext{
 				Diagnostics: []protocol.Diagnostic{{
 					Range:   protocol.Range{Start: protocol.Position{Line: 5, Character: 0}, End: protocol.Position{Line: 5, Character: 1}},
+					Code:    protocol.String(source.CodeUnusedInclude),
 					Message: protocol.String(`unused include "shared.thrift"`),
 				}},
 			},

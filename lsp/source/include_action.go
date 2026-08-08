@@ -68,7 +68,7 @@ func unusedIncludeAt(pf *cache.ParsedFile, rng protocol.Range, diags []protocol.
 	found := false
 
 	for _, d := range diags {
-		if strings.HasPrefix(string(d.Message.(protocol.String)), "unused include") && rangesOverlap(rng, d.Range) {
+		if hasCode(d, CodeUnusedInclude) && RangesOverlap(rng, d.Range) {
 			target = d.Range
 			found = true
 
@@ -81,7 +81,7 @@ func unusedIncludeAt(pf *cache.ParsedFile, rng protocol.Range, diags []protocol.
 	}
 
 	for _, inc := range pf.AST().Includes() {
-		if rangesOverlap(target, nodeRange(pf, inc)) {
+		if RangesOverlap(target, nodeRange(pf, inc)) {
 			return inc
 		}
 	}
@@ -153,7 +153,7 @@ func missingTypeAt(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle,
 	overlap := false
 
 	for _, d := range diags {
-		if string(d.Message.(protocol.String)) == "field type doesn't exist" && rangesOverlap(rng, d.Range) {
+		if hasCode(d, CodeUndefinedType) && RangesOverlap(rng, d.Range) {
 			overlap = true
 
 			break
@@ -221,13 +221,4 @@ func findTypeInFolder(ctx context.Context, ss *cache.Snapshot, file uri.URI, nam
 	}
 
 	return "", false
-}
-
-// rangesOverlap reports whether two LSP ranges share any position.
-func rangesOverlap(a, b protocol.Range) bool {
-	if a.Start.Line == b.Start.Line && a.End.Line == b.End.Line {
-		return a.Start.Character < b.End.Character && b.Start.Character < a.End.Character
-	}
-
-	return a.End.Line >= b.Start.Line && b.End.Line >= a.Start.Line
 }

@@ -111,6 +111,7 @@ func (s *SemanticAnalysis) checkConstValueExist(ctx context.Context, ss *cache.S
 		res = append(res, protocol.Diagnostic{
 			Range:    nodeRange(pf, cst),
 			Severity: protocol.DiagnosticSeverityError,
+			Code:     protocol.String(CodeUndefinedValue),
 			Source:   protocol.NewOptional("thrift-ls"),
 			Message:  protocol.String("default value doesn't exist"),
 		})
@@ -195,6 +196,7 @@ func mismatchDiagnostic(pf *cache.ParsedFile, field *syntax.Field, expect, got s
 	return &protocol.Diagnostic{
 		Range:    nodeRange(pf, field.Value),
 		Severity: protocol.DiagnosticSeverityError,
+		Code:     protocol.String(CodeValueTypeMismatch),
 		Source:   protocol.NewOptional("thrift-ls"),
 		Message:  protocol.String(fmt.Sprintf("expect %s but got %s", expect, got)),
 	}
@@ -241,6 +243,7 @@ func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, ss *cache.Snapsho
 			res = append(res, protocol.Diagnostic{
 				Range:    nodeRange(pf, ft.Ident),
 				Severity: protocol.DiagnosticSeverityError,
+				Code:     protocol.String(CodeUndefinedType),
 				Source:   protocol.NewOptional("thrift-ls"),
 				Message:  protocol.String("field type doesn't exist"),
 			})
@@ -282,6 +285,7 @@ func (s *SemanticAnalysis) checkMapKeyScalar(ctx context.Context, ss *cache.Snap
 	return &protocol.Diagnostic{
 		Range:    nodeRange(pf, key),
 		Severity: protocol.DiagnosticSeverityError,
+		Code:     protocol.String(CodeNonScalarMapKey),
 		Source:   protocol.NewOptional("thrift-ls"),
 		Message:  protocol.String(fmt.Sprintf("map key must be a scalar type, found %s", kind)),
 	}

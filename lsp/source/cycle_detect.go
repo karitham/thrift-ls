@@ -42,6 +42,7 @@ func cyclePairToDiagnostic(pair CyclePair) protocol.Diagnostic {
 	res := protocol.Diagnostic{
 		Range:    nodeRange(pair.include.pf, pair.include.include),
 		Severity: protocol.DiagnosticSeverityWarning,
+		Code:     protocol.String(CodeIncludeCycle),
 		Source:   protocol.NewOptional("thrift-ls"),
 		Message:  protocol.String(fmt.Sprintf("cycle dependency in %s", pair.include.file)),
 	}

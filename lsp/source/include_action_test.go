@@ -111,6 +111,7 @@ func Test_MakeAddMissingIncludeAction(t *testing.T) {
 	// The semantic diagnostic the server would pass, at the type position.
 	diag := protocol.Diagnostic{
 		Range:   protocol.Range{Start: protocol.Position{Line: 1, Character: 6}, End: protocol.Position{Line: 1, Character: 10}},
+		Code:    protocol.String(CodeUndefinedType),
 		Message: protocol.String("field type doesn't exist"),
 	}
 
@@ -145,6 +146,7 @@ func Test_MakeAddMissingIncludeAction_InsertAfterExistingIncludes(t *testing.T) 
 
 	diag := protocol.Diagnostic{
 		Range:   protocol.Range{Start: protocol.Position{Line: 3, Character: 6}, End: protocol.Position{Line: 3, Character: 10}},
+		Code:    protocol.String(CodeUndefinedType),
 		Message: protocol.String("field type doesn't exist"),
 	}
 
@@ -176,6 +178,7 @@ func Test_MakeAddMissingIncludeAction_TypeNotFound(t *testing.T) {
 
 	diag := protocol.Diagnostic{
 		Range:   protocol.Range{Start: protocol.Position{Line: 1, Character: 6}, End: protocol.Position{Line: 1, Character: 11}},
+		Code:    protocol.String(CodeUndefinedType),
 		Message: protocol.String("field type doesn't exist"),
 	}
 

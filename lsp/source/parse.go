@@ -60,6 +60,7 @@ func syntaxErrorToDiagnostic(pf *cache.ParsedFile, err syntax.Error) protocol.Di
 			End:   pos,
 		},
 		Severity: severity,
+		Code:     protocol.String(CodeParseError),
 		Source:   protocol.NewOptional("thrift-ls"),
 		Message:  protocol.String(err.Message),
 	}

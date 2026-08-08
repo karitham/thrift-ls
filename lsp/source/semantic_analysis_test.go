@@ -99,6 +99,7 @@ struct TestUUID {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeUndefinedType),
 						Message:  protocol.String("field type doesn't exist"),
 					},
 					{
@@ -114,6 +115,7 @@ struct TestUUID {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeUndefinedType),
 						Message:  protocol.String("field type doesn't exist"),
 					},
 					{
@@ -129,6 +131,7 @@ struct TestUUID {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeUndefinedValue),
 						Message:  protocol.String("default value doesn't exist"),
 					},
 					{
@@ -144,6 +147,7 @@ struct TestUUID {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeUndefinedType),
 						Message:  protocol.String("field type doesn't exist"),
 					},
 					{
@@ -159,6 +163,7 @@ struct TestUUID {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeUndefinedType),
 						Message:  protocol.String("field type doesn't exist"),
 					},
 					{
@@ -174,6 +179,7 @@ struct TestUUID {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeUndefinedType),
 						Message:  protocol.String("field type doesn't exist"),
 					},
 					{
@@ -189,6 +195,7 @@ struct TestUUID {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeValueTypeMismatch),
 						Message:  protocol.String("expect i32 but got bool"),
 					},
 					{
@@ -204,6 +211,7 @@ struct TestUUID {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeValueTypeMismatch),
 						Message:  protocol.String("expect i32 but got string"),
 					},
 					{
@@ -219,6 +227,7 @@ struct TestUUID {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeValueTypeMismatch),
 						Message:  protocol.String("expect string but got bool"),
 					},
 					{
@@ -234,6 +243,7 @@ struct TestUUID {
 						},
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
+						Code:     protocol.String(CodeValueTypeMismatch),
 						Message:  protocol.String("expect string but got i64"),
 					},
 				},

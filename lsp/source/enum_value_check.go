@@ -82,6 +82,7 @@ func (c *EnumValueCheck) diagnostic(ctx context.Context, ss *cache.Snapshot, fil
 			ret = append(ret, protocol.Diagnostic{
 				Range:    tokenRange(pf, enumValueNameToken(pf, mv.member)),
 				Severity: protocol.DiagnosticSeverityWarning,
+				Code:     protocol.String(CodeImplicitEnumValue),
 				Source:   protocol.NewOptional("thrift-ls"),
 				Message:  protocol.String(msg),
 			})
