@@ -185,10 +185,15 @@ func Test_DiagIncludeCreatedFullSession(t *testing.T) {
 		_, err := srv.Initialize(t.Context(), &protocol.InitializeParams{})
 		require.NoError(t, err)
 
+		// The watcher is registered on Initialized, not during the
+		// initialize handshake: the server must not send requests to the
+		// client before answering initialize.
+		require.NoError(t, srv.Initialized(t.Context(), &protocol.InitializedParams{}))
+
 		// The server must ask the client to watch thrift files; without it,
 		// disk-created includes never reach the server.
 		watchers := client.watchers()
-		require.NotEmpty(t, watchers, "file watcher must be registered at initialize")
+		require.NotEmpty(t, watchers, "file watcher must be registered on Initialized")
 		assert.Contains(t, watchers, "**/*.thrift")
 
 		openDocument(t, srv, aURI, aContent)

@@ -472,9 +472,10 @@ func symbolNames(syms protocol.SymbolInformationSlice) []string {
 }
 
 // Test_InitializeDefersTheWorkspaceWalk pins the startup flow: initialize
-// returns without blocking on the workspace, the walk runs asynchronously
-// from initialize (not the Initialized notification), and registers every
-// thrift file under the workspace folder.
+// returns without touching the workspace (the client must have answered the
+// handshake before the server sends anything), and the walk runs
+// asynchronously from the Initialized notification, registering every thrift
+// file under the workspace folder.
 func Test_InitializeDefersTheWorkspaceWalk(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		dir := t.TempDir()
@@ -490,6 +491,12 @@ func Test_InitializeDefersTheWorkspaceWalk(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+
+		// Nothing runs during the handshake: no views until the client
+		// sends Initialized.
+		require.Empty(t, srv.session.Views())
+
+		require.NoError(t, srv.Initialized(t.Context(), &protocol.InitializedParams{}))
 
 		synctest.Wait()
 
@@ -511,58 +518,6 @@ func Test_InitializeDefersTheWorkspaceWalk(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, []string{"FromA", "FromB"}, symbolNames(syms))
 	})
-}
-
-// Test_CodeActionFormatDocument pins the format code action: an
-// unformatted document yields a source.fixAll action with the full-document
-// edit, and a formatted document yields no actions.
-func Test_CodeActionFormatDocument(t *testing.T) {
-	tests := []struct {
-		name    string
-		content string
-		want    bool // whether an action is expected
-	}{
-		{"unformatted document offers formatting", "struct S{\n1:i32 a\n}", true},
-		{"formatted document offers nothing", "struct S { 1: i32 a }\n", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fileURI := uri.File("/tmp/format.thrift")
-
-			srv := NewServer(cache.New(nil), nil, options.Patch{})
-			require.NoError(t, srv.DidOpen(t.Context(), &protocol.DidOpenTextDocumentParams{
-				TextDocument: protocol.TextDocumentItem{
-					URI:        fileURI,
-					LanguageID: "thrift",
-					Version:    0,
-					Text:       tt.content,
-				},
-			}))
-
-			actions, err := srv.CodeAction(t.Context(), &protocol.CodeActionParams{
-				TextDocument: protocol.TextDocumentIdentifier{URI: fileURI},
-			})
-			require.NoError(t, err)
-
-			if !tt.want {
-				assert.Empty(t, actions)
-
-				return
-			}
-
-			require.Len(t, actions, 1)
-			action, ok := actions[0].(*protocol.CodeAction)
-			require.True(t, ok)
-			require.NotNil(t, action)
-			assert.Equal(t, protocol.CodeActionKindSourceFixAll, *action.Kind)
-			require.NotNil(t, action.Edit)
-
-			edits := action.Edit.Changes[fileURI]
-			require.Len(t, edits, 1)
-			assert.Contains(t, edits[0].NewText, "struct S {")
-		})
-	}
 }
 
 // Test_CompletionQualifiedType pins qualified type completion: in a type

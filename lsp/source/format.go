@@ -5,7 +5,6 @@ import (
 	"context"
 
 	"go.lsp.dev/protocol"
-	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/lsp/cache"
@@ -127,32 +126,6 @@ func FormatRange(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, o
 	}
 
 	return result, nil
-}
-
-// FormatDocumentAction returns the source.fixAll code action that formats
-// the document, mirroring the formatting request. It returns nil when the
-// document is already formatted.
-func FormatDocumentAction(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, opts formatter.Options) (*protocol.CodeAction, error) {
-	edit, err := FormatDocument(ctx, ss, fh, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	if edit == nil {
-		return nil, nil
-	}
-
-	file := fh.URI()
-
-	return &protocol.CodeAction{
-		Title: "Format document",
-		Kind:  new(protocol.CodeActionKindSourceFixAll),
-		Edit: &protocol.WorkspaceEdit{
-			Changes: map[uri.URI][]protocol.TextEdit{
-				file: {*edit},
-			},
-		},
-	}, nil
 }
 
 // lspPosition converts a protocol position to the internal position type.

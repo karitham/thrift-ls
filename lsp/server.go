@@ -98,11 +98,22 @@ func (s *Server) Initialize(ctx context.Context, params *protocol.InitializePara
 }
 
 func (s *Server) Initialized(ctx context.Context, params *protocol.InitializedParams) (err error) {
-	// The workspace walk starts at the end of initialize, not here: this
-	// method is a notification, which is fire-and-forget, while initialize
-	// is a request — a client that drops the notification (or never sends
-	// it) would otherwise leave the workspace unindexed until the first
-	// edit.
+	// The workspace walk and the file watcher registration run here, not
+	// in initialize: the client only sends Initialized after receiving
+	// the initialize response, so nothing the server emits at this
+	// point races the handshake. Sending the registerCapability request
+	// or diagnostics any earlier violates the spec — Helix deadlocks on
+	// a client request that arrives before initialize is answered.
+	s.workspaceWalkOnce.Do(func() {
+		go func() {
+			for _, folder := range s.folders {
+				s.walkFoldersThriftFile(folder)
+			}
+		}()
+	})
+
+	s.registerFileWatcher(ctx)
+
 	return nil
 }
 

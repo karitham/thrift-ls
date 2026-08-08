@@ -1,7 +1,6 @@
 package lsp
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,6 +9,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/lsp/mapper"
 	"github.com/karitham/thrift-ls/options"
 )
 
@@ -38,14 +38,12 @@ struct C { 3: i64 c }
 		},
 	}))
 
-	// applyEdits applies the edits to the given text.
+	// applyEdits applies the edits to the given text via the mapper.
 	applyEdits := func(text string, edits []protocol.TextEdit) string {
-		out := text
-		for _, e := range edits {
-			out = applyEdit(out, e)
-		}
+		got, err := mapper.NewMapper(fileURI, []byte(text)).ApplyEdits(edits)
+		require.NoError(t, err)
 
-		return out
+		return string(got)
 	}
 
 	formatting := func() string {
@@ -156,26 +154,4 @@ struct D {
 		assert.Equal(t, "struct D { 4: i64 d }\n", edits[0].NewText)
 		assert.Equal(t, "struct A { 1: string a }\n\nstruct D { 4: i64 d }\n", applyEdits(unsaved, edits))
 	})
-}
-
-// applyEdit applies a single text edit to text, resolving the range's
-// line/character positions to byte offsets.
-func applyEdit(text string, edit protocol.TextEdit) string {
-	start := offsetAt(text, edit.Range.Start)
-	end := offsetAt(text, edit.Range.End)
-
-	return text[:start] + edit.NewText + text[end:]
-}
-
-// offsetAt resolves a position to a byte offset within text.
-func offsetAt(text string, pos protocol.Position) int {
-	offset := 0
-
-	for range pos.Line {
-		if i := strings.IndexByte(text[offset:], '\n'); i >= 0 {
-			offset += i + 1
-		}
-	}
-
-	return offset + int(pos.Character)
 }

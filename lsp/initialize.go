@@ -56,20 +56,12 @@ func (s *Server) initialize(ctx context.Context, params *protocol.InitializePara
 		}
 	}
 
-	// Kick off the workspace walk immediately, off the request path, so
-	// the workspace is indexed by the time the client makes its first
-	// request. The walk is async (it parses every thrift file) and the
-	// once-guard keeps it from running twice.
-	s.workspaceWalkOnce.Do(func() {
-		go func() {
-			for _, folder := range s.folders {
-				s.walkFoldersThriftFile(folder)
-			}
-		}()
-	})
-
-	s.registerFileWatcher(ctx)
-
+	// The workspace walk and the file watcher registration run on the
+	// Initialized notification, not here: the spec forbids the server from
+	// sending requests or notifications to the client before responding to
+	// initialize. Helix deadlocks on the registerCapability request during
+	// the handshake and discards (or stalls on) notifications from an
+	// uninitialized server.
 	return initializeResult(), nil
 }
 
@@ -244,7 +236,13 @@ func initializeResult() *protocol.InitializeResult {
 				Label: new("thrift-ls"),
 			},
 			CodeActionProvider: &protocol.CodeActionOptions{
-				CodeActionKinds: []protocol.CodeActionKind{protocol.CodeActionKindSourceFixAll},
+				// Keep in sync with the kinds codeAction returns:
+				// quickfix (fixes for reported diagnostics) and
+				// refactor.rewrite (rewrites at the selection).
+				CodeActionKinds: []protocol.CodeActionKind{
+					protocol.CodeActionKindQuickFix,
+					protocol.CodeActionKindRefactorRewrite,
+				},
 				ResolveProvider: new(false),
 			},
 			CodeLensProvider: &protocol.CodeLensOptions{
