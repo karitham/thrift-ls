@@ -80,3 +80,22 @@ export function parseChecksums(text: string): ReadonlyMap<string, string> {
 export function sha256Hex(bytes: Buffer): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
+
+// The vsix version of a per-commit dev build, set by the release workflow:
+// "0.1.0-dev.<shortsha>".
+const DEV_VERSION_RE = /^[\d.]+-dev\.([0-9a-f]{7})$/;
+
+/**
+ * releaseTag returns the release tag an extension version downloads from:
+ * "dev-<shortsha>" for dev builds (the matching per-commit prerelease), or
+ * undefined for stable builds, which use releases/latest. GitHub's latest
+ * never resolves to a prerelease, so without this a dev vsix would pair
+ * itself with the stable server binary.
+ */
+export function releaseTag(extensionVersion: string | undefined): string | undefined {
+  const m = DEV_VERSION_RE.exec(extensionVersion ?? '');
+  if (!m) {
+    return undefined;
+  }
+  return `dev-${m[1]}`;
+}

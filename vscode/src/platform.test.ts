@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { test } from 'node:test';
-import { assetName, findOnPath, parseChecksums, sha256Hex } from './platform';
+import { assetName, findOnPath, parseChecksums, releaseTag, sha256Hex } from './platform';
 
 test('assetName maps every released platform/arch', () => {
   assert.equal(assetName('linux', 'x64'), 'thrift-ls-linux-amd64');
@@ -76,4 +76,16 @@ test('sha256Hex matches known digests', () => {
     sha256Hex(Buffer.from('thrift-ls')),
     '4c43bf971bd110e5ff6122e6f10ab8730559f8459f7a13757df0960c0b9ccc56'
   );
+});
+
+test('releaseTag pins dev builds to their commit release', () => {
+  assert.equal(releaseTag('0.1.0-dev.110abea'), 'dev-110abea');
+  assert.equal(releaseTag('0.1.0-dev.9984fd1'), 'dev-9984fd1');
+});
+
+test('releaseTag is undefined for stable or unknown versions', () => {
+  assert.equal(releaseTag('0.1.0'), undefined);
+  assert.equal(releaseTag('0.2.0-beta.1'), undefined);
+  assert.equal(releaseTag(undefined), undefined);
+  assert.equal(releaseTag(''), undefined);
 });
