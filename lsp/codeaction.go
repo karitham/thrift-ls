@@ -39,6 +39,22 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 		}
 		actions = append(actions, fieldActions...)
 
+		removeInclude, err := source.MakeRemoveUnusedIncludeAction(ctx, ss, fh, params.Range, params.Context.Diagnostics)
+		if err != nil {
+			return nil, err
+		}
+		if removeInclude != nil {
+			actions = append(actions, *removeInclude)
+		}
+
+		addInclude, err := source.MakeAddMissingIncludeAction(ctx, ss, fh, params.Range, params.Context.Diagnostics)
+		if err != nil {
+			return nil, err
+		}
+		if addInclude != nil {
+			actions = append(actions, *addInclude)
+		}
+
 		actions = preferQuickFixes(filterCodeActions(actions, params.Context.Only))
 
 		out := make([]protocol.CommandOrCodeAction, 0, len(actions))

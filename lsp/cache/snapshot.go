@@ -189,6 +189,12 @@ func (s *Snapshot) Dependents(uri uri.URI) []uri.URI {
 	return s.context.Dependents(uri)
 }
 
+// View returns the view this snapshot serves: the workspace folder the
+// snapshot resolves files under.
+func (s *Snapshot) View() *View {
+	return s.view
+}
+
 // Resolver returns a new Resolver instance for this snapshot.
 // The resolver provides centralized include path resolution.
 func (s *Snapshot) Resolver() *Resolver {

@@ -255,6 +255,12 @@ func (s *SemanticAnalysis) checkContainerTypeExist(ctx context.Context,
 ) (res []protocol.Diagnostic) {
 	if ft.KeyType != nil {
 		res = append(res, s.checkTypeExist(ctx, ss, file, pf, ft.KeyType)...)
+
+		if ft.Kind == syntax.TypeMap {
+			if dig := s.checkMapKeyScalar(ctx, ss, file, pf, ft.KeyType); dig != nil {
+				res = append(res, *dig)
+			}
+		}
 	}
 
 	if ft.ValueType != nil {
@@ -262,4 +268,86 @@ func (s *SemanticAnalysis) checkContainerTypeExist(ctx context.Context,
 	}
 
 	return res
+}
+
+// checkMapKeyScalar returns an error when the map key type is not scalar:
+// thrift requires map keys to be a base type or an enum. Structs, unions,
+// exceptions, and containers cannot be keys; typedefs are followed.
+func (s *SemanticAnalysis) checkMapKeyScalar(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, key *syntax.FieldType) *protocol.Diagnostic {
+	kind := s.mapKeyKind(ctx, ss, file, pf.AST(), key, 0)
+	if kind == "" {
+		return nil
+	}
+
+	return &protocol.Diagnostic{
+		Range:    nodeRange(pf, key),
+		Severity: protocol.DiagnosticSeverityError,
+		Source:   protocol.NewOptional("thrift-ls"),
+		Message:  protocol.String(fmt.Sprintf("map key must be a scalar type, found %s", kind)),
+	}
+}
+
+// mapKeyKind reports why key is not a scalar map key: the container kind,
+// or the definition kind for struct-like types. "" means scalar: a base
+// type, an enum, or a typedef chain ending there.
+func (s *SemanticAnalysis) mapKeyKind(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *syntax.Document, key *syntax.FieldType, depth int) string {
+	if key == nil {
+		return ""
+	}
+
+	switch key.Kind {
+	case syntax.TypeBase:
+		return ""
+	case syntax.TypeMap:
+		return "map"
+	case syntax.TypeList:
+		return "list"
+	case syntax.TypeSet:
+		return "set"
+	case syntax.TypeIdent:
+		name := typeReferenceName(key)
+		if name == "" || IsBasicType(name) || depth > 8 {
+			return ""
+		}
+
+		dstFile, id, kind, err := FindTypeDefinition(ctx, ss, file, ast, key)
+		if err != nil || id == nil {
+			return ""
+		}
+
+		switch kind {
+		case DefinitionEnum:
+			return ""
+		case DefinitionStruct, DefinitionUnion, DefinitionException:
+			return kindLabel(kind)
+		case DefinitionTypedef:
+			dstPf, err := parseDefinitionFile(ctx, ss, dstFile)
+			if err != nil {
+				return ""
+			}
+
+			td, ok := dstPf.Definitions()[id.Text].(*syntax.Typedef)
+			if !ok {
+				return ""
+			}
+
+			return s.mapKeyKind(ctx, ss, dstFile, dstPf.AST(), td.Type, depth+1)
+		}
+	}
+
+	return ""
+}
+
+// kindLabel is the message label of a definition kind.
+func kindLabel(k DefinitionKind) string {
+	switch k {
+	case DefinitionStruct:
+		return "struct"
+	case DefinitionUnion:
+		return "union"
+	case DefinitionException:
+		return "exception"
+	}
+
+	return "type"
 }

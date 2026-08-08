@@ -42,9 +42,9 @@ func Test_CheckMadeInAbyss(t *testing.T) {
 	assert.Contains(t, cycleB[0].Message, "cycle dependency")
 	assert.Contains(t, cycleB[1].Message, "cycle dependency")
 
-	// The mistake showcase: 18 errors and 5 warnings.
+	// The mistake showcase: 19 errors and 6 warnings.
 	lints := diags[corpusAbs(t, "lints.thrift")]
-	require.Len(t, lints, 23)
+	require.Len(t, lints, 25)
 
 	errs, warns := 0, 0
 	for _, d := range lints {
@@ -55,11 +55,12 @@ func Test_CheckMadeInAbyss(t *testing.T) {
 			warns++
 		}
 	}
-	assert.Equal(t, 18, errs)
-	assert.Equal(t, 5, warns)
+	assert.Equal(t, 19, errs)
+	assert.Equal(t, 6, warns)
 
 	// Every intentional mistake is reported.
 	for _, msg := range []string{
+		`unused include "unused.thrift"`,
 		"field id conflict",
 		"field id should be a positive integer in [1, 32767]",
 		"duplicate enum Reg",
@@ -72,6 +73,7 @@ func Test_CheckMadeInAbyss(t *testing.T) {
 		`duplicate map key "zone1"`,
 		"duplicate set value 4",
 		"field type doesn't exist",
+		"map key must be a scalar type, found struct",
 		"STAR_COMPASS has no explicit value (implicitly 0)",
 		"UNHEARD_BELL has no explicit value (implicitly 3)",
 		"CROSSED_STILLS has no explicit value (implicitly 5)",
@@ -111,7 +113,7 @@ func Test_CollectThriftFiles(t *testing.T) {
 	}
 	assert.Equal(t, []string{
 		"abyss.thrift", "cycle_a.thrift", "cycle_b.thrift",
-		"delvers.thrift", "lints.thrift", "orth.thrift",
+		"delvers.thrift", "lints.thrift", "orth.thrift", "unused.thrift",
 	}, names)
 
 	// A missing path is an error.

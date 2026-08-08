@@ -3,4 +3,6 @@ include "cycle_a.thrift"
 
 namespace go made
 
-struct FromCycleB {}
+struct FromCycleB {
+  1: FromCycleA other,
+}

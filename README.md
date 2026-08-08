@@ -155,6 +155,50 @@ which groups broke and which stayed flat:
 thrift-ls dump --ir --printWidth 100 path/to/file.thrift
 ```
 
+### Diagnostics: `check`
+
+`thrift-ls check` runs the same diagnostic pipeline the language server
+uses — parse, semantic analysis, and lints — over a file or a whole
+folder, and reports everything to stdout. It exits 1 when any
+error-severity diagnostic is found, so it can gate CI:
+
+```bash
+thrift-ls check path/to/file.thrift    # one file
+thrift-ls check path/to/folder/        # every *.thrift under the folder
+```
+
+Output is one line per diagnostic:
+
+```text
+lints.thrift:37:1  warning  unused include "unused.thrift"
+lints.thrift:132:10  error  map key must be a scalar type, found struct
+```
+
+The checks:
+
+| Diagnostic | Severity | Meaning |
+| ---------- | -------- | ------- |
+| parse errors | error | the file does not parse |
+| `field id conflict` / invalid field id | error | duplicate or out-of-range field ids |
+| `duplicate <kind> <name>` | error | duplicate struct/enum/typedef/const/service names, members, fields, arguments, functions |
+| `enum value N duplicates X` | error | two enum members resolve to the same value |
+| `duplicate map key` / `duplicate set value` | error | repeated constant keys/values |
+| `map key must be a scalar type` | error | struct, union, exception, or container used as a map key |
+| `field type doesn't exist` / `default value doesn't exist` | error | unresolved reference |
+| `expect X but got Y` | error | default value does not match the field type |
+| `unused include "x.thrift"` | warning | no reference in the file resolves into the include |
+| `cycle dependency` | warning | the include graph contains a cycle |
+| `X has no explicit value` | warning | enum member relies on implicit value |
+
+Code actions (refactors and quickfixes) fix these from the editor:
+- **Make enum values explicit** — fills in the implicit enum values.
+- **Make field required / optional** — rewrites the field qualifier.
+- **Remove unused include** — deletes the include line (quickfix on the
+  warning).
+- **Add include "x.thrift"** — finds the file defining a missing type
+  anywhere in the workspace and adds the include (quickfix on
+  `field type doesn't exist`).
+
 ## Formatter behavior
 
 The formatter is **lossless**: comments, `@` annotations, and blank lines

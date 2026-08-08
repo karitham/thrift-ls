@@ -107,11 +107,11 @@ func Test_CheckCLI_MadeInAbyss(t *testing.T) {
 
 	errCount := strings.Count(stdout, "  error  ")
 	warnCount := strings.Count(stdout, "  warning  ")
-	assert.Equal(t, 18, errCount, "error diagnostics")
-	assert.Equal(t, 8, warnCount, "warning diagnostics (5 lints + 3 cycles)")
+	assert.Equal(t, 19, errCount, "error diagnostics")
+	assert.Equal(t, 9, warnCount, "warning diagnostics (6 lints + 3 cycles)")
 
-	assert.Contains(t, err.Error(), "18 error(s)")
-	assert.Contains(t, err.Error(), "8 warning(s)")
+	assert.Contains(t, err.Error(), "19 error(s)")
+	assert.Contains(t, err.Error(), "9 warning(s)")
 }
 
 // readGolden returns the recorded output of a CLI test case.

@@ -22,6 +22,7 @@ func init() {
 		&FieldIDCheck{},
 		&DuplicateCheck{},
 		&EnumValueCheck{},
+		&UnusedIncludeCheck{},
 		&SemanticAnalysis{},
 	}
 }

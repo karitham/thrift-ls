@@ -74,6 +74,33 @@ func Test_CodeAction(t *testing.T) {
 			content: "enum E { A = 1, B = 2 }\n",
 			want:    map[string]protocol.CodeActionKind{},
 		},
+		{
+			// An unused include warning offers the removal quickfix on
+			// the include line.
+			name:    "remove unused include quickfix",
+			content: "include \"shared.thrift\"\nstruct S { 1: i32 a }\n",
+			context: protocol.CodeActionContext{
+				Diagnostics: []protocol.Diagnostic{{
+					Range:   protocol.Range{Start: protocol.Position{Line: 0, Character: 0}, End: protocol.Position{Line: 0, Character: 22}},
+					Message: protocol.String(`unused include "shared.thrift"`),
+				}},
+			},
+			want: map[string]protocol.CodeActionKind{
+				`Remove unused include "shared.thrift"`: protocol.CodeActionKindQuickFix,
+			},
+		},
+		{
+			// The same diagnostic elsewhere does not offer the removal.
+			name:    "unused include diagnostic elsewhere",
+			content: "include \"shared.thrift\"\nstruct S { 1: i32 a }\n",
+			context: protocol.CodeActionContext{
+				Diagnostics: []protocol.Diagnostic{{
+					Range:   protocol.Range{Start: protocol.Position{Line: 5, Character: 0}, End: protocol.Position{Line: 5, Character: 1}},
+					Message: protocol.String(`unused include "shared.thrift"`),
+				}},
+			},
+			want: map[string]protocol.CodeActionKind{},
+		},
 	}
 
 	for _, tt := range tests {

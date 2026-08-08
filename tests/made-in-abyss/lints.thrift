@@ -2,6 +2,9 @@
 // above each section names the check that fires and the message to
 // expect:
 //
+//   include "unused.thrift"     UnusedIncludeCheck (warning) — "unused
+//                              include \"unused.thrift\"" + the "Remove
+//                              unused include" code action
 //   struct DuplicateFieldID    FieldIDCheck       — "field id conflict"
 //   struct BadVault            FieldIDCheck       — "field id should be a
 //                              positive integer in [1, 32767]"
@@ -23,8 +26,15 @@
 //                              exist"
 //   const CURSED_LOCATIONS     DuplicateCheck      — "duplicate map key
 //                              \"zone1\"", "duplicate set value 4"
+//   struct KeyedVault          SemanticAnalysis — "map key must be a
+//                              scalar type, found struct" (the enum-key
+//                              map stays clean)
 //
 // struct Clean at the bottom is fully valid: no diagnostics expected.
+
+// UnusedIncludeCheck — nothing in this file references a type from
+// unused.thrift. The "Remove unused include" code action deletes the line.
+include "unused.thrift"
 
 // FieldIDCheck — both `1:` tokens fire "field id conflict".
 struct DuplicateFieldID {
@@ -110,6 +120,17 @@ const map<string, set<i32>> CURSED_LOCATIONS = {
   "zone1": [1, 2, 3],
   "zone3": [3, 4, 4],
   "zone1": [7, 8, 9],
+}
+
+// SemanticAnalysis — KeyStone is a struct, so it cannot be a map key; the
+// enum-keyed map on the second field is valid.
+struct KeyStone {
+  1: i32 depth,
+}
+
+struct KeyedVault {
+  1: map<KeyStone, i32> by_struct,
+  2: map<RelicKind, i32> by_enum,
 }
 
 // Fully valid — no diagnostics expected here.

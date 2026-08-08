@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
@@ -258,6 +259,78 @@ struct TestUUID {
 
 			tt.assertion(t, err)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_SemanticAnalysis_MapKeyScalar(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    []string // expected messages
+	}{
+		{
+			name:    "base type keys are fine",
+			content: "struct S {\n  1: map<string, i32> m,\n}\n",
+			want:    nil,
+		},
+		{
+			name:    "struct key",
+			content: "struct K { 1: i32 a }\nstruct S {\n  1: map<K, i32> m,\n}\n",
+			want:    []string{"map key must be a scalar type, found struct"},
+		},
+		{
+			name:    "list key",
+			content: "struct S {\n  1: map<list<i32>, i32> m,\n}\n",
+			want:    []string{"map key must be a scalar type, found list"},
+		},
+		{
+			name:    "map key",
+			content: "struct S {\n  1: map<map<string, i32>, i32> m,\n}\n",
+			want:    []string{"map key must be a scalar type, found map"},
+		},
+		{
+			name:    "enum key is fine",
+			content: "enum E { A = 1 }\nstruct S {\n  1: map<E, i32> m,\n}\n",
+			want:    nil,
+		},
+		{
+			name:    "typedef to struct is rejected",
+			content: "struct K { 1: i32 a }\ntypedef K Alias\nstruct S {\n  1: map<Alias, i32> m,\n}\n",
+			want:    []string{"map key must be a scalar type, found struct"},
+		},
+		{
+			name:    "typedef to scalar is fine",
+			content: "typedef i64 Id\ntypedef Id Id2\nstruct S {\n  1: map<Id2, i32> m,\n}\n",
+			want:    nil,
+		},
+		{
+			name:    "nested container key is rejected",
+			content: "struct S {\n  1: map<list<map<string, i32>>, i32> m,\n}\n",
+			want:    []string{"map key must be a scalar type, found list"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ss := buildSnapshotForTest(t, []*cache.FileChange{
+				{
+					URI:     "file:///tmp/user.thrift",
+					Version: 0,
+					Content: []byte(tt.content),
+					From:    cache.FileChangeTypeDidOpen,
+				},
+			})
+
+			got, err := (&SemanticAnalysis{}).diagnostic(t.Context(), ss, "file:///tmp/user.thrift")
+			require.NoError(t, err)
+
+			var msgs []string
+			for _, d := range got {
+				msgs = append(msgs, string(d.Message.(protocol.String)))
+			}
+
+			assert.Equal(t, tt.want, msgs)
 		})
 	}
 }
