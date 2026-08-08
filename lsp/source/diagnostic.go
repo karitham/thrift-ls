@@ -20,6 +20,7 @@ func init() {
 		&CycleCheck{},
 		&Parse{},
 		&FieldIDCheck{},
+		&DuplicateCheck{},
 		&EnumValueCheck{},
 		&SemanticAnalysis{},
 	}

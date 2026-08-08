@@ -103,21 +103,6 @@ struct TestUUID {
 					{
 						Range: protocol.Range{
 							Start: protocol.Position{
-								Line:      6,
-								Character: 8,
-							},
-							End: protocol.Position{
-								Line:      6,
-								Character: 15,
-							},
-						},
-						Severity: protocol.DiagnosticSeverityError,
-						Source:   protocol.NewOptional("thrift-ls"),
-						Message:  protocol.String("struct name conflict with other struct"),
-					},
-					{
-						Range: protocol.Range{
-							Start: protocol.Position{
 								Line:      10,
 								Character: 13,
 							},

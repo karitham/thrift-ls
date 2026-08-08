@@ -384,15 +384,17 @@ git tag v0.1.0 && git push origin v0.1.0
 ## Development
 
 ```bash
-go test ./...          # unit and fuzz regression tests
-bash tests/e2e/run-e2e.sh   # end-to-end formatter tests
+go test ./...   # unit, golden, and fuzz regression tests
 ```
 
-The formatter is fuzz-tested end to end: `FuzzFormat` checks that any clean
-document formats without errors, keeps every comment, is idempotent and
-deterministic across the whole option space. The lexer, parser, doc
-printer, LSP offset mapper, and range formatting each have their own fuzz
-targets; the corpus entries under `testdata/fuzz` are permanent regression
+The golden CLI tests under `cli_test.go` pin the formatter flag combinations
+(and the `check` lint corpus under `tests/made-in-abyss`) against committed
+outputs in `tests/e2e`. The formatter is fuzz-tested end to end:
+`FuzzFormat` checks that any clean document formats without errors, keeps
+every comment, is idempotent and deterministic across the whole option
+space. The lexer, parser, doc printer, LSP offset mapper, and range
+formatting each have their own fuzz targets; the corpus entries under
+`testdata/fuzz` are permanent regression
 tests.
 
 `thrift-ls dump` (see above) is the debugging companion: it shows the parse

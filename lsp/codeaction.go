@@ -33,6 +33,12 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 			actions = append(actions, *enum)
 		}
 
+		fieldActions, err := source.MakeFieldQualifierAction(ctx, ss, fh, params.Range)
+		if err != nil {
+			return nil, err
+		}
+		actions = append(actions, fieldActions...)
+
 		actions = preferQuickFixes(filterCodeActions(actions, params.Context.Only))
 
 		out := make([]protocol.CommandOrCodeAction, 0, len(actions))

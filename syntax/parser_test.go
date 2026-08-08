@@ -193,7 +193,7 @@ func TestParseStructs(t *testing.T) {
 					t.Errorf("field 0 id = %v", f.FieldID)
 				}
 
-				if f.Req != TokenRequired {
+				if f.Req == nil || f.Req.Kind != TokenRequired {
 					t.Errorf("field 0 req = %v", f.Req)
 				}
 

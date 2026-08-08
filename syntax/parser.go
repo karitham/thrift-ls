@@ -562,7 +562,7 @@ func (p *parser) parseField() (*Field, bool) {
 
 	switch p.cur().Kind {
 	case TokenRequired, TokenOptional:
-		f.Req = p.advance().Kind
+		f.Req = p.advance()
 	}
 
 	f.Type = p.parseFieldType()

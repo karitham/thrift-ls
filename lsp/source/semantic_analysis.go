@@ -48,102 +48,9 @@ func (s *SemanticAnalysis) diagnostic(ctx context.Context, ss *cache.Snapshot, c
 		slog.Debug("parse failed", "err", err)
 	}
 
-	res := s.checkDefineConflict(ctx, pf)
-	items := s.checkDefinitionExist(ctx, ss, changeFile, pf)
-	res = append(res, items...)
+	res := s.checkDefinitionExist(ctx, ss, changeFile, pf)
 
 	return res, nil
-}
-
-// checkDefineConflict reports duplicate field names, function names, and
-// top-level definition names.
-func (s *SemanticAnalysis) checkDefineConflict(ctx context.Context, pf *cache.ParsedFile) []protocol.Diagnostic {
-	var ret []protocol.Diagnostic
-
-	processStructLike := func(fields []*syntax.Field) {
-		fieldMap := make(map[string]struct{})
-
-		for i := range fields {
-			field := fields[i]
-			if _, exist := fieldMap[field.Name.Text]; exist {
-				ret = append(ret, protocol.Diagnostic{
-					Range:    nodeRange(pf, field.Name),
-					Severity: protocol.DiagnosticSeverityError,
-					Source:   protocol.NewOptional("thrift-ls"),
-					Message:  protocol.String("field name conflict with other field"),
-				})
-			}
-
-			fieldMap[field.Name.Text] = struct{}{}
-		}
-	}
-
-	definitionNameMap := make(map[string]string)
-
-	processDefinition := func(name string, node syntax.Node, kind string) {
-		if previous, exist := definitionNameMap[name]; exist {
-			ret = append(ret, protocol.Diagnostic{
-				Range:    nodeRange(pf, node),
-				Severity: protocol.DiagnosticSeverityError,
-				Source:   protocol.NewOptional("thrift-ls"),
-				Message:  protocol.String(fmt.Sprintf("%s name conflict with other %s", kind, previous)),
-			})
-		}
-
-		definitionNameMap[name] = kind
-	}
-
-	for _, st := range pf.AST().Structs() {
-		processDefinition(st.Name.Text, st.Name, "struct")
-		processStructLike(st.Fields)
-	}
-
-	for _, union := range pf.AST().Unions() {
-		processDefinition(union.Name.Text, union.Name, "union")
-		processStructLike(union.Fields)
-	}
-
-	for _, excep := range pf.AST().Exceptions() {
-		processDefinition(excep.Name.Text, excep.Name, "exception")
-		processStructLike(excep.Fields)
-	}
-
-	for _, enum := range pf.AST().Enums() {
-		processDefinition(enum.Name.Text, enum.Name, "enum")
-	}
-
-	for _, cst := range pf.AST().Consts() {
-		processDefinition(cst.Name.Text, cst.Name, "const")
-	}
-
-	for _, td := range pf.AST().Typedefs() {
-		processDefinition(td.Name.Text, td.Name, "typedef")
-	}
-
-	for _, svc := range pf.AST().Services() {
-		processDefinition(svc.Name.Text, svc.Name, "service")
-
-		fnMap := make(map[string]struct{})
-		for _, fn := range svc.Functions {
-			if _, exist := fnMap[fn.Name.Text]; exist {
-				ret = append(ret, protocol.Diagnostic{
-					Range:    nodeRange(pf, fn.Name),
-					Severity: protocol.DiagnosticSeverityWarning,
-					Source:   protocol.NewOptional("thrift-ls"),
-					Message:  protocol.String("function name conflict with other function"),
-				})
-			}
-
-			fnMap[fn.Name.Text] = struct{}{}
-			processStructLike(fn.Args)
-
-			if fn.Throws != nil {
-				processStructLike(fn.Throws.Fields)
-			}
-		}
-	}
-
-	return ret
 }
 
 // checkDefinitionExist reports field types, const values, and return types
@@ -169,17 +76,9 @@ func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, ss *cache.S
 		}
 	}
 
-	for _, st := range pf.AST().Structs() {
-		processStructLike(st.Fields)
-	}
-
-	for _, union := range pf.AST().Unions() {
-		processStructLike(union.Fields)
-	}
-
-	for _, excep := range pf.AST().Exceptions() {
-		processStructLike(excep.Fields)
-	}
+	pf.AST().WalkFieldLists(func(fields []*syntax.Field, _ syntax.FieldListKind) {
+		processStructLike(fields)
+	})
 
 	for _, cst := range pf.AST().Consts() {
 		items := s.checkConstValueExist(ctx, ss, file, pf, cst.Value)
@@ -190,12 +89,6 @@ func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, ss *cache.S
 		for _, fn := range svc.Functions {
 			items := s.checkTypeExist(ctx, ss, file, pf, fn.Type)
 			ret = append(ret, items...)
-
-			processStructLike(fn.Args)
-
-			if fn.Throws != nil {
-				processStructLike(fn.Throws.Fields)
-			}
 		}
 	}
 

@@ -275,9 +275,9 @@ func computeFieldAlign(fields []*syntax.Field) *columnAlign {
 			a.idWidth = maxInt(a.idWidth, len(field.FieldID.Text)+1) // "N:"
 		}
 
-		if field.Req != 0 {
+		if field.Req != nil {
 			a.hasReq = true
-			a.reqWidth = maxInt(a.reqWidth, len(field.Req.String()))
+			a.reqWidth = maxInt(a.reqWidth, len(field.Req.Kind.String()))
 		}
 
 		a.typeWidth = maxInt(a.typeWidth, len(typeText(field.Type)))
@@ -421,8 +421,8 @@ func (f *formatter) fieldPads(v *syntax.Field, a *columnAlign) ([]padEntry, stri
 		pads = append(pads, padEntry{v.TokStart() + 1, padRight("", a.idWidth-len(v.FieldID.Text)-1)})
 	}
 
-	if v.Req != 0 {
-		pads = append(pads, padEntry{v.Type.TokStart() - 1, padRight("", a.reqWidth-len(v.Req.String()))})
+	if v.Req != nil {
+		pads = append(pads, padEntry{v.Type.TokStart() - 1, padRight("", a.reqWidth-len(v.Req.Kind.String()))})
 	} else if a.hasReq {
 		// The empty requiredness column: extend the id pad by one column
 		// plus the missing req width, or lead the field with it when there

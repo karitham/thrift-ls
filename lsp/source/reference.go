@@ -576,37 +576,15 @@ func searchEnumQualifiedValueReference(ctx context.Context, ss *cache.Snapshot, 
 // field defaults, const values, and service argument and throws defaults.
 // Positions without a default are skipped.
 func walkValueIdentifiers(doc *syntax.Document, fn func(v *syntax.ConstValue)) {
-	process := func(fields []*syntax.Field) {
+	doc.WalkFieldLists(func(fields []*syntax.Field, _ syntax.FieldListKind) {
 		for _, field := range fields {
 			if field.Value != nil {
 				fn(field.Value)
 			}
 		}
-	}
-
-	for _, st := range doc.Structs() {
-		process(st.Fields)
-	}
-
-	for _, st := range doc.Unions() {
-		process(st.Fields)
-	}
-
-	for _, st := range doc.Exceptions() {
-		process(st.Fields)
-	}
+	})
 
 	for _, cst := range doc.Consts() {
 		fn(cst.Value)
-	}
-
-	for _, svc := range doc.Services() {
-		for _, fnx := range svc.Functions {
-			process(fnx.Args)
-
-			if fnx.Throws != nil {
-				process(fnx.Throws.Fields)
-			}
-		}
 	}
 }

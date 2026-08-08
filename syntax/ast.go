@@ -213,7 +213,7 @@ type Service struct {
 type Field struct {
 	nodeBase
 	FieldID   *Token // the optional id int token; nil means implicit
-	Req       TokenKind
+	Req       *Token // the required/optional keyword token; nil means unqualified
 	Type      *FieldType
 	Reference bool // & prefix (field reference)
 	Name      *Identifier

@@ -133,3 +133,41 @@ func (d *Document) Typedefs() []*Typedef {
 
 	return out
 }
+
+// FieldListKind identifies the declaration a field list belongs to.
+type FieldListKind uint8
+
+const (
+	StructFields FieldListKind = iota
+	UnionFields
+	ExceptionFields
+	FunctionArgs // service function arguments
+	ThrowsFields // a service function's throws clause
+)
+
+// WalkFieldLists visits the field lists of every struct, union,
+// exception, service function argument, and throws clause in document
+// order.
+func (d *Document) WalkFieldLists(fn func(fields []*Field, kind FieldListKind)) {
+	for _, st := range d.Structs() {
+		fn(st.Fields, StructFields)
+	}
+
+	for _, union := range d.Unions() {
+		fn(union.Fields, UnionFields)
+	}
+
+	for _, excep := range d.Exceptions() {
+		fn(excep.Fields, ExceptionFields)
+	}
+
+	for _, svc := range d.Services() {
+		for _, fnx := range svc.Functions {
+			fn(fnx.Args, FunctionArgs)
+
+			if fnx.Throws != nil {
+				fn(fnx.Throws.Fields, ThrowsFields)
+			}
+		}
+	}
+}

@@ -58,14 +58,29 @@ func (c *EnumValueCheck) diagnostic(ctx context.Context, ss *cache.Snapshot, fil
 	var ret []protocol.Diagnostic
 
 	for _, enum := range pf.AST().Enums() {
-		for _, im := range enumImplicitValues(enum) {
-			msg := fmt.Sprintf("%s has no explicit value", im.member.Name.Text)
-			if im.known {
-				msg = fmt.Sprintf("%s has no explicit value (implicitly %d)", im.member.Name.Text, im.value)
+		// A member whose name already appeared earlier in the enum is a
+		// duplicate; DuplicateCheck reports it as an error. Skip the
+		// implicit value warning for it: making a duplicate explicit
+		// does not fix it, and its auto-incremented value is incidental.
+		firstIdx := make(map[string]int, len(enum.Values))
+		for i, member := range enum.Values {
+			if _, ok := firstIdx[member.Name.Text]; !ok {
+				firstIdx[member.Name.Text] = i
+			}
+		}
+
+		for i, mv := range enumValues(enum) {
+			if mv.member.Value != nil || firstIdx[mv.member.Name.Text] != i {
+				continue
+			}
+
+			msg := fmt.Sprintf("%s has no explicit value", mv.member.Name.Text)
+			if mv.known {
+				msg = fmt.Sprintf("%s has no explicit value (implicitly %d)", mv.member.Name.Text, mv.value)
 			}
 
 			ret = append(ret, protocol.Diagnostic{
-				Range:    tokenRange(pf, enumValueNameToken(pf, im.member)),
+				Range:    tokenRange(pf, enumValueNameToken(pf, mv.member)),
 				Severity: protocol.DiagnosticSeverityWarning,
 				Source:   protocol.NewOptional("thrift-ls"),
 				Message:  protocol.String(msg),
@@ -97,27 +112,56 @@ type enumImplicitValue struct {
 func enumImplicitValues(enum *syntax.Enum) []enumImplicitValue {
 	var out []enumImplicitValue
 
+	for _, mv := range enumValues(enum) {
+		if mv.member.Value != nil {
+			continue
+		}
+
+		out = append(out, enumImplicitValue{member: mv.member, value: mv.value, known: mv.known})
+	}
+
+	return out
+}
+
+// enumMemberValue is an enum member with the value the compiler resolves
+// for it.
+type enumMemberValue struct {
+	member *syntax.EnumValue
+	value  int64
+	known  bool // false when the preceding value is broken, so value is unknowable
+}
+
+// enumValues resolves every member of an enum to its on-wire value:
+// explicit constants parse as written (base-0), implicit members
+// auto-increment: 0 for the first member, one greater than the preceding
+// member's value otherwise. Members after an unparseable explicit constant
+// report known=false until the next parseable constant settles the chain.
+func enumValues(enum *syntax.Enum) []enumMemberValue {
+	var out []enumMemberValue
+
 	// A virtual value of -1 precedes the first member so the first
 	// implicit member auto-increments to 0, mirroring the compiler.
 	val, known := int64(-1), true
 
 	for _, member := range enum.Values {
 		if member.Value == nil {
-			im := enumImplicitValue{member: member, known: known}
 			if known {
 				val++
-				im.value = val
 			}
-			out = append(out, im)
+
+			out = append(out, enumMemberValue{member: member, value: val, known: known})
 			continue
 		}
 
 		v, err := strconv.ParseInt(member.Value.Text, 0, 64)
 		if err != nil {
+			out = append(out, enumMemberValue{member: member, known: false})
 			known = false
 			continue
 		}
+
 		val, known = v, true
+		out = append(out, enumMemberValue{member: member, value: val, known: true})
 	}
 
 	return out

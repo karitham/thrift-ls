@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/urfave/cli/v3"
@@ -15,15 +17,30 @@ import (
 	"github.com/karitham/thrift-ls/formatter"
 	tlog "github.com/karitham/thrift-ls/log"
 	"github.com/karitham/thrift-ls/lsp"
+	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/lsp/source"
 	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/syntax"
 
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/pkg/fakenet"
+	"go.lsp.dev/protocol"
+	"go.lsp.dev/uri"
 )
 
 func main() {
-	cmd := &cli.Command{
+	cmd := rootCommand()
+
+	if err := cmd.Run(context.Background(), os.Args); err != nil {
+		fmt.Fprintln(os.Stderr, "thrift-ls:", err)
+		os.Exit(1)
+	}
+}
+
+// rootCommand is the CLI: the default (no subcommand) is the language
+// server, with format, dump, and check as subcommands.
+func rootCommand() *cli.Command {
+	return &cli.Command{
 		Name:    "thrift-ls",
 		Usage:   "Thrift language server and formatter",
 		Version: lsp.ServerVersion,
@@ -65,12 +82,14 @@ func main() {
 				},
 				Action: dumpAction,
 			},
+			{
+				Name:      "check",
+				Usage:     "report parse, semantic, and lint diagnostics on thrift files",
+				ArgsUsage: "<file|folder>",
+				Flags:     lspFlags(),
+				Action:    checkAction,
+			},
 		},
-	}
-
-	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		fmt.Fprintln(os.Stderr, "thrift-ls:", err)
-		os.Exit(1)
 	}
 }
 
@@ -206,7 +225,7 @@ func formatAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	return formatFile(file, cmd.Bool("w"), cmd.Bool("d"), cmd.String("config"), cli)
+	return formatFile(file, cmd.Writer, cmd.Bool("w"), cmd.Bool("d"), cmd.String("config"), cli)
 }
 
 // dumpAction prints the parse tree, and optionally the formatted document
@@ -259,6 +278,181 @@ func dumpAction(ctx context.Context, cmd *cli.Command) error {
 	fmt.Print(formatted)
 
 	return nil
+}
+
+// checkAction reports the diagnostics the language server computes — parse
+// errors, semantic analysis, and lints — for a thrift file or folder,
+// through the same cache and checker pipeline the LSP uses. Diagnostics
+// print to stdout; the command exits 1 when any error-severity diagnostic
+// is found, so it can gate CI. Warnings do not fail the check.
+func checkAction(ctx context.Context, cmd *cli.Command) error {
+	path := cmd.Args().First()
+	if path == "" {
+		return errors.New("must specify a thrift file or folder to check, e.g. thrift-ls check file.thrift")
+	}
+
+	files, err := collectThriftFiles(path)
+	if err != nil {
+		return err
+	}
+
+	if len(files) == 0 {
+		return fmt.Errorf("no thrift files found in %s", path)
+	}
+
+	cfg := loadConfig(cmd.String("config"), ".")
+	patch := options.Effective(cfg)
+
+	cliPatch, err := lspPatch(cmd)
+	if err != nil {
+		return err
+	}
+
+	patch = cliPatch.Apply(patch)
+
+	root := path
+	if info, err := os.Stat(path); err != nil {
+		return err
+	} else if !info.IsDir() {
+		root = filepath.Dir(path)
+	}
+
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+
+	diags, err := checkFiles(ctx, files, rootAbs, derefStrings(patch.IncludePaths))
+	if err != nil {
+		return err
+	}
+
+	w := cmd.Writer
+	errCount, warnCount := 0, 0
+
+	for _, file := range files {
+		for _, d := range diags[file] {
+			sev := "warning"
+			if d.Severity == protocol.DiagnosticSeverityError {
+				sev = "error"
+				errCount++
+			} else {
+				warnCount++
+			}
+
+			fmt.Fprintf(w, "%s:%d:%d  %s  %s\n", relPath(file), d.Range.Start.Line+1, d.Range.Start.Character+1, sev, d.Message)
+		}
+	}
+
+	if errCount > 0 {
+		return fmt.Errorf("found %d error(s), %d warning(s)", errCount, warnCount)
+	}
+
+	return nil
+}
+
+// checkFiles runs the language server's diagnostic pipeline — parse,
+// semantic analysis, and lints — over files opened in a session rooted at
+// folder, and returns the diagnostics per file, keyed by absolute path.
+func checkFiles(ctx context.Context, files []string, folder string, includePaths []string) (map[string][]protocol.Diagnostic, error) {
+	c := cache.New(includePaths)
+	sess := cache.NewSession(c)
+	sess.AddView(uri.File(folder))
+
+	changes := make([]*cache.FileChange, 0, len(files))
+	uris := make([]uri.URI, 0, len(files))
+
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return nil, err
+		}
+
+		u := uri.File(file)
+		uris = append(uris, u)
+		changes = append(changes, &cache.FileChange{URI: u, Version: 0, Content: content, From: cache.FileChangeTypeDidOpen})
+	}
+
+	if err := sess.UpdateOverlayFS(ctx, changes); err != nil {
+		return nil, err
+	}
+
+	out := make(map[string][]protocol.Diagnostic, len(files))
+
+	for i := range files {
+		v, err := sess.ViewOf(uris[i])
+		if err != nil {
+			return nil, err
+		}
+
+		ss, release := v.Snapshot()
+
+		res, err := source.NewDiagnostic().Diagnostic(ctx, ss, uris)
+		release()
+		if err != nil {
+			return nil, err
+		}
+
+		out[files[i]] = res[uris[i]]
+	}
+
+	return out, nil
+}
+
+// collectThriftFiles returns the absolute paths of the thrift files under
+// path: the file itself, or every *.thrift in the folder, recursively, in
+// lexical order.
+func collectThriftFiles(path string) ([]string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := os.Stat(abs)
+	if err != nil {
+		return nil, err
+	}
+
+	if !info.IsDir() {
+		return []string{abs}, nil
+	}
+
+	var files []string
+
+	err = filepath.WalkDir(abs, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if !d.IsDir() && strings.HasSuffix(d.Name(), ".thrift") {
+			files = append(files, p)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Strings(files)
+
+	return files, nil
+}
+
+// relPath renders p relative to the working directory when it lies under
+// it, and absolute otherwise.
+func relPath(p string) string {
+	base, err := os.Getwd()
+	if err != nil {
+		return p
+	}
+
+	rel, err := filepath.Rel(base, p)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return p
+	}
+
+	return rel
 }
 
 // lspPatch builds an options patch from the explicitly set lsp flags.
@@ -359,8 +553,8 @@ func fatal(err error) {
 }
 
 // formatFile formats a single file: read, parse, resolve options, format,
-// self-validate, and write, diff, or print.
-func formatFile(file string, write, diffOut bool, configPath string, cli options.Patch) error {
+// self-validate, and write, diff, or print to w.
+func formatFile(file string, w io.Writer, write, diffOut bool, configPath string, cli options.Patch) error {
 	if file == "" {
 		return errors.New("must specify a thrift file to format, e.g. thrift-ls format file.thrift")
 	}
@@ -408,11 +602,11 @@ func formatFile(file string, write, diffOut bool, configPath string, cli options
 
 		return os.WriteFile(file, []byte(out), perms)
 	case diffOut:
-		fmt.Print(string(Diff("old", src, "new", []byte(out))))
+		fmt.Fprint(w, string(Diff("old", src, "new", []byte(out))))
 
 		return nil
 	default:
-		fmt.Print(out)
+		fmt.Fprint(w, out)
 
 		return nil
 	}

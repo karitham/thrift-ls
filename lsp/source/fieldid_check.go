@@ -52,7 +52,7 @@ func (c *FieldIDCheck) diagnostic(ctx context.Context, ss *cache.Snapshot, file 
 
 	var ret []protocol.Diagnostic
 
-	processStructLike := func(fields []*syntax.Field) {
+	pf.AST().WalkFieldLists(func(fields []*syntax.Field, _ syntax.FieldListKind) {
 		fieldIDSet := make(map[int][]*syntax.Field)
 
 		for i := range fields {
@@ -94,29 +94,7 @@ func (c *FieldIDCheck) diagnostic(ctx context.Context, ss *cache.Snapshot, file 
 				})
 			}
 		}
-	}
-
-	for _, st := range pf.AST().Structs() {
-		processStructLike(st.Fields)
-	}
-
-	for _, union := range pf.AST().Unions() {
-		processStructLike(union.Fields)
-	}
-
-	for _, excep := range pf.AST().Exceptions() {
-		processStructLike(excep.Fields)
-	}
-
-	for _, svc := range pf.AST().Services() {
-		for _, fn := range svc.Functions {
-			processStructLike(fn.Args)
-
-			if fn.Throws != nil {
-				processStructLike(fn.Throws.Fields)
-			}
-		}
-	}
+	})
 
 	return ret, nil
 }

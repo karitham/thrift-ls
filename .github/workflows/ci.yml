@@ -40,6 +40,18 @@ jobs:
           name: thrift-ls-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/
 
+  # Test every package: unit, golden (cli_test.go + tests/e2e fixtures),
+  # corpus (check_test.go + tests/made-in-abyss), and fuzz regression.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: test
+        run: go test ./...
+
   vsix:
     runs-on: ubuntu-latest
     steps:
