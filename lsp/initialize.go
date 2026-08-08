@@ -3,9 +3,7 @@ package lsp
 import (
 	"context"
 	"encoding/json"
-	"io/fs"
 	"log/slog"
-	"path/filepath"
 	"strings"
 
 	"go.lsp.dev/protocol"
@@ -46,8 +44,8 @@ func (s *Server) initialize(params *protocol.InitializeParams) (result *protocol
 
 	s.folders = folders
 
-	// Workspace settings (initializationOptions) overlay the base
-	// configuration; didChangeConfiguration updates them later.
+	// Workspace settings (initializationOptions) overlay each view's
+	// config; didChangeConfiguration updates them later.
 	if len(params.InitializationOptions) > 0 {
 		if patch, err := lspSettings(params.InitializationOptions); err != nil {
 			slog.Error("initializationOptions rejected", "err", err)
@@ -111,27 +109,17 @@ func (s *Server) walkFoldersThriftFile(folder uri.URI) {
 	slog.Debug("walk dir", "folder", folder.Path())
 
 	// The view is the folder itself, so files in nested directories
-	// resolve to it via ContainsFile.
-	s.session.AddView(folder)
+	// resolve to it via ContainsFile; addFolderView resolves its config.
+	s.addFolderView(folder)
 
-	// WalkDir walk files with lexical order. FsPath, not Path: Path keeps
-	// the leading slash before a Windows drive letter, which Win32 rejects.
-	_ = filepath.WalkDir(folder.FsPath(), func(path string, d fs.DirEntry, err error) error {
-		slog.Debug("walking", "path", path)
-
-		if err != nil {
+	// Walk the folder through the cache's file source: the disk in
+	// production, an in-memory tree in tests. WalkDir walks with lexical
+	// order; the fs implementations handle their own entry errors.
+	_ = s.cache.WalkFiles(context.TODO(), folder, func(fileURI uri.URI) error {
+		if !strings.HasSuffix(fileURI.Path(), ".thrift") {
 			return nil
 		}
 
-		if d.IsDir() {
-			return nil
-		}
-
-		if !strings.HasSuffix(path, ".thrift") {
-			return nil
-		}
-
-		fileURI := uri.File(path)
 		slog.Debug("file path", "uri", fileURI)
 
 		if err := s.openFile(context.TODO(), &cache.FileChange{

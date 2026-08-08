@@ -13,6 +13,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/options"
 )
 
 // writeTree writes the file contents under dir and returns the directory.
@@ -36,7 +37,7 @@ func openTree(t *testing.T, session *cache.Session, dir string, only map[string]
 	t.Helper()
 
 	folder := uri.File(dir)
-	view := session.AddView(folder)
+	view := session.AddView(folder, nil, options.Patch{})
 
 	require.NoError(t, filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || filepath.Ext(path) != ".thrift" {
@@ -195,7 +196,7 @@ struct C { 1: string x }`,
 		t.Run(tt.name, func(t *testing.T) {
 			dir := writeTree(t, tt.files)
 
-			session := cache.NewSession(cache.New(nil))
+			session := cache.NewSession(cache.New())
 
 			if tt.nested {
 				// Each top-level directory is a workspace folder.
@@ -244,7 +245,7 @@ const i32 DEFAULT_HP = 100,
 typedef string PilotName`,
 	})
 
-	session := cache.NewSession(cache.New(nil))
+	session := cache.NewSession(cache.New())
 	openTree(t, session, dir, nil)
 
 	file := uri.File(filepath.Join(dir, "shapes.thrift"))
@@ -302,7 +303,7 @@ service Federation {
 }`,
 	})
 
-	session := cache.NewSession(cache.New(nil))
+	session := cache.NewSession(cache.New())
 	openTree(t, session, dir, nil)
 
 	tests := []struct {
@@ -356,7 +357,7 @@ exception BayFull {
 }`,
 	})
 
-	session := cache.NewSession(cache.New(nil))
+	session := cache.NewSession(cache.New())
 	openTree(t, session, dir, nil)
 
 	syms := allWorkspaceSymbols(t.Context(), session, "", 0)

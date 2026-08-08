@@ -51,11 +51,14 @@ The formatter options (`printWidth`, `indent`, `tabWidth`, `align`,
 `separators.*`, `break.*`) are exposed as `thrift-ls.*` settings. They are
 sent to the server on startup and re-sent via `didChangeConfiguration` when
 they change, so formatting picks up new values without a restart. Settings
-override the `thrift-ls.json` config file; CLI flags passed to the server
-still win over both.
+override the `thrift-ls.json` config file — discovered from the workspace
+root, one config per folder — and the CLI flags passed to the server are
+applied underneath the settings.
 
 `includePaths` and `logLevel` are not exposed as settings — use
 `thrift-ls.json` or the `-I` / `-logLevel` flags when launching the server.
+Server logs go to the "Thrift Language Server" output channel (via
+`window/logMessage`) and to `$TMPDIR/thrift-ls.log`.
 
 ## Development
 

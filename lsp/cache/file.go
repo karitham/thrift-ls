@@ -48,6 +48,11 @@ type FileSource interface {
 	// ReadFile returns the FileHandle for a given URI, either by
 	// reading the content of the file or by obtaining it from a cache.
 	ReadFile(ctx context.Context, uri uri.URI) (FileHandle, error)
+	// WalkFiles calls fn for every file under root, recursively, in
+	// lexical order. The caller filters by kind (e.g. extension). An
+	// error returned by fn stops the walk; per-entry failures (missing
+	// roots, permissions) are the implementation's to skip or report.
+	WalkFiles(ctx context.Context, root uri.URI, fn func(uri.URI) error) error
 }
 
 type FileChangeType string

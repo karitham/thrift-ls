@@ -6,6 +6,8 @@ import (
 	"sync"
 
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/options"
 )
 
 type Session struct {
@@ -33,8 +35,10 @@ func NewSession(cache *Cache) *Session {
 }
 
 // AddView registers a view for the workspace folder, returning the
-// existing view when the folder is already tracked.
-func (s *Session) AddView(folder uri.URI) *View {
+// existing view when the folder is already tracked. includePaths and
+// config are the folder's resolved configuration; the view fixes them at
+// creation.
+func (s *Session) AddView(folder uri.URI, includePaths []string, config options.Patch) *View {
 	s.viewMu.Lock()
 	defer s.viewMu.Unlock()
 
@@ -44,7 +48,7 @@ func (s *Session) AddView(folder uri.URI) *View {
 		}
 	}
 
-	view := NewView(folder, s.overlayFS, s.cache.IncludePaths)
+	view := NewView(folder, s.overlayFS, includePaths, config)
 	s.views = append(s.views, view)
 
 	return view

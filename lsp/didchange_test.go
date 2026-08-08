@@ -13,7 +13,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/options"
 )
 
 // recordingClient records PublishDiagnostics calls per URI; every other
@@ -38,6 +37,10 @@ func (c *recordingClient) PublishDiagnostics(ctx context.Context, params *protoc
 	return nil
 }
 
+func (c *recordingClient) LogMessage(ctx context.Context, params *protocol.LogMessageParams) error {
+	return nil // the server forwards its logs via window/logMessage
+}
+
 func (c *recordingClient) reset() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -53,7 +56,14 @@ func (c *recordingClient) count(file uri.URI) int {
 }
 
 func newTestServer(client protocol.Client) *Server {
-	return NewServer(cache.New(nil), client, options.Patch{})
+	return NewServer(cache.New(), client, Options{})
+}
+
+// newMemServer returns a server backed by an in-memory file source, so
+// the workspace walk and file reads never touch the real disk. Files may
+// be seeded by URI; opened documents are served from the overlay.
+func newMemServer(files map[uri.URI][]byte) *Server {
+	return NewServer(cache.NewWithFS(cache.NewMemFS(files)), nil, Options{})
 }
 
 func writeFile(t *testing.T, path, content string) {

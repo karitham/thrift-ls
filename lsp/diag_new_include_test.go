@@ -49,6 +49,10 @@ func (c *diagClient) RegisterCapability(ctx context.Context, params *protocol.Re
 	return nil
 }
 
+func (c *diagClient) LogMessage(ctx context.Context, params *protocol.LogMessageParams) error {
+	return nil // the server forwards its logs via window/logMessage
+}
+
 // watchers returns the glob patterns of the registered file watchers.
 func (c *diagClient) watchers() []string {
 	c.regsMu.Lock()

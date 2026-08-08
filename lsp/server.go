@@ -22,15 +22,24 @@ type Server struct {
 
 	client protocol.Client
 
-	// base is the process configuration: defaults overlaid with the config
-	// file and CLI flags. It never changes; workspace settings from
-	// initializationOptions and didChangeConfiguration are overlaid on it.
-	base options.Patch
+	// explicit is the startup configuration (defaults + startup config +
+	// CLI); every view uses it when configPath pins a file, otherwise each
+	// view resolves its own config from its folder.
+	explicit   options.Patch
+	configPath string
 
-	// formatOpts is the effective formatter configuration. It is guarded by
-	// optsMu because settings can change between requests.
-	optsMu     sync.RWMutex
-	formatOpts formatter.Options
+	// cli is the CLI-only overlay, applied on top of every view's config.
+	cli options.Patch
+
+	// workspaceOverlay is the last accepted workspace settings, overlaid
+	// on every view's config. Guarded by optsMu.
+	optsMu           sync.RWMutex
+	workspaceOverlay options.Patch
+
+	// logLevel is the first view config's log level, applied once the
+	// workspace is known. Guarded by logLevelMu.
+	logLevelMu sync.Mutex
+	logLevel   *int
 
 	// folders are the workspace folders from the initialize request; the
 	// walk starts on the Initialized notification so the initialize
@@ -46,44 +55,111 @@ type Server struct {
 	dirWalkOnce       sync.Once
 }
 
-// NewServer returns a Server formatting with the base options. The base is
-// expected to validate; workspace settings overlay it at initialize time.
-func NewServer(c *cache.Cache, client protocol.Client, base options.Patch) *Server {
-	s := &Server{
-		cache:   c,
-		session: cache.NewSession(c),
-		client:  client,
-		base:    base,
+// NewServer returns a Server resolving configuration per view. The options
+// are expected to validate; workspace settings overlay each view's config
+// at initialize time and on didChangeConfiguration.
+func NewServer(c *cache.Cache, client protocol.Client, opts Options) *Server {
+	return &Server{
+		cache:      c,
+		session:    cache.NewSession(c),
+		client:     client,
+		explicit:   opts.Config,
+		configPath: opts.ConfigPath,
+		cli:        opts.CLI,
 	}
-	s.formatOpts, _ = base.Formatter()
-
-	return s
 }
 
-// setWorkspaceSettings overlays workspace settings on the base
-// configuration. Invalid settings are rejected: the previous configuration
-// stays in effect and the error is logged.
+// setWorkspaceSettings stores the workspace settings overlay; invalid
+// settings are rejected and the previous document stays in effect.
 func (s *Server) setWorkspaceSettings(overlay options.Patch) {
-	merged := overlay.Apply(s.base)
-	fopts, err := merged.Formatter()
-	if err != nil {
+	if _, err := overlay.Formatter(); err != nil {
 		slog.Error("workspace settings rejected", "err", err)
+
 		return
 	}
 
 	s.optsMu.Lock()
-	s.formatOpts = fopts
+	s.workspaceOverlay = overlay
 	s.optsMu.Unlock()
 
 	slog.Debug("workspace settings applied")
 }
 
-// formatOptions returns the current effective formatter options.
-func (s *Server) formatOptions() formatter.Options {
-	s.optsMu.RLock()
-	defer s.optsMu.RUnlock()
+// addFolderView creates the view for a workspace folder, resolving the
+// folder's config at creation — when the workspace is finally known.
+func (s *Server) addFolderView(folder uri.URI) *cache.View {
+	cfg := s.viewConfig(folder)
+	s.applyLogLevel(cfg)
 
-	return s.formatOpts
+	var includePaths []string
+	if cfg.IncludePaths != nil {
+		includePaths = *cfg.IncludePaths
+	}
+
+	return s.session.AddView(folder, includePaths, cfg)
+}
+
+// viewConfig resolves the config for a view rooted at folder: the pinned
+// --config file, or the nearest thrift-ls.json walking up, plus CLI flags.
+func (s *Server) viewConfig(folder uri.URI) options.Patch {
+	if s.configPath != "" {
+		return s.cli.Apply(s.explicit)
+	}
+
+	cfgPath, err := options.FindConfig(folder.FsPath())
+	if err != nil {
+		slog.Error("config discovery failed", "dir", folder.FsPath(), "err", err)
+
+		return s.cli.Apply(options.Default())
+	}
+
+	if cfgPath == "" {
+		return s.cli.Apply(options.Default())
+	}
+
+	cfg, err := options.Load(cfgPath)
+	if err != nil {
+		slog.Error("config file rejected", "path", cfgPath, "err", err)
+
+		return s.cli.Apply(options.Default())
+	}
+
+	return s.cli.Apply(options.Effective(cfg))
+}
+
+// applyLogLevel applies the first view config's log level; the logger is
+// process-wide, so later views keep it.
+func (s *Server) applyLogLevel(cfg options.Patch) {
+	if cfg.LogLevel == nil {
+		return
+	}
+
+	s.logLevelMu.Lock()
+	defer s.logLevelMu.Unlock()
+
+	if s.logLevel == nil {
+		s.logLevel = cfg.LogLevel
+		InitLogger(*cfg.LogLevel)
+	}
+}
+
+// formatOptions returns the view's config with the workspace settings
+// overlay applied.
+func (s *Server) formatOptions(view *cache.View) formatter.Options {
+	s.optsMu.RLock()
+	overlay := s.workspaceOverlay
+	s.optsMu.RUnlock()
+
+	fopts, err := overlay.Apply(view.Config()).Formatter()
+	if err != nil {
+		// Both layers were validated when stored; this is unreachable
+		// unless a view config was corrupted.
+		slog.Error("formatter options rejected", "err", err)
+
+		fopts, _ = view.Config().Formatter()
+	}
+
+	return fopts
 }
 
 func (s *Server) Initialize(ctx context.Context, params *protocol.InitializeParams) (result *protocol.InitializeResult, err error) {
@@ -94,6 +170,11 @@ func (s *Server) Initialize(ctx context.Context, params *protocol.InitializePara
 }
 
 func (s *Server) Initialized(ctx context.Context, params *protocol.InitializedParams) (err error) {
+	// The client only sends Initialized after receiving the initialize
+	// response, so from here on window/logMessage notifications are safe
+	// — Helix discards notifications from an uninitialized server.
+	setLogClient(s.client)
+
 	// The workspace walk and the file watcher registration run here, not
 	// in initialize: the client only sends Initialized after receiving
 	// the initialize response, so nothing the server emits at this
@@ -206,7 +287,6 @@ func (s *Server) DidChangeWorkspaceFolders(ctx context.Context, params *protocol
 	}
 
 	for _, folder := range params.Event.Added {
-		s.session.AddView(folder.URI)
 		s.walkFoldersThriftFile(folder.URI)
 	}
 

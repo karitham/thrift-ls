@@ -11,6 +11,7 @@ import (
 
 	"go.lsp.dev/uri"
 
+	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/resolver"
 	"github.com/karitham/thrift-ls/syntax"
 )
@@ -311,11 +312,11 @@ func BuildSnapshotForTest(files []*FileChange) *Snapshot {
 // BuildSnapshotForTestWithPaths is BuildSnapshotForTest with configured
 // include paths, for cross-project include resolution tests.
 func BuildSnapshotForTestWithPaths(includePaths []string, files []*FileChange) *Snapshot {
-	c := New(includePaths)
+	c := New()
 	fs := NewOverlayFS(c)
 	_ = fs.Update(context.TODO(), files)
 
-	view := NewView("file:///tmp", fs, includePaths)
+	view := NewView("file:///tmp", fs, includePaths, options.Patch{})
 	ss := NewSnapshot(view, includePaths)
 
 	for _, f := range files {

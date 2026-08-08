@@ -10,6 +10,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/options"
 )
 
 func Test_cycleDetect(t *testing.T) {
@@ -286,11 +287,11 @@ include "./test/address.thrift"`
 }
 
 func buildSnapshotForTest(t *testing.T, files []*cache.FileChange) *cache.Snapshot {
-	c := cache.New(nil)
+	c := cache.New()
 	fs := cache.NewOverlayFS(c)
 	_ = fs.Update(t.Context(), files)
 
-	view := cache.NewView("file:///tmp", fs, nil)
+	view := cache.NewView("file:///tmp", fs, nil, options.Patch{})
 	ss := cache.NewSnapshot(view, nil)
 
 	return ss

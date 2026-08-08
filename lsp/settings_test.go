@@ -6,9 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
-
-	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/options"
 )
 
 func TestLSPSettings(t *testing.T) {
@@ -36,7 +33,7 @@ func TestWorkspaceSettings(t *testing.T) {
 	content := "struct LongName{1: string fieldNameThatIsQuiteLong}\n"
 
 	ctx := t.Context()
-	srv := NewServer(cache.New(nil), nil, options.Patch{})
+	srv := newMemServer(nil)
 
 	require.NoError(t, srv.DidOpen(ctx, &protocol.DidOpenTextDocumentParams{
 		TextDocument: protocol.TextDocumentItem{

@@ -1,12 +1,13 @@
 package cache
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/options"
 )
 
 // The gundam test corpus: strike_rouge includes federation.gundam, which
@@ -60,20 +61,20 @@ type viewHarness struct {
 func newViewHarness(t *testing.T, files []*FileChange) *viewHarness {
 	t.Helper()
 
-	c := New(nil)
+	c := New()
 	fs := NewOverlayFS(c)
 
-	if err := fs.Update(context.Background(), files); err != nil {
+	if err := fs.Update(t.Context(), files); err != nil {
 		t.Fatal(err)
 	}
 
-	view := NewView("file:///tmp", fs, nil)
+	view := NewView("file:///tmp", fs, nil, options.Patch{})
 
 	ss, release := view.Snapshot()
 	defer release()
 
 	for _, f := range files {
-		if _, err := ss.Parse(context.Background(), f.URI); err != nil {
+		if _, err := ss.Parse(t.Context(), f.URI); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -87,13 +88,13 @@ func newViewHarness(t *testing.T, files []*FileChange) *viewHarness {
 func (h *viewHarness) change(t *testing.T, change *FileChange) []uri.URI {
 	t.Helper()
 
-	if err := h.fs.Update(context.Background(), []*FileChange{change}); err != nil {
+	if err := h.fs.Update(t.Context(), []*FileChange{change}); err != nil {
 		t.Fatal(err)
 	}
 
 	done := make(chan []uri.URI, 1)
 
-	h.view.FileChange(context.Background(), []*FileChange{change}, func(a []uri.URI) {
+	h.view.FileChange(t.Context(), []*FileChange{change}, func(a []uri.URI) {
 		done <- a
 	})
 

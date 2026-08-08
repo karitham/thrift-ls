@@ -114,7 +114,7 @@ func Test_CodeAction(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srv := newTestServer(nil)
+			srv := newMemServer(nil)
 
 			err := srv.DidOpen(ctx, &protocol.DidOpenTextDocumentParams{
 				TextDocument: protocol.TextDocumentItem{

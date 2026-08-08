@@ -2,7 +2,9 @@ package cache
 
 import (
 	"context"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -32,6 +34,23 @@ func (h *DiskFile) URI() uri.URI { return h.uri }
 
 func (h *DiskFile) Version() int32           { return 0 }
 func (h *DiskFile) Content() ([]byte, error) { return h.content, h.err }
+
+// WalkFiles calls fn for every file under root in lexical order. Entries
+// that fail to stat are skipped: one unreadable or deleted file must not
+// kill the walk.
+func (m *memoizedFS) WalkFiles(ctx context.Context, root uri.URI, fn func(uri.URI) error) error {
+	return filepath.WalkDir(root.FsPath(), func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // unreadable entry: keep walking
+		}
+
+		if d.IsDir() {
+			return nil
+		}
+
+		return fn(uri.File(path))
+	})
+}
 
 // ReadFile stats and (maybe) reads the file, updates the cache, and returns it.
 func (fs *memoizedFS) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, error) {

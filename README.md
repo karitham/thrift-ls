@@ -71,7 +71,9 @@ auto-format = true
 ```
 
 `thrift-ls` must be on `PATH`, or use an absolute path as `command`. The
-server logs to `$TMPDIR/thrift-ls.log`; raise verbosity with `-logLevel`.
+server logs to `$TMPDIR/thrift-ls.log` and, once the LSP handshake is
+done, forwards its records to the client as `window/logMessage` (the
+editor's LSP log or output channel); raise verbosity with `-logLevel`.
 
 #### neovim
 
@@ -272,13 +274,19 @@ Trailing comments may overflow their line without affecting alignment.
 
 Configuration lives in a `thrift-ls.json` file, discovered by walking up from
 the file being formatted or the workspace root (like Biome). Set the
-`THRIFT_LS_CONFIG` env var to point at an explicit config file.
+`THRIFT_LS_CONFIG` env var to point at an explicit config file. In the LSP,
+discovery happens per workspace folder when the server starts: each folder
+formats with the nearest `thrift-ls.json` walking up from it, and a
+single-file session discovers from the opened file's directory. An explicit
+`--config` flag pins one file for every folder (the first folder's config
+also sets the process-wide log level).
 
-Layered from lowest to highest precedence: defaults, the config file, LSP
-workspace settings, CLI flags. The VS Code extension exposes the formatter
+Layered from lowest to highest precedence: defaults, the config file, CLI
+flags, LSP workspace settings. The VS Code extension exposes the formatter
 options as `thrift-ls.*` settings (see `vscode/README.md`), which override
-the config file for LSP formatting; `includePaths` and `logLevel` are not
-available as settings — use the config file or flags for those.
+the config file and CLI flags for LSP formatting; `includePaths` and
+`logLevel` are not available as settings — use the config file or flags
+for those.
 
 ```json
 {

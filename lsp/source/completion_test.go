@@ -9,6 +9,7 @@ import (
 	"go.lsp.dev/protocol"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/options"
 )
 
 // buildSnapshot builds a snapshot from file contents with optional include
@@ -16,10 +17,10 @@ import (
 func buildSnapshot(t *testing.T, includePaths []string, files ...*cache.FileChange) *cache.Snapshot {
 	t.Helper()
 
-	c := cache.New(nil)
+	c := cache.New()
 	fs := cache.NewOverlayFS(c)
 	_ = fs.Update(t.Context(), files)
-	view := cache.NewView(uri.File("/tmp"), fs, includePaths)
+	view := cache.NewView(uri.File("/tmp"), fs, includePaths, options.Patch{})
 
 	return cache.NewSnapshot(view, includePaths)
 }

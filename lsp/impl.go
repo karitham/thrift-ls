@@ -56,7 +56,7 @@ func (s *Server) openFile(ctx context.Context, change *cache.FileChange) error {
 	view, err := s.session.ViewOf(change.URI)
 	if err != nil {
 		filename := change.URI.Path()
-		view = s.session.AddView(uri.File(path.Dir(filename)))
+		view = s.addFolderView(uri.File(path.Dir(filename)))
 	}
 
 	view.FileChange(ctx, []*cache.FileChange{change}, s.postDiagnostics(ctx, view))

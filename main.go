@@ -15,7 +15,6 @@ import (
 
 	"github.com/karitham/thrift-ls/doc"
 	"github.com/karitham/thrift-ls/formatter"
-	tlog "github.com/karitham/thrift-ls/log"
 	"github.com/karitham/thrift-ls/lsp"
 	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/lsp/source"
@@ -191,17 +190,18 @@ func lspAction(ctx context.Context, cmd *cli.Command) error {
 		logLevelValue = *patch.LogLevel
 	}
 
-	tlog.Init(logLevelValue)
+	lsp.InitLogger(logLevelValue)
 
-	// Validate the effective configuration early; the server re-resolves
-	// it per request, and workspace settings overlay it at initialize time.
+	// Validate early: a broken --config or working-directory config must
+	// fail before serving; per-folder configs are re-resolved later.
 	if _, err := patch.Formatter(); err != nil {
 		return err
 	}
 
 	lspOpts := &lsp.Options{
-		IncludePaths: derefStrings(patch.IncludePaths),
-		Config:       patch,
+		Config:     patch,
+		ConfigPath: cmd.String("config"),
+		CLI:        cli,
 	}
 
 	ss := lsp.NewStreamServer(lspOpts)
@@ -355,9 +355,9 @@ func checkAction(ctx context.Context, cmd *cli.Command) error {
 // semantic analysis, and lints — over files opened in a session rooted at
 // folder, and returns the diagnostics per file, keyed by absolute path.
 func checkFiles(ctx context.Context, files []string, folder string, includePaths []string) (map[string][]protocol.Diagnostic, error) {
-	c := cache.New(includePaths)
+	c := cache.New()
 	sess := cache.NewSession(c)
-	sess.AddView(uri.File(folder))
+	sess.AddView(uri.File(folder), includePaths, options.Patch{})
 
 	changes := make([]*cache.FileChange, 0, len(files))
 	uris := make([]uri.URI, 0, len(files))

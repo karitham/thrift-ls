@@ -12,7 +12,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/options"
 )
 
 func Test_DidOpen(t *testing.T) {
@@ -36,8 +35,8 @@ struct Test {
 		},
 	}
 
-	cache := cache.New(nil)
-	srv := NewServer(cache, nil, options.Patch{})
+	srv := newMemServer(nil)
+
 	err = srv.DidOpen(ctx, params)
 	assert.NoError(t, err)
 
@@ -94,8 +93,7 @@ struct Test {
 		},
 	}
 
-	cache := cache.New(nil)
-	srv := NewServer(cache, nil, options.Patch{})
+	srv := newMemServer(nil)
 
 	err = srv.DidOpen(ctx, openParams)
 	assert.NoError(t, err)
@@ -156,8 +154,8 @@ struct Test {
 				},
 			}
 
-			cache := cache.New(nil)
-			srv := NewServer(cache, nil, options.Patch{})
+			srv := newMemServer(nil)
+
 			err = srv.DidOpen(ctx, openParams)
 			assert.NoError(t, err)
 
@@ -253,8 +251,7 @@ struct Test {
 				},
 			}
 
-			cache := cache.New([]string{"/tmp"})
-			srv := NewServer(cache, nil, options.Patch{})
+			srv := newMemServer(nil)
 
 			err = srv.DidOpen(ctx, baseParams)
 			assert.NoError(t, err)
@@ -359,8 +356,7 @@ struct Other {
 				},
 			}
 
-			cache := cache.New(nil)
-			srv := NewServer(cache, nil, options.Patch{})
+			srv := newMemServer(nil)
 
 			err = srv.DidOpen(ctx, file1Params)
 			assert.NoError(t, err)
@@ -418,7 +414,7 @@ func Test_DidChangeWorkspaceFolders(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dirA, "a.thrift"), []byte("struct FromA {}"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(dirB, "b.thrift"), []byte("struct FromB {}"), 0o644))
 
-	srv := NewServer(cache.New(nil), nil, options.Patch{})
+	srv := NewServer(cache.New(), nil, Options{})
 
 	// Adding folders walks them and registers their thrift files.
 	err := srv.DidChangeWorkspaceFolders(ctx, &protocol.DidChangeWorkspaceFoldersParams{
@@ -483,7 +479,7 @@ func Test_InitializeDefersTheWorkspaceWalk(t *testing.T) {
 		require.NoError(t, os.MkdirAll(filepath.Join(dir, "nested"), 0o755))
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "nested", "b.thrift"), []byte("struct FromB {}"), 0o644))
 
-		srv := NewServer(cache.New(nil), nil, options.Patch{})
+		srv := NewServer(cache.New(), nil, Options{})
 
 		_, err := srv.Initialize(t.Context(), &protocol.InitializeParams{
 			WorkspaceFoldersInitializeParams: protocol.WorkspaceFoldersInitializeParams{
@@ -549,7 +545,7 @@ struct StrikeRouge {
 }`
 	testURI := uri.URI("file:///tmp/test.thrift")
 
-	srv := NewServer(cache.New([]string{"/tmp"}), nil, options.Patch{})
+	srv := newMemServer(nil)
 	require.NoError(t, srv.DidOpen(ctx, baseParams))
 	require.NoError(t, srv.DidOpen(ctx, &protocol.DidOpenTextDocumentParams{
 		TextDocument: protocol.TextDocumentItem{
@@ -610,7 +606,7 @@ struct StrikeRouge {
 }`
 		testURI := uri.URI("file:///tmp/test.thrift")
 
-		srv := NewServer(cache.New([]string{"/tmp"}), nil, options.Patch{})
+		srv := newMemServer(nil)
 		require.NoError(t, srv.DidOpen(ctx, baseParams))
 		require.NoError(t, srv.DidOpen(ctx, &protocol.DidOpenTextDocumentParams{
 			TextDocument: protocol.TextDocumentItem{

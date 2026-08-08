@@ -8,11 +8,16 @@ import (
 	"sync"
 
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/options"
 )
 
+// View is a rooted file tree with the configuration that applies to it.
+// It is a god object; splitting the snapshot bookkeeping out remains a
+// bigger redesign.
 type View struct {
-	// TODO(jpf): view 的设计并不合理
-	// workspace folder
+	// folder is the tree root: a workspace folder, or the opened file's
+	// directory in single-file mode.
 	folder uri.URI
 
 	fs FileSource
@@ -22,6 +27,10 @@ type View struct {
 
 	includePaths []string
 
+	// config is the folder's base configuration, fixed at creation;
+	// workspace settings overlay it per request.
+	config options.Patch
+
 	// Track the latest snapshot via the snapshot field, guarded by
 	// snapshotMu. The swap in FileChange releases the previous snapshot's
 	// ref under the same lock.
@@ -30,12 +39,13 @@ type View struct {
 	snapshotRelease func()
 }
 
-func NewView(folder uri.URI, fs FileSource, includePaths []string) *View {
+func NewView(folder uri.URI, fs FileSource, includePaths []string, config options.Patch) *View {
 	view := &View{
 		folder:       folder,
 		fs:           fs,
 		knownFiles:   make(map[uri.URI]bool),
 		includePaths: includePaths,
+		config:       config,
 	}
 
 	view.snapshot = NewSnapshot(view, includePaths)
@@ -64,6 +74,12 @@ func (v *View) ContainsFile(uri uri.URI) bool {
 // Folder returns the workspace folder the view covers.
 func (v *View) Folder() uri.URI {
 	return v.folder
+}
+
+// Config returns the view's base configuration, without the client's
+// workspace settings overlay.
+func (v *View) Config() options.Patch {
+	return v.config
 }
 
 func (v *View) MarkFileKnown(fileURI uri.URI) {

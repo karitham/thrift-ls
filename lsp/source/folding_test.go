@@ -12,6 +12,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/options"
 )
 
 // foldCase is one folding range expectation: the range of lines it covers.
@@ -28,7 +29,7 @@ func foldingRanges(t *testing.T, src string) []protocol.FoldingRange {
 	file := uri.File(filepath.Join(dir, "test.thrift"))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "test.thrift"), []byte(src), 0o644))
 
-	view := cache.NewView(uri.File(dir), cache.NewOverlayFS(cache.New(nil)), nil)
+	view := cache.NewView(uri.File(dir), cache.NewOverlayFS(cache.New()), nil, options.Patch{})
 	view.FileChange(t.Context(), []*cache.FileChange{{
 		URI:     file,
 		Version: 0,

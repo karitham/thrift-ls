@@ -12,28 +12,33 @@ import (
 
 type StreamServer struct {
 	cache  *cache.Cache
-	config options.Patch
+	config *Options
 }
 
-// Options configures the stream server. Config is the base configuration —
-// defaults overlaid with the config file and CLI flags — which workspace
-// settings from the client overlay at initialize time.
+// Options configures the stream server. Config is the startup
+// configuration (defaults + config file + CLI). When ConfigPath pins an
+// explicit file every view uses Config; otherwise each view resolves its
+// own config from its workspace folder at creation, with CLI overlaid.
 type Options struct {
-	IncludePaths []string
-	Config       options.Patch
+	Config options.Patch
+	// ConfigPath pins an explicit --config file, skipping per-folder
+	// discovery.
+	ConfigPath string
+	// CLI is the CLI-only overlay, applied on top of every view's config.
+	CLI options.Patch
 }
 
 func NewStreamServer(opts *Options) *StreamServer {
 	return &StreamServer{
-		cache:  cache.New(opts.IncludePaths),
-		config: opts.Config,
+		cache:  cache.New(),
+		config: opts,
 	}
 }
 
 func (s *StreamServer) ServeStream(ctx context.Context, conn jsonrpc2.Conn) error {
 	client := protocol.ClientDispatcher(conn)
 
-	server := NewServer(s.cache, client, s.config)
+	server := NewServer(s.cache, client, *s.config)
 	// Clients may or may not send a shutdown message. Make sure the server is
 	// shut down.
 	defer func() {

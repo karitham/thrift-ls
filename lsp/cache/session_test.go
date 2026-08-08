@@ -6,6 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/options"
 )
 
 func TestSessionViews(t *testing.T) {
@@ -25,23 +27,23 @@ func TestSessionViews(t *testing.T) {
 		{
 			name: "one view",
 			setup: func(s *Session) {
-				s.AddView(folderA)
+				s.AddView(folderA, nil, options.Patch{})
 			},
 			folders: []uri.URI{folderA},
 		},
 		{
 			name: "views in registration order",
 			setup: func(s *Session) {
-				s.AddView(folderB)
-				s.AddView(folderA)
+				s.AddView(folderB, nil, options.Patch{})
+				s.AddView(folderA, nil, options.Patch{})
 			},
 			folders: []uri.URI{folderB, folderA},
 		},
 		{
 			name: "removed view disappears",
 			setup: func(s *Session) {
-				s.AddView(folderA)
-				s.AddView(folderB)
+				s.AddView(folderA, nil, options.Patch{})
+				s.AddView(folderB, nil, options.Patch{})
 				s.RemoveView(folderA)
 			},
 			folders: []uri.URI{folderB},
@@ -49,7 +51,7 @@ func TestSessionViews(t *testing.T) {
 		{
 			name: "removing an untracked folder is a no-op",
 			setup: func(s *Session) {
-				s.AddView(folderA)
+				s.AddView(folderA, nil, options.Patch{})
 				s.RemoveView(folderB)
 			},
 			folders: []uri.URI{folderA},
@@ -58,7 +60,7 @@ func TestSessionViews(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := NewSession(New(nil))
+			s := NewSession(New())
 			tt.setup(s)
 
 			views := s.Views()
@@ -74,24 +76,24 @@ func TestSessionViews(t *testing.T) {
 }
 
 func TestSessionAddViewDedups(t *testing.T) {
-	s := NewSession(New(nil))
+	s := NewSession(New())
 
 	folder := uri.File("/tmp/a")
-	first := s.AddView(folder)
-	second := s.AddView(folder)
+	first := s.AddView(folder, nil, options.Patch{})
+	second := s.AddView(folder, nil, options.Patch{})
 
 	assert.Same(t, first, second)
 	assert.Len(t, s.Views(), 1)
 }
 
 func TestSessionRemoveViewForgetsMappings(t *testing.T) {
-	s := NewSession(New(nil))
+	s := NewSession(New())
 
 	folder := uri.File("/tmp/a")
 	other := uri.File("/tmp/b")
 
-	s.AddView(folder)
-	s.AddView(other)
+	s.AddView(folder, nil, options.Patch{})
+	s.AddView(other, nil, options.Patch{})
 
 	fileA := uri.File("/tmp/a/one.thrift")
 	fileB := uri.File("/tmp/b/two.thrift")

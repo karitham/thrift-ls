@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.lsp.dev/uri"
 
+	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -28,10 +29,10 @@ func TestResolver(t *testing.T) {
 	err = os.WriteFile(sharedThrift, []byte(""), 0o644)
 	assert.NoError(t, err)
 
-	c := New(nil)
+	c := New()
 	fs := NewOverlayFS(c)
 
-	view := NewView(uri.File(tmpDir), fs, nil)
+	view := NewView(uri.File(tmpDir), fs, nil, options.Patch{})
 	includePaths := []string{sharedDir}
 	ss := NewSnapshot(view, includePaths)
 

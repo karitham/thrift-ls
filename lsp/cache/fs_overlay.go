@@ -37,6 +37,13 @@ func (fs *overlayFS) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, err
 	return fs.delegate.ReadFile(ctx, uri)
 }
 
+// WalkFiles enumerates the delegate's tree, not the overlay: the walk
+// discovers files on the underlying source, while open files are already
+// known to the session via their didOpen.
+func (fs *overlayFS) WalkFiles(ctx context.Context, root uri.URI, fn func(uri.URI) error) error {
+	return fs.delegate.WalkFiles(ctx, root, fn)
+}
+
 // Update applies changes to the overlay set. DidClose changes remove the
 // overlay; all other types create or replace it.
 func (fs *overlayFS) Update(_ context.Context, changes []*FileChange) error {

@@ -1,7 +1,6 @@
 package source
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,9 +11,8 @@ import (
 	"github.com/karitham/thrift-ls/syntax"
 )
 
-var ctx = context.Background()
-
 func TestIndex_ResolveType_SameFile(t *testing.T) {
+	ctx := t.Context()
 	ss := snap(t, "/t.thrift", "struct Foo {}\ntypedef i32 Age")
 	from := parseOne(t, ss, fu("/t.thrift"))
 
@@ -35,6 +33,7 @@ func TestIndex_ResolveType_SameFile(t *testing.T) {
 }
 
 func TestIndex_ResolveType_IncludeChain(t *testing.T) {
+	ctx := t.Context()
 	ss := crossSnap(t, "/a.thrift", `include "b.thrift"
 struct Foo { 1: b.Bar bar, }`, "/b.thrift", "struct Bar {}")
 	a := parseOne(t, ss, fu("/a.thrift"))
@@ -48,6 +47,7 @@ struct Foo { 1: b.Bar bar, }`, "/b.thrift", "struct Bar {}")
 }
 
 func TestIndex_ResolveValue(t *testing.T) {
+	ctx := t.Context()
 	ss := crossSnap(t, "/a.thrift", `include "b.thrift"
 const i32 C = b.MAX`, "/b.thrift", "const i32 MAX = 10\nenum Color { RED }")
 	a := parseOne(t, ss, fu("/a.thrift"))
@@ -71,6 +71,7 @@ const i32 C = b.MAX`, "/b.thrift", "const i32 MAX = 10\nenum Color { RED }")
 }
 
 func TestIndex_ResolveService(t *testing.T) {
+	ctx := t.Context()
 	ss := snap(t, "/t.thrift", "service Base {}")
 	a := parseOne(t, ss, fu("/t.thrift"))
 	def, err := NewIndex(ss).ResolveService(ctx, a, &syntax.Identifier{Text: "Base"})
@@ -80,6 +81,7 @@ func TestIndex_ResolveService(t *testing.T) {
 }
 
 func TestIndex_References_Type(t *testing.T) {
+	ctx := t.Context()
 	ss := snap(t, "/t.thrift", "struct User {}\nstruct Foo { 1: User user, 2: list<User> users, }\nservice Svc { User get(1: i32 id); }")
 	_ = parseOne(t, ss, fu("/t.thrift"))
 
@@ -89,6 +91,7 @@ func TestIndex_References_Type(t *testing.T) {
 }
 
 func TestIndex_References_ExceptionRule(t *testing.T) {
+	ctx := t.Context()
 	ss := snap(t, "/t.thrift", "exception Bad {}\nstruct Foo { 1: Bad bad, }\nservice Svc { void f() throws (1: Bad e); }")
 	_ = parseOne(t, ss, fu("/t.thrift"))
 
@@ -99,6 +102,7 @@ func TestIndex_References_ExceptionRule(t *testing.T) {
 }
 
 func TestIndex_References_ConstValue(t *testing.T) {
+	ctx := t.Context()
 	ss := snap(t, "/t.thrift", "const i32 MAX = 10\nstruct Foo { 1: i32 id = MAX, }")
 	_ = parseOne(t, ss, fu("/t.thrift"))
 
@@ -108,6 +112,7 @@ func TestIndex_References_ConstValue(t *testing.T) {
 }
 
 func TestIndex_QualifiedValues(t *testing.T) {
+	ctx := t.Context()
 	ss := snap(t, "/t.thrift", "enum Color { RED = 0, BLUE = 1 }\nstruct Foo { 1: i32 id = Color.RED, }\nconst i32 C = Color.BLUE")
 	_ = parseOne(t, ss, fu("/t.thrift"))
 
@@ -139,6 +144,7 @@ func TestIndex_FindInWorkspace(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ctx := t.Context()
 			ss := crossSnap(t, "/a.thrift", "struct User {}", tt.file, "struct Account {}")
 			_ = parseOne(t, ss, fu("/a.thrift"))
 			_ = parseOne(t, ss, fu(tt.file))
@@ -183,7 +189,7 @@ func fu(p string) uri.URI { u, _ := uri.Parse("file://" + p); return u }
 
 func parseOne(t *testing.T, ss *cache.Snapshot, u uri.URI) *cache.ParsedFile {
 	t.Helper()
-	pf, err := ss.Parse(context.Background(), u)
+	pf, err := ss.Parse(t.Context(), u)
 	require.NoError(t, err)
 	return pf
 }
