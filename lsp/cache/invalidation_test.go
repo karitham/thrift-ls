@@ -67,7 +67,7 @@ func newViewHarness(t *testing.T, files []*FileChange) *viewHarness {
 		t.Fatal(err)
 	}
 
-	view := NewView("test", "file:///tmp", fs, nil)
+	view := NewView("file:///tmp", fs, nil)
 
 	ss, release := view.Snapshot()
 	defer release()
@@ -194,14 +194,16 @@ struct Gundam {
 
 			ss := h.snapshot(t)
 			for _, file := range tt.wantDropped {
-				assert.Nil(t, ss.parsedCache.Get(file), "parse cache for %s should be dropped", file)
+				pf, _ := ss.parsedCache.Get(file)
+				assert.Nil(t, pf, "parse cache for %s should be dropped", file)
 
 				_, ok := ss.files.Get(file)
 				assert.False(t, ok, "file handle for %s should be dropped", file)
 			}
 
 			for _, file := range tt.wantKept {
-				assert.NotNil(t, ss.parsedCache.Get(file), "parse cache for %s should survive", file)
+				pf, _ := ss.parsedCache.Get(file)
+				assert.NotNil(t, pf, "parse cache for %s should survive", file)
 			}
 		})
 	}

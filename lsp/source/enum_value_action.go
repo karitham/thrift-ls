@@ -53,7 +53,7 @@ func MakeEnumValuesExplicitAction(ctx context.Context, ss *cache.Snapshot, fh ca
 // enumAt returns the enum declaration containing the selection start, or
 // nil when it lies outside every enum.
 func enumAt(pf *cache.ParsedFile, rng protocol.Range) *syntax.Enum {
-	pos, err := pf.Mapper().LSPPosToParserPosition(lspPosition(rng.Start))
+	pos, err := pf.Mapper().LSPPosToParserPosition(rng.Start)
 	if err != nil {
 		return nil
 	}

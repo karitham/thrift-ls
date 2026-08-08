@@ -198,12 +198,7 @@ func includedFiles(ss *cache.Snapshot, file uri.URI) []uri.URI {
 
 		visited[f] = true
 
-		node := ss.Graph().Get(f)
-		if node == nil {
-			return
-		}
-
-		for _, inc := range node.OutDegree() {
+		for _, inc := range ss.Includes(f) {
 			out = append(out, inc)
 			visit(inc)
 		}

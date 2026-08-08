@@ -9,7 +9,6 @@ import (
 	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/lsp/mapper"
-	"github.com/karitham/thrift-ls/lsp/types"
 )
 
 // Format returns the whole-document formatting of fh's content.
@@ -44,7 +43,7 @@ func FormatDocument(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle
 		return nil, nil
 	}
 
-	mp := mapper.NewMapper(fh.URI(), content)
+	mp := mapper.NewMapper(content)
 	endPos := mp.GetLSPEndPosition()
 
 	return &protocol.TextEdit{
@@ -82,14 +81,14 @@ func FormatRange(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, o
 		return nil, nil
 	}
 
-	mp := mapper.NewMapper(fh.URI(), content)
+	mp := mapper.NewMapper(content)
 
-	start, err := mp.LSPPosToParserPosition(lspPosition(rng.Start))
+	start, err := mp.LSPPosToParserPosition(rng.Start)
 	if err != nil {
 		return nil, err
 	}
 
-	end, err := mp.LSPPosToParserPosition(lspPosition(rng.End))
+	end, err := mp.LSPPosToParserPosition(rng.End)
 	if err != nil {
 		return nil, err
 	}
@@ -118,30 +117,14 @@ func FormatRange(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, o
 
 		result = append(result, protocol.TextEdit{
 			Range: protocol.Range{
-				Start: protocolPosition(startPos),
-				End:   protocolPosition(endPos),
+				Start: startPos,
+				End:   endPos,
 			},
 			NewText: be.text,
 		})
 	}
 
 	return result, nil
-}
-
-// lspPosition converts a protocol position to the internal position type.
-func lspPosition(p protocol.Position) types.Position {
-	return types.Position{
-		Line:      uint32(p.Line),
-		Character: uint32(p.Character),
-	}
-}
-
-// protocolPosition converts an internal position to a protocol position.
-func protocolPosition(p types.Position) protocol.Position {
-	return protocol.Position{
-		Line:      p.Line,
-		Character: p.Character,
-	}
 }
 
 // blockEdit replaces content[start:end] with text. Every block edit is

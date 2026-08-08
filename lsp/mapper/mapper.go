@@ -8,14 +8,12 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"go.lsp.dev/uri"
+	"go.lsp.dev/protocol"
 
-	"github.com/karitham/thrift-ls/lsp/types"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
 type Mapper struct {
-	fileURI uri.URI
 	content []byte
 
 	lineInit  sync.Once
@@ -24,9 +22,8 @@ type Mapper struct {
 }
 
 // NewMapper ...
-func NewMapper(fileURI uri.URI, content []byte) *Mapper {
+func NewMapper(content []byte) *Mapper {
 	return &Mapper{
-		fileURI: fileURI,
 		content: content,
 	}
 }
@@ -51,12 +48,12 @@ func (m *Mapper) initLineStart() {
 // GetLSPEndPosition returns the position immediately after the last
 // character of the document: the last line (0-based) at the UTF-16 length
 // of its content. A document ending with a newline has an empty last line.
-func (m *Mapper) GetLSPEndPosition() types.Position {
+func (m *Mapper) GetLSPEndPosition() protocol.Position {
 	m.initLineStart()
 	lastLineStart := m.lineStart[len(m.lineStart)-1]
 	lastLine := m.content[lastLineStart:]
 
-	return types.Position{
+	return protocol.Position{
 		Line:      uint32(len(m.lineStart) - 1),
 		Character: uint32(utf16Count(lastLine)),
 	}
@@ -64,23 +61,23 @@ func (m *Mapper) GetLSPEndPosition() types.Position {
 
 // OffsetToLSPPosition converts a byte offset in the mapped content to an LSP
 // position (0-based line, UTF-16 code-unit column).
-func (m *Mapper) OffsetToLSPPosition(offset int) (types.Position, error) {
+func (m *Mapper) OffsetToLSPPosition(offset int) (protocol.Position, error) {
 	m.initLineStart()
 
 	if offset < 0 || offset > len(m.content) {
-		return types.Position{}, fmt.Errorf("invalid offset: %d, total content: %d", offset, len(m.content))
+		return protocol.Position{}, fmt.Errorf("invalid offset: %d, total content: %d", offset, len(m.content))
 	}
 
 	line := max(sort.Search(len(m.lineStart), func(i int) bool { return m.lineStart[i] > offset })-1, 0)
 
-	return types.Position{
+	return protocol.Position{
 		Line:      uint32(line),
 		Character: uint32(utf16Count(m.content[m.lineStart[line]:offset])),
 	}, nil
 }
 
 // convert from utf16-based to rune-based position
-func (m *Mapper) LSPPosToParserPosition(pos types.Position) (syntax.Position, error) {
+func (m *Mapper) LSPPosToParserPosition(pos protocol.Position) (syntax.Position, error) {
 	m.initLineStart()
 
 	line := int(pos.Line) + 1
@@ -158,12 +155,6 @@ func (m *Mapper) LSPPosToParserPosition(pos types.Position) (syntax.Position, er
 	if offset > len(m.content) {
 		return syntax.InvalidPosition, errors.New("invalid position character")
 	}
-
-	/*
-		if offset >= m.lineStart[pos.Line+1] {
-			return syntax.InvalidPosition, errors.New("invalid position character")
-		}
-	*/
 
 	return syntax.Position{
 		Line:   line,

@@ -23,7 +23,6 @@ func BuildCompletionItem(candidate Candidate) *CompletionItem {
 		InsertTextFormat: candidate.format,
 		Kind:             protocol.CompletionItemKindText,
 		Deprecated:       false,
-		Score:            90,
 		Documentation:    "",
 	}
 }

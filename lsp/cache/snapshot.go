@@ -5,7 +5,6 @@ import (
 	"context"
 	"io/fs"
 	"log/slog"
-	"math/rand"
 	"strings"
 	"sync"
 	"time"
@@ -141,15 +140,13 @@ func getIncludeNameFromPath(path string) string {
 }
 
 type Snapshot struct {
-	id int64
-
 	view *View
 
 	refCount sync.WaitGroup
 
 	files *FilesMap
 
-	context     *Context
+	context     *IncludeDeps
 	parsedCache *ParseCaches
 
 	includePaths []string
@@ -157,16 +154,12 @@ type Snapshot struct {
 
 func NewSnapshot(view *View, includePaths []string) *Snapshot {
 	snapshot := &Snapshot{
-		id:   rand.Int63(),
 		view: view,
 
-		refCount:    sync.WaitGroup{},
-		context:     NewContext(),
-		parsedCache: NewParseCaches(),
-		files: &FilesMap{
-			files:    make(map[uri.URI]FileHandle),
-			overlays: make(map[uri.URI]*Overlay),
-		},
+		refCount:     sync.WaitGroup{},
+		context:      NewIncludeDeps(),
+		parsedCache:  NewParseCaches(),
+		files:        NewFilesMap(),
 		includePaths: includePaths,
 	}
 
@@ -179,8 +172,14 @@ func (s *Snapshot) Acquire() func() {
 	return s.refCount.Done
 }
 
-func (s *Snapshot) Graph() *IncludeGraph {
-	return s.context.graph
+// Includes returns the files file includes directly, in include order.
+func (s *Snapshot) Includes(file uri.URI) []uri.URI {
+	return s.context.Includes(file)
+}
+
+// Includers returns the files that include file directly, in graph order.
+func (s *Snapshot) Includers(file uri.URI) []uri.URI {
+	return s.context.Includers(file)
 }
 
 // Dependents returns the transitive dependents of uri: every file that
@@ -236,7 +235,7 @@ func (s *Snapshot) ForgetFile(uri uri.URI) {
 }
 
 func (s *Snapshot) Parse(ctx context.Context, uri uri.URI) (*ParsedFile, error) {
-	if parsedFile := s.parsedCache.Get(uri); parsedFile != nil {
+	if parsedFile, ok := s.parsedCache.Get(uri); ok {
 		return parsedFile, nil
 	}
 
@@ -244,10 +243,6 @@ func (s *Snapshot) Parse(ctx context.Context, uri uri.URI) (*ParsedFile, error) 
 	if err != nil {
 		return nil, err
 	}
-
-	// DEBUG
-	// content, _ := fh.Content()
-	// slog.Debug("parse content", "content", string(content))
 
 	pf, err := Parse(fh)
 	if err != nil {
@@ -266,28 +261,41 @@ func (s *Snapshot) Parse(ctx context.Context, uri uri.URI) (*ParsedFile, error) 
 }
 
 // TokensForFile returns the identifier tokens of file and its transitively
-// included files.
+// included files. Each file's token set is computed once per parse and
+// reused, so typing does not re-walk the include closure's ASTs.
 func (s *Snapshot) TokensForFile(file uri.URI) map[string]struct{} {
-	return s.parsedCache.TokensForFile(file, func(f uri.URI) []uri.URI {
-		node := s.context.graph.Get(f)
-		if node == nil {
-			return nil
+	tokens := make(map[string]struct{})
+	visited := make(map[uri.URI]bool)
+
+	var collect func(f uri.URI)
+
+	collect = func(f uri.URI) {
+		if visited[f] {
+			return
 		}
 
-		return node.OutDegree()
-	})
+		visited[f] = true
+
+		if pf, ok := s.parsedCache.Get(f); ok {
+			for token := range pf.Tokens() {
+				tokens[token] = struct{}{}
+			}
+		}
+
+		for _, inc := range s.Includes(f) {
+			collect(inc)
+		}
+	}
+
+	collect(file)
+
+	return tokens
 }
 
 func (s *Snapshot) clone() (*Snapshot, func()) {
 	snap := &Snapshot{
-		id:   rand.Int63(),
-		view: s.view,
-		// TODO(jpf): file change 没有更新，导致读到旧的缓存
-		files: s.files.Clone(),
-		// files: &FilesMap{
-		// 	files:    make(map[uri.URI]FileHandle),
-		// 	overlays: make(map[uri.URI]*Overlay),
-		// },
+		view:         s.view,
+		files:        s.files.Clone(),
 		context:      s.context.Clone(),
 		parsedCache:  s.parsedCache.Clone(),
 		includePaths: s.includePaths,
@@ -307,7 +315,7 @@ func BuildSnapshotForTestWithPaths(includePaths []string, files []*FileChange) *
 	fs := NewOverlayFS(c)
 	_ = fs.Update(context.TODO(), files)
 
-	view := NewView("test", "file:///tmp", fs, includePaths)
+	view := NewView("file:///tmp", fs, includePaths)
 	ss := NewSnapshot(view, includePaths)
 
 	for _, f := range files {

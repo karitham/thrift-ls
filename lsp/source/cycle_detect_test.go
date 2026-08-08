@@ -290,7 +290,7 @@ func buildSnapshotForTest(t *testing.T, files []*cache.FileChange) *cache.Snapsh
 	fs := cache.NewOverlayFS(c)
 	_ = fs.Update(t.Context(), files)
 
-	view := cache.NewView("test", "file:///tmp", fs, nil)
+	view := cache.NewView("file:///tmp", fs, nil)
 	ss := cache.NewSnapshot(view, nil)
 
 	return ss

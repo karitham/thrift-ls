@@ -50,7 +50,7 @@ func Rename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.
 		return res, err
 	}
 
-	var refs []referenceHit
+	var refs []indexHit
 
 	switch target.kind {
 	case TargetTypeName:
@@ -59,20 +59,13 @@ func Rename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.
 			return nil, fmt.Errorf("rename not supported for basic types")
 		}
 
-		refs, err = searchTypeNameReferences(ctx, ss, file, pf, target)
+		refs, err = searchTypeNameRefs(ctx, NewIndex(ss), ss, pf, target)
 		if err != nil {
 			return nil, err
 		}
 
 	case TargetConstValue:
-		value := target.node.(*syntax.ConstValue)
-		if _, id, err := FindConstValueDefinition(ctx, ss, file, pf.AST(), value); err != nil {
-			return nil, err
-		} else if id == nil {
-			return nil, fmt.Errorf("definition not found")
-		}
-
-		refs, err = searchConstValueReferences(ctx, ss, file, pf, target)
+		refs, err = searchConstValueRefs(ctx, NewIndex(ss), ss, pf, target)
 		if err != nil {
 			return nil, err
 		}
@@ -90,13 +83,13 @@ func Rename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.
 			}
 		}
 
-		refs, err = searchServiceReferences(ctx, ss, file, svcName)
+		refs, err = searchServiceRefs(ctx, NewIndex(ss), ss, file, svcName)
 		if err != nil {
 			return nil, err
 		}
 
 	case TargetDefinition:
-		refs, err = searchDefinitionReferences(ctx, ss, file, pf, target)
+		refs, err = searchDefRefs(ctx, NewIndex(ss), ss, file, pf, target)
 		if err != nil {
 			return nil, err
 		}
@@ -106,12 +99,11 @@ func Rename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.
 	}
 
 	// The definition under the cursor itself.
-	refs = append(refs, referenceHit{
+	refs = append(refs, indexHit{
 		loc: protocol.Location{
 			URI:   file,
 			Range: nodeRange(pf, target.node),
 		},
-		text: "",
 	})
 
 	return convertHitsToWorkspaceEdit(refs, newName), nil
@@ -120,7 +112,7 @@ func Rename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.
 // convertHitsToWorkspaceEdit groups the edits by file. A reference whose
 // text has an include qualifier (user.Test) keeps the qualifier: the new
 // text becomes user.newtext.
-func convertHitsToWorkspaceEdit(refs []referenceHit, newName string) *protocol.WorkspaceEdit {
+func convertHitsToWorkspaceEdit(refs []indexHit, newName string) *protocol.WorkspaceEdit {
 	changes := make(map[uri.URI][]protocol.TextEdit)
 
 	for i := range refs {

@@ -9,15 +9,35 @@ import (
 	"github.com/karitham/thrift-ls/syntax"
 )
 
-// Context tracks, per file, its transitive include dependencies. It owns the
+// IncludeDeps tracks, per file, its transitive include dependencies. It owns the
 // IncludeGraph; callers never touch the underlying graph directly.
-type Context struct {
+type IncludeDeps struct {
 	graph *IncludeGraph
 }
 
-// NewContext returns an empty context.
-func NewContext() *Context {
-	return &Context{graph: NewIncludeGraph()}
+// NewIncludeDeps returns an empty dependency set.
+func NewIncludeDeps() *IncludeDeps {
+	return &IncludeDeps{graph: NewIncludeGraph()}
+}
+
+// Includes returns the files file includes directly, in include order.
+func (c *IncludeDeps) Includes(file uri.URI) []uri.URI {
+	node := c.graph.Get(file)
+	if node == nil {
+		return nil
+	}
+
+	return node.OutDegree()
+}
+
+// Includers returns the files that include file directly, in graph order.
+func (c *IncludeDeps) Includers(file uri.URI) []uri.URI {
+	node := c.graph.Get(file)
+	if node == nil {
+		return nil
+	}
+
+	return node.InDegree()
 }
 
 // Register replaces file's include edges, resolving them via resolve the same
@@ -26,7 +46,7 @@ func NewContext() *Context {
 //
 // Duplicate includes resolve once; unknown include paths fall back to a
 // relative path (see resolver.Resolve) and never crash.
-func (c *Context) Register(file uri.URI, includes []*syntax.Include, resolve func(uri.URI, string) uri.URI) []uri.URI {
+func (c *IncludeDeps) Register(file uri.URI, includes []*syntax.Include, resolve func(uri.URI, string) uri.URI) []uri.URI {
 	oldDeps := c.Dependents(file)
 
 	c.graph.Set(file, dedupeIncludes(includes), resolve)
@@ -37,7 +57,7 @@ func (c *Context) Register(file uri.URI, includes []*syntax.Include, resolve fun
 // Dependents returns every file that directly or transitively includes file,
 // including file itself when it transitively includes itself. The result is
 // sorted ascending by URI and cycle-safe.
-func (c *Context) Dependents(file uri.URI) []uri.URI {
+func (c *IncludeDeps) Dependents(file uri.URI) []uri.URI {
 	deps := make([]uri.URI, 0)
 	seen := make(map[uri.URI]struct{})
 
@@ -69,7 +89,7 @@ func (c *Context) Dependents(file uri.URI) []uri.URI {
 }
 
 // Forget removes file's edges and returns its former dependents.
-func (c *Context) Forget(file uri.URI) []uri.URI {
+func (c *IncludeDeps) Forget(file uri.URI) []uri.URI {
 	deps := c.Dependents(file)
 
 	c.graph.Remove(file)
@@ -78,8 +98,8 @@ func (c *Context) Forget(file uri.URI) []uri.URI {
 }
 
 // Clone returns a deep copy, for snapshot copy-on-write.
-func (c *Context) Clone() *Context {
-	return &Context{graph: c.graph.Clone()}
+func (c *IncludeDeps) Clone() *IncludeDeps {
+	return &IncludeDeps{graph: c.graph.Clone()}
 }
 
 // dedupeIncludes drops include statements with the same path text, keeping

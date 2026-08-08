@@ -10,7 +10,7 @@ import (
 )
 
 func (s *Server) foldingRanges(ctx context.Context, params *protocol.FoldingRangeParams) ([]protocol.FoldingRange, error) {
-	return withSnapshot(ctx, s.session, params.TextDocument.URI, func(ss *cache.Snapshot) ([]protocol.FoldingRange, error) {
+	return withSnapshot(s.session, params.TextDocument.URI, func(ss *cache.Snapshot) ([]protocol.FoldingRange, error) {
 		return source.Ranges(ctx, ss, params.TextDocument.URI), nil
 	})
 }

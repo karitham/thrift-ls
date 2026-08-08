@@ -7,12 +7,12 @@ import (
 	"path"
 	"strings"
 
-	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"go.lsp.dev/protocol"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/lsp/source"
-	"github.com/karitham/thrift-ls/lsp/types"
 )
 
 func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocumentParams) error {
@@ -192,8 +192,7 @@ func (s *Server) diagnose(ctx context.Context, ss *cache.Snapshot, affected []ur
 func (s *Server) completion(ctx context.Context, params *protocol.CompletionParams) (*protocol.CompletionList, error) {
 	return withFile(ctx, s.session, params.TextDocument.URI, func(ss *cache.Snapshot, fh cache.FileHandle) (*protocol.CompletionList, error) {
 		items, rng, truncated, err := source.DefaultTokenCompletion.Completion(ctx, ss, &source.CompletionRequest{
-			TriggerKind: 0,
-			Pos: types.Position{
+			Pos: protocol.Position{
 				Line:      params.Position.Line,
 				Character: params.Position.Character,
 			},

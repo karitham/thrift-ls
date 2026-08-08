@@ -3,7 +3,6 @@ package cache
 import (
 	"fmt"
 	"log/slog"
-	"maps"
 	"sync"
 
 	"go.lsp.dev/uri"
@@ -11,104 +10,6 @@ import (
 	"github.com/karitham/thrift-ls/lsp/mapper"
 	"github.com/karitham/thrift-ls/syntax"
 )
-
-// ParseCaches maps URIs to parsed files. Snapshots share the underlying map
-// (Clone is O(1)); the first write after a clone copies the map
-// copy-on-write, so cloning per keystroke is cheap while old snapshots stay
-// immutable.
-type ParseCaches struct {
-	mu     sync.RWMutex
-	caches map[uri.URI]*ParsedFile
-	shared bool
-}
-
-func NewParseCaches() *ParseCaches {
-	return &ParseCaches{
-		caches: make(map[uri.URI]*ParsedFile),
-	}
-}
-
-func (c *ParseCaches) Set(filePath uri.URI, res *ParsedFile) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.copyOnWrite()
-
-	c.caches[filePath] = res
-}
-
-func (c *ParseCaches) Get(filePath uri.URI) *ParsedFile {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.caches[filePath]
-}
-
-func (c *ParseCaches) Forget(filePath uri.URI) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.copyOnWrite()
-
-	delete(c.caches, filePath)
-}
-
-// Clone returns a view sharing the same entries. The clone and the original
-// both become copy-on-write.
-func (c *ParseCaches) Clone() *ParseCaches {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.shared = true
-
-	return &ParseCaches{caches: c.caches, shared: true}
-}
-
-// copyOnWrite detaches caches from a shared parent before the first write.
-// Callers must hold mu.
-func (c *ParseCaches) copyOnWrite() {
-	if !c.shared {
-		return
-	}
-
-	caches := make(map[uri.URI]*ParsedFile, len(c.caches)+1)
-	maps.Copy(caches, c.caches)
-
-	c.caches = caches
-	c.shared = false
-}
-
-// TokensForFile returns tokens for the given file and its transitively
-// included files. Each file's token set is computed once per parse and
-// reused, so typing does not re-walk the include closure's ASTs.
-func (c *ParseCaches) TokensForFile(file uri.URI, getIncludes func(uri.URI) []uri.URI) map[string]struct{} {
-	tokens := make(map[string]struct{})
-	visited := make(map[uri.URI]bool)
-
-	var collect func(f uri.URI)
-
-	collect = func(f uri.URI) {
-		if visited[f] {
-			return
-		}
-
-		visited[f] = true
-
-		if pf := c.Get(f); pf != nil {
-			for token := range pf.Tokens() {
-				tokens[token] = struct{}{}
-			}
-		}
-
-		for _, inc := range getIncludes(f) {
-			collect(inc)
-		}
-	}
-
-	collect(file)
-
-	return tokens
-}
 
 // collectTokens collects every identifier name in the document: definition
 // names, field names, and identifier references.
@@ -216,13 +117,26 @@ type ParsedFile struct {
 	tokensOnce sync.Once
 	tokens     map[string]struct{}
 
-	// defs and enumValues index the file's definitions, computed lazily
-	// once per parse. A re-parse replaces the whole ParsedFile, so the
-	// caches never go stale.
-	defsOnce   sync.Once
-	defs       map[string]syntax.Node
-	enumOnce   sync.Once
-	enumValues map[string]*syntax.Identifier
+	// index is the file's semantic index, computed lazily once per parse.
+	// A single walk of the AST collects definitions, enum values, name
+	// references, and annotation names.
+	indexOnce sync.Once
+	index     *FileIndex
+}
+
+// Index returns the file's semantic index: definitions, enum values, name
+// references, and annotation names from a single AST walk.
+func (p *ParsedFile) Index() *FileIndex {
+	p.indexOnce.Do(func() {
+		p.index = buildIndex(p.ast)
+	})
+
+	return p.index
+}
+
+// URI returns the URI of the parsed file.
+func (p *ParsedFile) URI() uri.URI {
+	return p.fh.URI()
 }
 
 func (p *ParsedFile) Mapper() *mapper.Mapper {
@@ -257,49 +171,12 @@ func (p *ParsedFile) Tokens() map[string]struct{} {
 // structs, unions, exceptions, enums, services, consts, and typedefs. The
 // node's concrete type identifies the definition kind.
 func (p *ParsedFile) Definitions() map[string]syntax.Node {
-	p.defsOnce.Do(func() {
-		p.defs = map[string]syntax.Node{}
-
-		if p.ast == nil {
-			return
-		}
-
-		for _, n := range p.ast.Nodes {
-			switch v := n.(type) {
-			case *syntax.Struct:
-				p.defs[v.Name.Text] = v
-			case *syntax.Enum:
-				p.defs[v.Name.Text] = v
-			case *syntax.Service:
-				p.defs[v.Name.Text] = v
-			case *syntax.Const:
-				p.defs[v.Name.Text] = v
-			case *syntax.Typedef:
-				p.defs[v.Name.Text] = v
-			}
-		}
-	})
-
-	return p.defs
+	return p.Index().Defs()
 }
 
 // EnumValues returns the file's enum value names indexed by name.
 func (p *ParsedFile) EnumValues() map[string]*syntax.Identifier {
-	p.enumOnce.Do(func() {
-		p.enumValues = map[string]*syntax.Identifier{}
-
-		if p.ast == nil {
-			return
-		}
-
-		for _, enum := range p.ast.Enums() {
-			for _, value := range enum.Values {
-				p.enumValues[value.Name.Text] = value.Name
-			}
-		}
-	})
-
-	return p.enumValues
+	return p.Index().EnumValues()
 }
 
 func (p *ParsedFile) AggregatedError() error {
@@ -329,7 +206,7 @@ func Parse(fh FileHandle) (*ParsedFile, error) {
 		slog.Debug("parse failed", "errs", errs)
 	}
 
-	pf.mapper = mapper.NewMapper(fh.URI(), content)
+	pf.mapper = mapper.NewMapper(content)
 
 	return pf, nil
 }

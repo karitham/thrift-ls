@@ -168,10 +168,8 @@ func Test_SnapshotParseIncludeCycles(t *testing.T) {
 	ss := BuildSnapshotForTest(files)
 
 	// both directions of the mutual cycle are recorded
-	node := ss.Graph().Get(char)
-	assert.NotNil(t, node)
-	assert.Equal(t, []uri.URI{amuro}, node.OutDegree())
-	assert.Equal(t, []uri.URI{amuro}, node.InDegree())
+	assert.Equal(t, []uri.URI{amuro}, ss.Includes(char))
+	assert.Equal(t, []uri.URI{amuro}, ss.Includers(char))
 
 	// dependents terminate on the cycle and include both files
 	assert.Equal(t, []uri.URI{amuro, char}, ss.Dependents(char))

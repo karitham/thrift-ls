@@ -1,7 +1,6 @@
 package cache
 
 import (
-	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -219,11 +218,5 @@ func (g *IncludeGraph) removeWithoutLock(file uri.URI) {
 
 	if len(node.indegree) == 0 && len(node.outdegree) == 0 {
 		delete(g.mapper, file)
-	}
-}
-
-func (g *IncludeGraph) Debug() {
-	for file, node := range g.mapper {
-		slog.Debug("graph file node", "file", file, "node", node)
 	}
 }

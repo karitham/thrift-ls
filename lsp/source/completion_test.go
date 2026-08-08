@@ -6,8 +6,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.lsp.dev/uri"
 
+	"go.lsp.dev/protocol"
+
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/lsp/types"
 )
 
 // buildSnapshot builds a snapshot from file contents with optional include
@@ -18,7 +19,7 @@ func buildSnapshot(t *testing.T, includePaths []string, files ...*cache.FileChan
 	c := cache.New(nil)
 	fs := cache.NewOverlayFS(c)
 	_ = fs.Update(t.Context(), files)
-	view := cache.NewView("test", uri.File("/tmp"), fs, includePaths)
+	view := cache.NewView(uri.File("/tmp"), fs, includePaths)
 
 	return cache.NewSnapshot(view, includePaths)
 }
@@ -34,7 +35,7 @@ func TestCompletionEndToEnd(t *testing.T) {
 
 	cmp := &CompletionRequest{
 		Fh:  fh,
-		Pos: types.Position{Line: 5, Character: 16}, // after "Us" in "1: required Us"
+		Pos: protocol.Position{Line: 5, Character: 16}, // after "Us" in "1: required Us"
 	}
 	items, _, _, err := DefaultTokenCompletion.Completion(t.Context(), ss, cmp)
 	assert.NoError(t, err)

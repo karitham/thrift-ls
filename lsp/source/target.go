@@ -8,7 +8,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/lsp/types"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -51,7 +50,7 @@ func resolveTarget(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos pr
 		return nil, nil, errNoAST
 	}
 
-	astPos, err := pf.Mapper().LSPPosToParserPosition(types.Position{Line: pos.Line, Character: pos.Character})
+	astPos, err := pf.Mapper().LSPPosToParserPosition(protocol.Position{Line: pos.Line, Character: pos.Character})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -143,7 +142,7 @@ func toLSPPosition(pf *cache.ParsedFile, pos syntax.Position) protocol.Position 
 		return protocol.Position{Line: uint32(pos.Line - 1), Character: uint32(pos.Col - 1)}
 	}
 
-	return protocolPosition(p)
+	return p
 }
 
 // toLSPRange converts a parser span to an LSP range with UTF-16 columns.

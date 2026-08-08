@@ -5,8 +5,6 @@ import (
 	"sort"
 
 	"go.lsp.dev/protocol"
-
-	"github.com/karitham/thrift-ls/lsp/types"
 )
 
 // ApplyEdits returns the mapped content with the edits applied. Edits must
@@ -54,7 +52,7 @@ func (m *Mapper) ApplyEdits(edits []protocol.TextEdit) ([]byte, error) {
 // offsetAt resolves an LSP (UTF-16) position to a byte offset in the mapped
 // content.
 func (m *Mapper) offsetAt(pos protocol.Position) (int, error) {
-	p, err := m.LSPPosToParserPosition(types.Position{Line: pos.Line, Character: pos.Character})
+	p, err := m.LSPPosToParserPosition(protocol.Position{Line: pos.Line, Character: pos.Character})
 
 	return p.Offset, err
 }

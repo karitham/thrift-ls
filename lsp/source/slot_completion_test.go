@@ -11,13 +11,12 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/lsp/types"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
 // lspPosOf returns the LSP position (0-based line, UTF-16 character)
 // immediately after the first occurrence of marker in content.
-func lspPosOf(t *testing.T, content, marker string) types.Position {
+func lspPosOf(t *testing.T, content, marker string) protocol.Position {
 	t.Helper()
 
 	idx := strings.Index(content, marker)
@@ -28,7 +27,7 @@ func lspPosOf(t *testing.T, content, marker string) types.Position {
 
 	lineStart := strings.LastIndex(before, "\n") + 1
 
-	return types.Position{
+	return protocol.Position{
 		Line:      uint32(line),
 		Character: uint32(utf16Len([]byte(before[lineStart:])) + utf16Len([]byte(marker))),
 	}
@@ -50,7 +49,7 @@ func utf16Len(b []byte) int {
 
 // completionLabels runs the completion entry point at an LSP position and
 // returns the item labels, the edit range, and the truncated flag.
-func completionLabels(t *testing.T, ss *cache.Snapshot, file string, pos types.Position) ([]string, protocol.Range, bool) {
+func completionLabels(t *testing.T, ss *cache.Snapshot, file string, pos protocol.Position) ([]string, protocol.Range, bool) {
 	t.Helper()
 
 	fh, err := ss.ReadFile(t.Context(), uri.URI(file))
@@ -71,7 +70,7 @@ func completionLabels(t *testing.T, ss *cache.Snapshot, file string, pos types.P
 }
 
 // completionItems runs the entry point and returns raw items.
-func completionItems(t *testing.T, ss *cache.Snapshot, file string, pos types.Position) ([]*CompletionItem, protocol.Range, bool) {
+func completionItems(t *testing.T, ss *cache.Snapshot, file string, pos protocol.Position) ([]*CompletionItem, protocol.Range, bool) {
 	t.Helper()
 
 	fh, err := ss.ReadFile(t.Context(), uri.URI(file))
@@ -279,7 +278,7 @@ func TestCompletionKeywordFallback(t *testing.T) {
 		&cache.FileChange{URI: "file:///tmp/empty.thrift", Version: 0, Content: []byte(""), From: cache.FileChangeTypeDidOpen},
 	)
 
-	labels, _, truncated := completionLabels(t, ss, "file:///tmp/empty.thrift", types.Position{Line: 0, Character: 0})
+	labels, _, truncated := completionLabels(t, ss, "file:///tmp/empty.thrift", protocol.Position{Line: 0, Character: 0})
 	assert.Contains(t, labels, "include")
 	assert.True(t, truncated, "keyword fallback exceeds the cap")
 }
@@ -340,7 +339,7 @@ func TestCompletionNoPrefixUnderflow(t *testing.T) {
 		&cache.FileChange{URI: "file:///tmp/underflow.thrift", Version: 0, Content: []byte("const X=1"), From: cache.FileChangeTypeDidOpen},
 	)
 
-	_, rng, _ := completionLabels(t, ss, "file:///tmp/underflow.thrift", types.Position{Line: 0, Character: 9})
+	_, rng, _ := completionLabels(t, ss, "file:///tmp/underflow.thrift", protocol.Position{Line: 0, Character: 9})
 	assert.LessOrEqual(t, rng.Start.Character, uint32(9), "edit range must not wrap")
 }
 

@@ -45,7 +45,7 @@ func Ranges(ctx context.Context, ss *cache.Snapshot, file uri.URI) []protocol.Fo
 		}
 	}
 
-	if ann := nodeAnnotations(doc, doc.Nodes); len(ann) > 0 {
+	if ann := nodeAnnotations(doc.Nodes); len(ann) > 0 {
 		for _, a := range ann {
 			if r, ok := spanRange(pf, a.TokStart(), a.TokEnd()); ok {
 				ranges = append(ranges, r)
@@ -106,7 +106,7 @@ func bracedRange(pf *cache.ParsedFile, n syntax.Node) (protocol.FoldingRange, bo
 
 // nodeAnnotations collects the annotations of every top-level node, in
 // source order.
-func nodeAnnotations(doc *syntax.Document, nodes []syntax.Node) []*syntax.Annotations {
+func nodeAnnotations(nodes []syntax.Node) []*syntax.Annotations {
 	var anns []*syntax.Annotations
 
 	for _, n := range nodes {

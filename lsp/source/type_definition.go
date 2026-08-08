@@ -24,27 +24,13 @@ func TypeDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos p
 
 	switch target.kind {
 	case TargetTypeName:
-		return typeNameDefinition(ctx, ss, file, pf, target)
+		return typeNameDefinition(ctx, NewIndex(ss), pf, target)
 	case TargetConstValue:
 		// The type definition of a constant value is the value's own
 		// definition: the enum value or const it references.
-		astFile, id, err := FindConstValueDefinition(ctx, ss, file, pf.AST(), target.node.(*syntax.ConstValue))
-		if err != nil {
-			return nil, err
-		}
-
-		if id == nil {
-			return nil, nil
-		}
-
-		loc, err := jumpInFile(ctx, ss, astFile, id)
-		if err != nil {
-			return nil, err
-		}
-
-		return []protocol.Location{loc}, nil
+		return constValueDefinition(ctx, NewIndex(ss), pf, target)
 	case TargetDefinition:
-		return declarationTypeDefinition(ctx, ss, file, pf, target)
+		return declarationTypeDefinition(ctx, NewIndex(ss), pf, target)
 	}
 
 	return res, err
@@ -52,7 +38,7 @@ func TypeDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos p
 
 // declarationTypeDefinition jumps to the definition of the declared type of
 // a field, typedef, function, or const under the cursor.
-func declarationTypeDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
+func declarationTypeDefinition(ctx context.Context, ix *Index, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
 	var ft *syntax.FieldType
 
 	switch parent := target.parent.(type) {
@@ -70,16 +56,12 @@ func declarationTypeDefinition(ctx context.Context, ss *cache.Snapshot, file uri
 		return nil, nil
 	}
 
-	astFile, id, _, err := FindTypeDefinition(ctx, ss, file, pf.AST(), ft)
-	if err != nil {
+	def, err := ix.ResolveType(ctx, pf, ft)
+	if err != nil || def == nil {
 		return nil, err
 	}
 
-	if id == nil {
-		return nil, nil
-	}
-
-	loc, err := jumpInFile(ctx, ss, astFile, id)
+	loc, err := jumpInFile(ctx, ix.ss, def.File, def.Name)
 	if err != nil {
 		return nil, err
 	}

@@ -3,7 +3,6 @@ package cache
 import (
 	"context"
 	"log/slog"
-	"math/rand"
 	"slices"
 	"strings"
 	"sync"
@@ -12,11 +11,6 @@ import (
 )
 
 type View struct {
-	id int64
-
-	// name is the user-specified name of this view.
-	name string
-
 	// TODO(jpf): view 的设计并不合理
 	// workspace folder
 	folder uri.URI
@@ -36,10 +30,8 @@ type View struct {
 	snapshotRelease func()
 }
 
-func NewView(name string, folder uri.URI, fs FileSource, includePaths []string) *View {
+func NewView(folder uri.URI, fs FileSource, includePaths []string) *View {
 	view := &View{
-		id:           rand.Int63(),
-		name:         name,
 		folder:       folder,
 		fs:           fs,
 		knownFiles:   make(map[uri.URI]bool),

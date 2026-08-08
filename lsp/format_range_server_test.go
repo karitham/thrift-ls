@@ -40,7 +40,7 @@ struct C { 3: i64 c }
 
 	// applyEdits applies the edits to the given text via the mapper.
 	applyEdits := func(text string, edits []protocol.TextEdit) string {
-		got, err := mapper.NewMapper(fileURI, []byte(text)).ApplyEdits(edits)
+		got, err := mapper.NewMapper([]byte(text)).ApplyEdits(edits)
 		require.NoError(t, err)
 
 		return string(got)

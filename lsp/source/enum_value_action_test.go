@@ -112,7 +112,7 @@ enum B {
 
 			edits := act.Edit.Changes["file:///tmp/user.thrift"]
 
-			got, err := mapper.NewMapper("file:///tmp/user.thrift", []byte(tt.content)).ApplyEdits(edits)
+			got, err := mapper.NewMapper([]byte(tt.content)).ApplyEdits(edits)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, string(got))
 		})

@@ -3,15 +3,12 @@ package cache
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"sync"
 
 	"go.lsp.dev/uri"
 )
 
 type Session struct {
-	id int64
-
 	// cache is shared global
 	cache *Cache
 
@@ -26,7 +23,6 @@ type Session struct {
 
 func NewSession(cache *Cache) *Session {
 	sess := &Session{
-		id:        rand.Int63(),
 		cache:     cache,
 		views:     make([]*View, 0),
 		viewMap:   make(map[uri.URI]*View),
@@ -48,7 +44,7 @@ func (s *Session) AddView(folder uri.URI) *View {
 		}
 	}
 
-	view := NewView(folder.Path(), folder, s.overlayFS, s.cache.IncludePaths)
+	view := NewView(folder, s.overlayFS, s.cache.IncludePaths)
 	s.views = append(s.views, view)
 
 	return view
@@ -113,6 +109,10 @@ func (s *Session) ViewOf(fileURI uri.URI) (*View, error) {
 		}
 	}
 
+	// Fallback: the file is not inside any view's folder (an include
+	// outside the root, or a stray URI). The first view is the session's
+	// default; silently treating it as no error mirrors single-root
+	// server deployments where every file belongs to the one view.
 	return s.views[0], nil
 }
 

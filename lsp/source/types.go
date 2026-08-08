@@ -4,13 +4,11 @@ import (
 	"go.lsp.dev/protocol"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/lsp/types"
 )
 
 type CompletionRequest struct {
-	TriggerKind int
-	Pos         types.Position
-	Fh          cache.FileHandle
+	Pos protocol.Position
+	Fh  cache.FileHandle
 }
 
 type CompletionItem struct {
@@ -28,8 +26,6 @@ type CompletionItem struct {
 
 	Kind       protocol.CompletionItemKind
 	Deprecated bool
-
-	Score int
 
 	// Documentation holds document text for this completion
 	Documentation string

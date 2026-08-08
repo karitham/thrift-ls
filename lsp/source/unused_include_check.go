@@ -87,9 +87,9 @@ func unusedIncludeDiagnostics(ctx context.Context, ss *cache.Snapshot, file uri.
 }
 
 // usedIncludes marks every include that at least one reference in the
-// document resolves into. Resolution goes through the definition finders,
-// which handle both qualified ("base.Type") and unqualified names that
-// resolve through the include chain.
+// document resolves into. Resolution goes through the per-file reference
+// index, which handles both qualified ("base.Type") and unqualified names
+// that resolve through the include chain.
 func usedIncludes(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile) map[*syntax.Include]bool {
 	resolver := ss.Resolver()
 	includeByFile := make(map[uri.URI]*syntax.Include)
@@ -102,14 +102,15 @@ func usedIncludes(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cac
 
 	used := make(map[*syntax.Include]bool)
 	seen := make(map[string]bool)
+	ix := NewIndex(ss)
 
-	for _, name := range referencedNames(pf.AST()) {
-		if seen[name] {
+	for _, ref := range pf.Index().References() {
+		if seen[ref.Name] {
 			continue
 		}
-		seen[name] = true
+		seen[ref.Name] = true
 
-		if dst, ok := resolveReferenceFile(ctx, ss, file, pf.AST(), name); ok {
+		if dst, ok := resolveReferenceFile(ctx, ix, pf, ref); ok {
 			if inc, ok := includeByFile[dst]; ok {
 				used[inc] = true
 			}
@@ -119,118 +120,41 @@ func usedIncludes(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cac
 	return used
 }
 
-// resolveReferenceFile returns the file a reference name resolves to, or
+// resolveReferenceFile returns the file the reference resolves to, or
 // false when it resolves nowhere or into the current file. Type, const
-// value, and service references are all considered; each finder resolves
-// include-qualified names itself.
-func resolveReferenceFile(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *syntax.Document, name string) (uri.URI, bool) {
-	ft := &syntax.FieldType{Kind: syntax.TypeIdent, Ident: &syntax.Identifier{Text: name}}
-	if dst, id, _, err := FindTypeDefinition(ctx, ss, file, ast, ft); err == nil && id != nil && dst != file {
-		return dst, true
-	}
+// value, and service references resolve through their own finder.
+func resolveReferenceFile(ctx context.Context, ix *Index, pf *cache.ParsedFile, ref cache.Reference) (uri.URI, bool) {
+	var def *Resolved
+	var err error
 
-	cv := &syntax.ConstValue{Kind: syntax.ValueIdent, Text: name}
-	if dst, id, err := FindConstValueDefinition(ctx, ss, file, ast, cv); err == nil && id != nil && dst != file {
-		return dst, true
-	}
-
-	id := &syntax.Identifier{Text: name}
-	if dst, found, err := FindServiceDefinition(ctx, ss, file, ast, id); err == nil && found != nil && dst != file {
-		return dst, true
-	}
-
-	return "", false
-}
-
-// referencedNames collects every identifier used in a reference position:
-// field, argument, throws, return, typedef, and const types; const value
-// identifiers; and service extends.
-func referencedNames(doc *syntax.Document) []string {
-	var names []string
-
-	addType := func(t *syntax.FieldType) {
-		walkTypeIdents(t, func(text string) { names = append(names, text) })
-	}
-	addValue := func(v *syntax.ConstValue) {
-		walkValueIdents(v, func(text string) { names = append(names, text) })
-	}
-
-	doc.WalkFieldLists(func(fields []*syntax.Field, _ syntax.FieldListKind) {
-		for _, f := range fields {
-			addType(f.Type)
-			addValue(f.Value)
-		}
-	})
-
-	for _, td := range doc.Typedefs() {
-		addType(td.Type)
-	}
-
-	for _, cs := range doc.Consts() {
-		addType(cs.Type)
-		addValue(cs.Value)
-	}
-
-	for _, svc := range doc.Services() {
-		if svc.Extends != nil {
-			names = append(names, svc.Extends.Text)
+	switch ref.Kind {
+	case cache.RefFieldType, cache.RefSignatureType:
+		id, ok := ref.Node.(*syntax.Identifier)
+		if !ok {
+			return "", false
 		}
 
-		for _, fn := range svc.Functions {
-			addType(fn.Type)
-
-			for _, arg := range fn.Args {
-				addType(arg.Type)
-			}
-
-			if fn.Throws != nil {
-				for _, f := range fn.Throws.Fields {
-					addType(f.Type)
-					addValue(f.Value)
-				}
-			}
+		ft := &syntax.FieldType{Kind: syntax.TypeIdent, Ident: id}
+		def, err = ix.ResolveType(ctx, pf, ft)
+	case cache.RefConstValue:
+		cv, ok := ref.Node.(*syntax.ConstValue)
+		if !ok {
+			return "", false
 		}
-	}
 
-	return names
-}
-
-// walkTypeIdents calls f with every identifier of a type reference,
-// including nested container types.
-func walkTypeIdents(t *syntax.FieldType, f func(string)) {
-	if t == nil {
-		return
-	}
-
-	switch t.Kind {
-	case syntax.TypeIdent:
-		if t.Ident != nil {
-			f(t.Ident.Text)
+		def, err = ix.ResolveValue(ctx, pf, cv)
+	case cache.RefServiceExtends:
+		id, ok := ref.Node.(*syntax.Identifier)
+		if !ok {
+			return "", false
 		}
-	case syntax.TypeMap, syntax.TypeList, syntax.TypeSet:
-		walkTypeIdents(t.KeyType, f)
-		walkTypeIdents(t.ValueType, f)
-	}
-}
 
-// walkValueIdents calls f with every identifier of a constant value,
-// descending into maps and lists.
-func walkValueIdents(v *syntax.ConstValue, f func(string)) {
-	if v == nil {
-		return
+		def, err = ix.ResolveService(ctx, pf, id)
 	}
 
-	switch v.Kind {
-	case syntax.ValueIdent:
-		f(v.Text)
-	case syntax.ValueList:
-		for _, item := range v.List {
-			walkValueIdents(item, f)
-		}
-	case syntax.ValueMap:
-		for _, entry := range v.Map {
-			walkValueIdents(entry.Key, f)
-			walkValueIdents(entry.Value, f)
-		}
+	if err != nil || def == nil || def.File == pf.URI() {
+		return "", false
 	}
+
+	return def.File, true
 }

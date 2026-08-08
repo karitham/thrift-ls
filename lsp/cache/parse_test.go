@@ -33,7 +33,6 @@ struct Xtruct3
 }
 					`),
 					version: 0,
-					saved:   false,
 				},
 			},
 			assertion: assert.NoError,
@@ -55,7 +54,6 @@ struct Xtruct3
 }
 					`),
 					version: 0,
-					saved:   false,
 				},
 			},
 			assertion: assert.NoError,

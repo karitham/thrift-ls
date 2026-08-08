@@ -3,8 +3,6 @@ package mapper
 import (
 	"testing"
 	"unicode/utf8"
-
-	"go.lsp.dev/uri"
 )
 
 // FuzzOffsetRoundTrip checks that byte offsets round-trip through
@@ -38,7 +36,7 @@ func FuzzOffsetRoundTrip(f *testing.F) {
 			return
 		}
 
-		m := NewMapper(uri.File("/tmp/fuzz.thrift"), content)
+		m := NewMapper(content)
 
 		pos, err := m.OffsetToLSPPosition(offset)
 		if err != nil {

@@ -15,7 +15,7 @@ import (
 	"github.com/karitham/thrift-ls/lsp/source"
 )
 
-func (s *Server) initialize(ctx context.Context, params *protocol.InitializeParams) (result *protocol.InitializeResult, err error) {
+func (s *Server) initialize(params *protocol.InitializeParams) (result *protocol.InitializeResult, err error) {
 	// Prefer WorkspaceFolders; fall back to the deprecated RootURI/RootPath
 	// fields for older clients.
 	folders := make([]uri.URI, 0, 1)

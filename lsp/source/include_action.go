@@ -3,11 +3,8 @@ package source
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"path"
 	"path/filepath"
-	"sort"
-	"strings"
 
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
@@ -110,12 +107,12 @@ func MakeAddMissingIncludeAction(ctx context.Context, ss *cache.Snapshot, fh cac
 		return nil, nil
 	}
 
-	defFile, ok := findTypeInFolder(ctx, ss, fh.URI(), name)
-	if !ok || defFile == fh.URI() {
+	def, err := NewIndex(ss).FindInWorkspace(ctx, name)
+	if err != nil || def == nil || def.File == fh.URI() {
 		return nil, nil
 	}
 
-	incPath, err := filepath.Rel(path.Dir(fh.URI().Path()), defFile.Path())
+	incPath, err := filepath.Rel(path.Dir(fh.URI().Path()), def.File.Path())
 	if err != nil {
 		return nil, nil
 	}
@@ -179,46 +176,4 @@ func missingTypeAt(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle,
 	}
 
 	return typeReferenceName(ft)
-}
-
-// findTypeInFolder searches every thrift file under the workspace folder
-// (excluding file) for a definition of name, returning the first match in
-// lexical order.
-func findTypeInFolder(ctx context.Context, ss *cache.Snapshot, file uri.URI, name string) (uri.URI, bool) {
-	root := ss.View().Folder().Path()
-	if root == "" {
-		return "", false
-	}
-
-	var files []string
-
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-
-		if !d.IsDir() && strings.HasSuffix(d.Name(), ".thrift") && uri.File(p) != file {
-			files = append(files, p)
-		}
-
-		return nil
-	})
-	if err != nil {
-		return "", false
-	}
-
-	sort.Strings(files)
-
-	for _, p := range files {
-		pf, err := ss.Parse(ctx, uri.File(p))
-		if err != nil || pf.AST() == nil {
-			continue
-		}
-
-		if _, ok := pf.Definitions()[name]; ok {
-			return uri.File(p), true
-		}
-	}
-
-	return "", false
 }

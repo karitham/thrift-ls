@@ -23,7 +23,7 @@ func buildFolderSnapshotForTest(t *testing.T, folder string, files []*cache.File
 	fs := cache.NewOverlayFS(c)
 	_ = fs.Update(t.Context(), files)
 
-	view := cache.NewView("test", uri.File(folder), fs, nil)
+	view := cache.NewView(uri.File(folder), fs, nil)
 
 	return cache.NewSnapshot(view, nil)
 }
@@ -65,7 +65,7 @@ func Test_MakeRemoveUnusedIncludeAction(t *testing.T) {
 	assert.Equal(t, protocol.CodeActionKindQuickFix, *act.Kind)
 
 	edits := act.Edit.Changes[uri.File(filePath)]
-	got, err := mapper.NewMapper(uri.File(filePath), []byte("include \"shared.thrift\"\nstruct S { 1: i32 a }\n")).ApplyEdits(edits)
+	got, err := mapper.NewMapper([]byte("include \"shared.thrift\"\nstruct S { 1: i32 a }\n")).ApplyEdits(edits)
 	require.NoError(t, err)
 	assert.Equal(t, "struct S { 1: i32 a }\n", string(got))
 }
@@ -122,7 +122,7 @@ func Test_MakeAddMissingIncludeAction(t *testing.T) {
 	assert.Equal(t, `Add include "shared.thrift"`, act.Title)
 
 	edits := act.Edit.Changes[uri.File(filePath)]
-	got, err := mapper.NewMapper(uri.File(filePath), []byte("struct S {\n  1: User u,\n}\n")).ApplyEdits(edits)
+	got, err := mapper.NewMapper([]byte("struct S {\n  1: User u,\n}\n")).ApplyEdits(edits)
 	require.NoError(t, err)
 	assert.Equal(t, "include \"shared.thrift\"\nstruct S {\n  1: User u,\n}\n", string(got))
 }
@@ -155,7 +155,7 @@ func Test_MakeAddMissingIncludeAction_InsertAfterExistingIncludes(t *testing.T) 
 	require.NotNil(t, act)
 
 	edits := act.Edit.Changes[uri.File(filePath)]
-	got, err := mapper.NewMapper(uri.File(filePath), []byte("include \"base.thrift\"\n\nstruct S {\n  1: User u,\n}\n")).ApplyEdits(edits)
+	got, err := mapper.NewMapper([]byte("include \"base.thrift\"\n\nstruct S {\n  1: User u,\n}\n")).ApplyEdits(edits)
 	require.NoError(t, err)
 	assert.Equal(t, "include \"base.thrift\"\ninclude \"shared.thrift\"\n\nstruct S {\n  1: User u,\n}\n", string(got))
 }

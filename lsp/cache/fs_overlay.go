@@ -24,19 +24,6 @@ func NewOverlayFS(delegate FileSource) *overlayFS {
 	}
 }
 
-// Overlays returns a new unordered array of overlays.
-func (fs *overlayFS) Overlays() []*Overlay {
-	fs.mu.Lock()
-	defer fs.mu.Unlock()
-
-	overlays := make([]*Overlay, 0, len(fs.overlays))
-	for _, overlay := range fs.overlays {
-		overlays = append(overlays, overlay)
-	}
-
-	return overlays
-}
-
 func (fs *overlayFS) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, error) {
 	slog.Debug("reading uri", "uri", uri)
 	fs.mu.Lock()
@@ -52,7 +39,7 @@ func (fs *overlayFS) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, err
 
 // Update applies changes to the overlay set. DidClose changes remove the
 // overlay; all other types create or replace it.
-func (fs *overlayFS) Update(ctx context.Context, changes []*FileChange) error {
+func (fs *overlayFS) Update(_ context.Context, changes []*FileChange) error {
 	for _, change := range changes {
 		if change.From == FileChangeTypeDidClose {
 			fs.Forget(change.URI)
@@ -60,21 +47,7 @@ func (fs *overlayFS) Update(ctx context.Context, changes []*FileChange) error {
 			continue
 		}
 
-		var base []byte
-
-		if change.From == FileChangeTypeDidChange {
-			fh, err := fs.ReadFile(ctx, change.URI)
-			if err != nil {
-				return err
-			}
-
-			base, err = fh.Content()
-			if err != nil {
-				return err
-			}
-		}
-
-		overlay := NewOverlay(change.URI, change.FullContent(base), int32(change.Version))
+		overlay := NewOverlay(change.URI, change.FullContent(), int32(change.Version))
 
 		slog.Debug("new overlay content", "content", string(overlay.content), "uri", change.URI)
 
@@ -109,12 +82,7 @@ func (fs *overlayFS) Forget(uri uri.URI) {
 type Overlay struct {
 	uri     uri.URI
 	content []byte
-	hash    Hash
 	version int32
-
-	// saved is true if a file matches the state on disk,
-	// and therefore does not need to be part of the overlay sent to go/packages.
-	saved bool
 }
 
 func NewOverlay(uri uri.URI, content []byte, version int32) *Overlay {
@@ -122,19 +90,10 @@ func NewOverlay(uri uri.URI, content []byte, version int32) *Overlay {
 		uri:     uri,
 		content: content,
 		version: version,
-		hash:    HashOf(content),
 	}
 }
 
 func (o *Overlay) URI() uri.URI { return o.uri }
 
-func (o *Overlay) FileIdentity() FileIdentity {
-	return FileIdentity{
-		URI:  o.uri,
-		Hash: o.hash,
-	}
-}
-
 func (o *Overlay) Content() ([]byte, error) { return o.content, nil }
 func (o *Overlay) Version() int32           { return o.version }
-func (o *Overlay) Saved() bool              { return o.saved }

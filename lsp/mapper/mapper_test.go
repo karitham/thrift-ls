@@ -4,20 +4,18 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.lsp.dev/uri"
+	"go.lsp.dev/protocol"
 
-	"github.com/karitham/thrift-ls/lsp/types"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
 func TestMapper_LSPPosToParserPosition(t *testing.T) {
 	type fields struct {
-		fileURI uri.URI
 		content []byte
 	}
 
 	type args struct {
-		pos types.Position
+		pos protocol.Position
 	}
 
 	content := `struct demo {
@@ -38,11 +36,10 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 		{
 			name: "ascii",
 			fields: fields{
-				fileURI: "test/test.thrift",
 				content: []byte(content),
 			},
 			args: args{
-				pos: types.Position{
+				pos: protocol.Position{
 					Line:      1,
 					Character: 5,
 				},
@@ -57,11 +54,10 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 		{
 			name: "ascii line exceeded",
 			fields: fields{
-				fileURI: "test/test.thrift",
 				content: []byte(content),
 			},
 			args: args{
-				pos: types.Position{
+				pos: protocol.Position{
 					Line:      3,
 					Character: 5,
 				},
@@ -72,11 +68,10 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 		{
 			name: "ascii character exceeded",
 			fields: fields{
-				fileURI: "test/test.thrift",
 				content: []byte(content),
 			},
 			args: args{
-				pos: types.Position{
+				pos: protocol.Position{
 					Line:      1,
 					Character: 28,
 				},
@@ -87,11 +82,10 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 		{
 			name: "ascii character no exceeded end of file",
 			fields: fields{
-				fileURI: "test/test.thrift",
 				content: []byte(content),
 			},
 			args: args{
-				pos: types.Position{
+				pos: protocol.Position{
 					Line:      2,
 					Character: 1,
 				},
@@ -106,11 +100,10 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 		{
 			name: "ascii character exceeded end of file",
 			fields: fields{
-				fileURI: "test/test.thrift",
 				content: []byte(content),
 			},
 			args: args{
-				pos: types.Position{
+				pos: protocol.Position{
 					Line:      2,
 					Character: 2,
 				},
@@ -121,11 +114,10 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 		{
 			name: "rune",
 			fields: fields{
-				fileURI: "test/test.thrift",
 				content: []byte(runeContent),
 			},
 			args: args{
-				pos: types.Position{
+				pos: protocol.Position{
 					Line:      0,
 					Character: 12,
 				},
@@ -140,11 +132,10 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 		{
 			name: "rune line exceeded",
 			fields: fields{
-				fileURI: "test/test.thrift",
 				content: []byte(content),
 			},
 			args: args{
-				pos: types.Position{
+				pos: protocol.Position{
 					Line:      2,
 					Character: 12,
 				},
@@ -155,11 +146,10 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 		{
 			name: "rune character exceeded",
 			fields: fields{
-				fileURI: "test/test.thrift",
 				content: []byte(content),
 			},
 			args: args{
-				pos: types.Position{
+				pos: protocol.Position{
 					Line:      0,
 					Character: 15,
 				},
@@ -172,7 +162,6 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 		tt := tests[i]
 		t.Run(tt.name, func(t *testing.T) {
 			m := &Mapper{
-				fileURI: tt.fields.fileURI,
 				content: tt.fields.content,
 			}
 			got, err := m.LSPPosToParserPosition(tt.args.pos)
@@ -218,32 +207,32 @@ func TestGetLSPEndPosition(t *testing.T) {
 	tests := []struct {
 		name    string
 		content string
-		want    types.Position
+		want    protocol.Position
 	}{
 		{
 			name:    "single line",
 			content: "struct Gundam {}",
-			want:    types.Position{Line: 0, Character: 16},
+			want:    protocol.Position{Line: 0, Character: 16},
 		},
 		{
 			name:    "multiline without trailing newline",
 			content: "enum ZeonForces {\n  ZAKU_I\n}",
-			want:    types.Position{Line: 2, Character: 1},
+			want:    protocol.Position{Line: 2, Character: 1},
 		},
 		{
 			name:    "trailing newline has an empty last line",
 			content: "struct Gundam {\n}\n",
-			want:    types.Position{Line: 2, Character: 0},
+			want:    protocol.Position{Line: 2, Character: 0},
 		},
 		{
 			name:    "non-ascii on the last line",
 			content: `const string s = "モビルスーツ"`,
-			want:    types.Position{Line: 0, Character: 25},
+			want:    protocol.Position{Line: 0, Character: 25},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := NewMapper("file:///tmp/test.thrift", []byte(tt.content))
+			m := NewMapper([]byte(tt.content))
 			assert.Equal(t, tt.want, m.GetLSPEndPosition())
 		})
 	}

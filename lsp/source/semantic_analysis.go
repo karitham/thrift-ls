@@ -48,24 +48,24 @@ func (s *SemanticAnalysis) diagnostic(ctx context.Context, ss *cache.Snapshot, c
 		slog.Debug("parse failed", "err", err)
 	}
 
-	res := s.checkDefinitionExist(ctx, ss, changeFile, pf)
+	res := s.checkDefinitionExist(ctx, ss, pf)
 
 	return res, nil
 }
 
 // checkDefinitionExist reports field types, const values, and return types
 // that reference undefined definitions.
-func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile) []protocol.Diagnostic {
+func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, ss *cache.Snapshot, pf *cache.ParsedFile) []protocol.Diagnostic {
 	ret := make([]protocol.Diagnostic, 0)
 
 	processStructLike := func(fields []*syntax.Field) {
 		for i := range fields {
 			field := fields[i]
-			items := s.checkTypeExist(ctx, ss, file, pf, field.Type)
+			items := s.checkTypeExist(ctx, ss, pf, field.Type)
 			ret = append(ret, items...)
 
 			if field.Value != nil {
-				items := s.checkConstValueExist(ctx, ss, file, pf, field.Value)
+				items := s.checkConstValueExist(ctx, ss, pf, field.Value)
 				ret = append(ret, items...)
 
 				dig := s.checkConstValueMatchType(pf, field)
@@ -81,13 +81,13 @@ func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, ss *cache.S
 	})
 
 	for _, cst := range pf.AST().Consts() {
-		items := s.checkConstValueExist(ctx, ss, file, pf, cst.Value)
+		items := s.checkConstValueExist(ctx, ss, pf, cst.Value)
 		ret = append(ret, items...)
 	}
 
 	for _, svc := range pf.AST().Services() {
 		for _, fn := range svc.Functions {
-			items := s.checkTypeExist(ctx, ss, file, pf, fn.Type)
+			items := s.checkTypeExist(ctx, ss, pf, fn.Type)
 			ret = append(ret, items...)
 		}
 	}
@@ -96,7 +96,7 @@ func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, ss *cache.S
 }
 
 func (s *SemanticAnalysis) checkConstValueExist(ctx context.Context, ss *cache.Snapshot,
-	file uri.URI, pf *cache.ParsedFile, cst *syntax.ConstValue,
+	pf *cache.ParsedFile, cst *syntax.ConstValue,
 ) (res []protocol.Diagnostic) {
 	if cst == nil || cst.Kind != syntax.ValueIdent {
 		return res
@@ -106,8 +106,8 @@ func (s *SemanticAnalysis) checkConstValueExist(ctx context.Context, ss *cache.S
 		return res
 	}
 
-	_, id, err := FindConstValueDefinition(ctx, ss, file, pf.AST(), cst)
-	if err != nil || id == nil {
+	def, err := NewIndex(ss).ResolveValue(ctx, pf, cst)
+	if err != nil || def == nil {
 		res = append(res, protocol.Diagnostic{
 			Range:    nodeRange(pf, cst),
 			Severity: protocol.DiagnosticSeverityError,
@@ -226,7 +226,7 @@ func typeName(ft *syntax.FieldType) string {
 }
 
 func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, ss *cache.Snapshot,
-	file uri.URI, pf *cache.ParsedFile, ft *syntax.FieldType,
+	pf *cache.ParsedFile, ft *syntax.FieldType,
 ) (res []protocol.Diagnostic) {
 	if ft == nil {
 		return res
@@ -234,12 +234,12 @@ func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, ss *cache.Snapsho
 
 	switch ft.Kind {
 	case syntax.TypeMap, syntax.TypeList, syntax.TypeSet:
-		return s.checkContainerTypeExist(ctx, ss, file, pf, ft)
+		return s.checkContainerTypeExist(ctx, ss, pf, ft)
 	case syntax.TypeBase:
 		return nil
 	case syntax.TypeIdent:
-		_, id, _, err := FindTypeDefinition(ctx, ss, file, pf.AST(), ft)
-		if err != nil || id == nil {
+		def, err := NewIndex(ss).ResolveType(ctx, pf, ft)
+		if err != nil || def == nil {
 			res = append(res, protocol.Diagnostic{
 				Range:    nodeRange(pf, ft.Ident),
 				Severity: protocol.DiagnosticSeverityError,
@@ -254,20 +254,20 @@ func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, ss *cache.Snapsho
 }
 
 func (s *SemanticAnalysis) checkContainerTypeExist(ctx context.Context,
-	ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, ft *syntax.FieldType,
+	ss *cache.Snapshot, pf *cache.ParsedFile, ft *syntax.FieldType,
 ) (res []protocol.Diagnostic) {
 	if ft.KeyType != nil {
-		res = append(res, s.checkTypeExist(ctx, ss, file, pf, ft.KeyType)...)
+		res = append(res, s.checkTypeExist(ctx, ss, pf, ft.KeyType)...)
 
 		if ft.Kind == syntax.TypeMap {
-			if dig := s.checkMapKeyScalar(ctx, ss, file, pf, ft.KeyType); dig != nil {
+			if dig := s.checkMapKeyScalar(ctx, ss, pf, ft.KeyType); dig != nil {
 				res = append(res, *dig)
 			}
 		}
 	}
 
 	if ft.ValueType != nil {
-		res = append(res, s.checkTypeExist(ctx, ss, file, pf, ft.ValueType)...)
+		res = append(res, s.checkTypeExist(ctx, ss, pf, ft.ValueType)...)
 	}
 
 	return res
@@ -276,8 +276,8 @@ func (s *SemanticAnalysis) checkContainerTypeExist(ctx context.Context,
 // checkMapKeyScalar returns an error when the map key type is not scalar:
 // thrift requires map keys to be a base type or an enum. Structs, unions,
 // exceptions, and containers cannot be keys; typedefs are followed.
-func (s *SemanticAnalysis) checkMapKeyScalar(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, key *syntax.FieldType) *protocol.Diagnostic {
-	kind := s.mapKeyKind(ctx, ss, file, pf.AST(), key, 0)
+func (s *SemanticAnalysis) checkMapKeyScalar(ctx context.Context, ss *cache.Snapshot, pf *cache.ParsedFile, key *syntax.FieldType) *protocol.Diagnostic {
+	kind := s.mapKeyKind(ctx, ss, pf, key, 0)
 	if kind == "" {
 		return nil
 	}
@@ -294,7 +294,7 @@ func (s *SemanticAnalysis) checkMapKeyScalar(ctx context.Context, ss *cache.Snap
 // mapKeyKind reports why key is not a scalar map key: the container kind,
 // or the definition kind for struct-like types. "" means scalar: a base
 // type, an enum, or a typedef chain ending there.
-func (s *SemanticAnalysis) mapKeyKind(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *syntax.Document, key *syntax.FieldType, depth int) string {
+func (s *SemanticAnalysis) mapKeyKind(ctx context.Context, ss *cache.Snapshot, pf *cache.ParsedFile, key *syntax.FieldType, depth int) string {
 	if key == nil {
 		return ""
 	}
@@ -314,28 +314,23 @@ func (s *SemanticAnalysis) mapKeyKind(ctx context.Context, ss *cache.Snapshot, f
 			return ""
 		}
 
-		dstFile, id, kind, err := FindTypeDefinition(ctx, ss, file, ast, key)
-		if err != nil || id == nil {
+		def, err := NewIndex(ss).ResolveType(ctx, pf, key)
+		if err != nil || def == nil {
 			return ""
 		}
 
-		switch kind {
+		switch def.Kind {
 		case DefinitionEnum:
 			return ""
 		case DefinitionStruct, DefinitionUnion, DefinitionException:
-			return kindLabel(kind)
+			return kindLabel(def.Kind)
 		case DefinitionTypedef:
-			dstPf, err := parseDefinitionFile(ctx, ss, dstFile)
-			if err != nil {
-				return ""
-			}
-
-			td, ok := dstPf.Definitions()[id.Text].(*syntax.Typedef)
+			td, ok := def.Node.(*syntax.Typedef)
 			if !ok {
 				return ""
 			}
 
-			return s.mapKeyKind(ctx, ss, dstFile, dstPf.AST(), td.Type, depth+1)
+			return s.mapKeyKind(ctx, ss, def.Parsed, td.Type, depth+1)
 		}
 	}
 

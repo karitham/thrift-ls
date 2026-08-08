@@ -27,11 +27,9 @@ type Server struct {
 	// initializationOptions and didChangeConfiguration are overlaid on it.
 	base options.Patch
 
-	// opts is the effective configuration (base with workspace settings
-	// applied) and formatOpts its resolved formatter options. Both are
-	// guarded by optsMu because settings can change between requests.
+	// formatOpts is the effective formatter configuration. It is guarded by
+	// optsMu because settings can change between requests.
 	optsMu     sync.RWMutex
-	opts       options.Patch
 	formatOpts formatter.Options
 
 	// folders are the workspace folders from the initialize request; the
@@ -57,7 +55,6 @@ func NewServer(c *cache.Cache, client protocol.Client, base options.Patch) *Serv
 		client:  client,
 		base:    base,
 	}
-	s.opts = base
 	s.formatOpts, _ = base.Formatter()
 
 	return s
@@ -75,7 +72,6 @@ func (s *Server) setWorkspaceSettings(overlay options.Patch) {
 	}
 
 	s.optsMu.Lock()
-	s.opts = merged
 	s.formatOpts = fopts
 	s.optsMu.Unlock()
 
@@ -94,7 +90,7 @@ func (s *Server) Initialize(ctx context.Context, params *protocol.InitializePara
 	slog.Debug("Initialize called")
 	defer slog.Debug("Initialize finished")
 
-	return s.initialize(ctx, params)
+	return s.initialize(params)
 }
 
 func (s *Server) Initialized(ctx context.Context, params *protocol.InitializedParams) (err error) {

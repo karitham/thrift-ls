@@ -53,7 +53,7 @@ func TestSnapshotCloneIsolation(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, clonePf.AST().Structs()[0].Fields, 2, "clone parses the new content")
 
-	origPf := ss.parsedCache.Get("file:///tmp/federation.gundam.thrift")
+	origPf, _ := ss.parsedCache.Get("file:///tmp/federation.gundam.thrift")
 	assert.NotNil(t, origPf, "original snapshot keeps its parsed file")
 	assert.Len(t, origPf.AST().Structs()[0].Fields, 1, "original snapshot is unaffected by clone writes")
 

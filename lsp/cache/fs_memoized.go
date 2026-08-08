@@ -25,20 +25,11 @@ type DiskFile struct {
 	uri     uri.URI
 	modTime time.Time
 	content []byte
-	hash    Hash
 	err     error
 }
 
 func (h *DiskFile) URI() uri.URI { return h.uri }
 
-func (h *DiskFile) FileIdentity() FileIdentity {
-	return FileIdentity{
-		URI:  h.uri,
-		Hash: h.hash,
-	}
-}
-
-func (h *DiskFile) Saved() bool              { return true }
 func (h *DiskFile) Version() int32           { return 0 }
 func (h *DiskFile) Content() ([]byte, error) { return h.content, h.err }
 
@@ -136,7 +127,6 @@ func readFile(ctx context.Context, uri uri.URI, mtime time.Time) (*DiskFile, err
 		modTime: mtime,
 		uri:     uri,
 		content: content,
-		hash:    HashOf(content),
 		err:     err,
 	}, nil
 }

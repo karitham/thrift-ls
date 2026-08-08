@@ -10,7 +10,7 @@ import (
 )
 
 func (s *Server) documentSymbol(ctx context.Context, params *protocol.DocumentSymbolParams) (result protocol.DocumentSymbolSlice, err error) {
-	return withSnapshot(ctx, s.session, params.TextDocument.URI, func(ss *cache.Snapshot) (protocol.DocumentSymbolSlice, error) {
+	return withSnapshot(s.session, params.TextDocument.URI, func(ss *cache.Snapshot) (protocol.DocumentSymbolSlice, error) {
 		syms := source.DocumentSymbols(ctx, ss, params.TextDocument.URI)
 
 		result := make(protocol.DocumentSymbolSlice, 0, len(syms))

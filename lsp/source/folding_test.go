@@ -28,7 +28,7 @@ func foldingRanges(t *testing.T, src string) []protocol.FoldingRange {
 	file := uri.File(filepath.Join(dir, "test.thrift"))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "test.thrift"), []byte(src), 0o644))
 
-	view := cache.NewView("test", uri.File(dir), cache.NewOverlayFS(cache.New(nil)), nil)
+	view := cache.NewView(uri.File(dir), cache.NewOverlayFS(cache.New(nil)), nil)
 	view.FileChange(t.Context(), []*cache.FileChange{{
 		URI:     file,
 		Version: 0,

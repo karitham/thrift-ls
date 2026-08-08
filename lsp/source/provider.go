@@ -16,8 +16,6 @@ import (
 // filtering, sorting, the edit range, and the item cap stay in the shared
 // pipeline (TokenCompletion.Completion).
 type Provider interface {
-	Kind() ContextKind
-
 	// Candidates returns unfiltered candidates for the slot. The current
 	// context carries the prefix and the document.
 	Candidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, c Context) []Candidate
@@ -55,15 +53,11 @@ func providersFor(kind ContextKind) []Provider {
 
 type includeProvider struct{}
 
-func (includeProvider) Kind() ContextKind { return CtxIncludePath }
-
 func (includeProvider) Candidates(_ context.Context, ss *cache.Snapshot, file uri.URI, c Context) []Candidate {
 	return ListDirAndFiles(filepath.Dir(file.FsPath()), ss.Resolver().IncludePaths(), c.Prefix)
 }
 
 type typeProvider struct{}
-
-func (typeProvider) Kind() ContextKind { return CtxType }
 
 func (typeProvider) Candidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, c Context) []Candidate {
 	return typeCandidates(ctx, ss, file, c)
@@ -71,15 +65,11 @@ func (typeProvider) Candidates(ctx context.Context, ss *cache.Snapshot, file uri
 
 type valueProvider struct{}
 
-func (valueProvider) Kind() ContextKind { return CtxFieldValue }
-
 func (valueProvider) Candidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, c Context) []Candidate {
 	return valueCandidates(ctx, ss, file, c.Doc)
 }
 
 type keywordProvider struct{}
-
-func (keywordProvider) Kind() ContextKind { return CtxKeyword }
 
 // Candidates returns the keyword snippets and every identifier token known
 // to the file (and its includes).
@@ -99,8 +89,6 @@ func (keywordProvider) Candidates(_ context.Context, ss *cache.Snapshot, file ur
 
 type fieldNameProvider struct{}
 
-func (fieldNameProvider) Kind() ContextKind { return CtxFieldName }
-
 // Candidates returns the field modifiers and every identifier token, so a
 // field name position suggests required/optional and names from the
 // codebase — never value candidates.
@@ -118,8 +106,6 @@ func (fieldNameProvider) Candidates(_ context.Context, ss *cache.Snapshot, file 
 }
 
 type annotationKeyProvider struct{}
-
-func (annotationKeyProvider) Kind() ContextKind { return CtxAnnotationKey }
 
 // Candidates collects the annotation names used in the file and its
 // transitively included files.
@@ -173,10 +159,6 @@ func annotationKeys(doc *syntax.Document) map[string]struct{} {
 		add(td.Annotations)
 	}
 
-	for _, cst := range doc.Consts() {
-		_ = cst // consts carry no annotations
-	}
-
 	for _, st := range doc.Structs() {
 		add(st.Annotations)
 
@@ -205,8 +187,6 @@ func annotationKeys(doc *syntax.Document) map[string]struct{} {
 }
 
 type serviceExtendsProvider struct{}
-
-func (serviceExtendsProvider) Kind() ContextKind { return CtxServiceExtends }
 
 // Candidates returns the service names from the file and its includes.
 func (serviceExtendsProvider) Candidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, c Context) []Candidate {

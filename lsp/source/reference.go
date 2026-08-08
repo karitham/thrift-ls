@@ -3,7 +3,6 @@ package source
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"sort"
 	"strings"
 
@@ -14,40 +13,42 @@ import (
 	"github.com/karitham/thrift-ls/syntax"
 )
 
-var validReferenceDefinitionType = map[DefinitionKind]struct{}{
-	DefinitionStruct:    {},
-	DefinitionUnion:     {},
-	DefinitionEnum:      {},
-	DefinitionException: {},
-	DefinitionTypedef:   {},
+// highlightKind maps a reference kind to the highlight type.
+var highlightKind = map[cache.RefKind]protocol.DocumentHighlightKind{
+	cache.RefFieldType:      protocol.DocumentHighlightKindText,
+	cache.RefSignatureType:  protocol.DocumentHighlightKindText,
+	cache.RefConstValue:     protocol.DocumentHighlightKindRead,
+	cache.RefServiceExtends: protocol.DocumentHighlightKindText,
 }
 
-// Reference returns the locations of all references to the definition under
-// the cursor: type definitions, constant values, enum values, and services.
-func Reference(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) (res []protocol.Location, err error) {
-	pf, target, err := resolveTarget(ctx, ss, file, pos)
+// Reference returns every usage of the symbol at pos, including usage
+// in files that include the definition.
+func Reference(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) ([]protocol.Location, error) {
+	refs, err := searchReferences(ctx, ss, file, pos)
 	if err != nil {
 		return nil, err
 	}
 
-	refs, err := searchReferences(ctx, ss, file, pf, target)
-	if err != nil {
-		return nil, err
+	locs := make([]protocol.Location, 0, len(refs))
+	for _, r := range refs {
+		if r.loc.URI == "" {
+			continue
+		}
+
+		locs = append(locs, r.loc)
 	}
 
-	return hits(refs), nil
+	return locs, nil
 }
 
-// Highlight returns the references of the identifier at pos within the
-// same file, for document highlighting. The identifier itself is always
-// included, so the cursor word stays highlighted.
+// Highlight returns the document highlight ranges for the symbol at pos.
 func Highlight(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) ([]protocol.DocumentHighlight, error) {
 	pf, target, err := resolveTarget(ctx, ss, file, pos)
 	if err != nil {
 		return nil, err
 	}
 
-	refs, err := searchReferences(ctx, ss, file, pf, target)
+	refs, err := searchReferences(ctx, ss, file, pos)
 	if err != nil {
 		return nil, err
 	}
@@ -55,25 +56,27 @@ func Highlight(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protoc
 	out := make([]protocol.DocumentHighlight, 0, len(refs)+1)
 	seen := map[protocol.Range]bool{}
 
-	add := func(r protocol.Range) {
+	add := func(r protocol.Range, kind protocol.DocumentHighlightKind) {
 		if seen[r] {
 			return
 		}
 
 		seen[r] = true
-		out = append(out, protocol.DocumentHighlight{Range: r, Kind: protocol.DocumentHighlightKindText})
+		out = append(out, protocol.DocumentHighlight{Range: r, Kind: kind})
 	}
 
-	// The identifier at the cursor is always highlighted; the reference
-	// search already includes it when the cursor sits on a usage, so the
-	// set dedups.
 	if id := target.identifier(); id != nil {
-		add(nodeRange(pf, id))
+		add(nodeRange(pf, id), protocol.DocumentHighlightKindText)
 	}
 
 	for _, r := range refs {
 		if r.loc.URI == file {
-			add(r.loc.Range)
+			kind, ok := highlightKind[r.kind]
+			if !ok {
+				kind = protocol.DocumentHighlightKindText
+			}
+
+			add(r.loc.Range, kind)
 		}
 	}
 
@@ -90,28 +93,128 @@ func Highlight(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protoc
 }
 
 // searchReferences dispatches to the reference search for the target kind.
-func searchReferences(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) ([]referenceHit, error) {
+func searchReferences(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) ([]indexHit, error) {
+	pf, target, err := resolveTarget(ctx, ss, file, pos)
+	if err != nil {
+		return nil, err
+	}
+
+	ix := NewIndex(ss)
+
 	switch target.kind {
 	case TargetTypeName:
-		return searchTypeNameReferences(ctx, ss, file, pf, target)
+		return searchTypeNameRefs(ctx, ix, ss, pf, target)
 	case TargetConstValue:
-		return searchConstValueReferences(ctx, ss, file, pf, target)
+		return searchConstValueRefs(ctx, ix, ss, pf, target)
 	case TargetService:
-		return searchServiceReferences(ctx, ss, file, target.identifier().Text)
+		return searchServiceRefs(ctx, ix, ss, file, target.identifier().Text)
 	case TargetDefinition:
-		return searchDefinitionReferences(ctx, ss, file, pf, target)
+		return searchDefRefs(ctx, ix, ss, file, pf, target)
 	}
 
 	return nil, nil
 }
 
-// searchDefinitionReferences handles references from a definition name:
-// const and enum value names reference constant usages; struct, union,
-// enum, exception, and typedef names reference type usages.
-func searchDefinitionReferences(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) (res []referenceHit, err error) {
+// searchTypeNameRefs resolves the type reference and finds all usages.
+func searchTypeNameRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
+	ft := target.parent.(*syntax.FieldType)
+	typeName := typeReferenceName(ft)
+	if typeName == "" || IsBasicType(typeName) {
+		return nil, nil
+	}
+
+	def, err := ix.ResolveType(ctx, pf, ft)
+	if err != nil {
+		return nil, err
+	}
+
+	if def == nil {
+		return nil, nil
+	}
+
+	loc, err := jumpInFile(ctx, ss, def.File, def.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	hits := []indexHit{{loc: loc, text: def.Name.Text, kind: cache.RefFieldType}}
+
+	kinds := refKindsFor(def.Kind)
+	refs, err := ix.References(ctx, def.File, typeName, kinds...)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, h := range refs {
+		hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: cache.RefFieldType})
+	}
+
+	return hits, nil
+}
+
+// searchConstValueRefs resolves a const-value or enum-value reference.
+func searchConstValueRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
+	value := target.node.(*syntax.ConstValue)
+
+	def, err := ix.ResolveValue(ctx, pf, value)
+	if err != nil {
+		return nil, err
+	}
+
+	if def == nil {
+		return nil, nil
+	}
+
+	loc, err := jumpInFile(ctx, ss, def.File, def.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	hits := []indexHit{{loc: loc, text: def.Name.Text, kind: cache.RefConstValue}}
+
+	refs, err := ix.References(ctx, def.File, value.Text, cache.RefConstValue)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, h := range refs {
+		hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: cache.RefConstValue})
+	}
+
+	return hits, nil
+}
+
+// searchServiceRefs finds the includes and extends referencing a service.
+func searchServiceRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, file uri.URI, svcName string) ([]indexHit, error) {
+	pf, err := ss.Parse(ctx, file)
+	if err != nil || pf.AST() == nil {
+		return nil, err
+	}
+
+	def, err := ix.ResolveService(ctx, pf, &syntax.Identifier{Text: svcName})
+	if err != nil || def == nil {
+		return nil, nil
+	}
+
+	refs, err := ix.References(ctx, def.File, svcName, cache.RefServiceExtends)
+	if err != nil {
+		return nil, err
+	}
+
+	hits := make([]indexHit, 0, len(refs))
+	for _, h := range refs {
+		hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: cache.RefServiceExtends})
+	}
+
+	return hits, nil
+}
+
+// searchDefRefs handles references from a definition name: struct, union,
+// exception, enum, typedef, const, enum value, and service names.
+func searchDefRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
 	id := target.identifier()
 	if id == nil {
-		return res, err
+		return nil, nil
 	}
 
 	parent := target.parent
@@ -119,16 +222,16 @@ func searchDefinitionReferences(ctx context.Context, ss *cache.Snapshot, file ur
 	case *syntax.Const:
 		typeName := fmt.Sprintf("%s.%s", includeNameOf(file), id.Text)
 
-		return searchConstValueIdentifierReferences(ctx, ss, file, typeName)
+		return valueRefHits(ctx, ix, file, typeName)
 	case *syntax.EnumValue:
 		enum, ok := grandparent(target.path).(*syntax.Enum)
 		if !ok {
-			return res, err
+			return nil, nil
 		}
 
 		typeName := fmt.Sprintf("%s.%s.%s", includeNameOf(file), enum.Name.Text, id.Text)
 
-		return searchConstValueIdentifierReferences(ctx, ss, file, typeName)
+		return valueRefHits(ctx, ix, file, typeName)
 	case *syntax.Service:
 		svcName := id.Text
 		if strings.Contains(svcName, ".") {
@@ -142,39 +245,59 @@ func searchDefinitionReferences(ctx context.Context, ss *cache.Snapshot, file ur
 			svcName = fmt.Sprintf("%s.%s", includeNameOf(file), svcName)
 		}
 
-		return searchServiceReferences(ctx, ss, file, svcName)
+		return searchServiceRefs(ctx, ix, ss, file, svcName)
 	}
 
 	kind, ok := definitionKindOf(parent)
 	if !ok {
-		return res, err
+		return nil, nil
 	}
 
 	if _, ok := validReferenceDefinitionType[kind]; !ok {
-		return res, err
+		return nil, nil
 	}
 
 	typeName := fmt.Sprintf("%s.%s", includeNameOf(file), id.Text)
 
-	typeRefs, err := searchIdentifierReferences(ctx, ss, file, typeName, kind)
+	typeRefs, err := ix.References(ctx, file, typeName, refKindsFor(kind)...)
 	if err != nil {
-		return res, err
+		return nil, err
 	}
 
-	res = append(res, typeRefs...)
+	hits := make([]indexHit, 0, len(typeRefs))
+	for _, h := range typeRefs {
+		hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: cache.RefFieldType})
+	}
 
-	// Enum renames also touch value positions: identifiers like
-	// songs.Song.FUWA_FUWA_TIME reference the enum by name.
+	// Enum renames also touch value positions qualified with the enum name.
 	if kind == DefinitionEnum {
-		valueRefs, err := searchEnumQualifiedValueReferences(ctx, ss, file, id.Text)
+		valRefs, err := ix.QualifiedValues(ctx, file, id.Text)
 		if err != nil {
-			return res, err
+			return nil, err
 		}
 
-		res = append(res, valueRefs...)
+		for _, h := range valRefs {
+			hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: cache.RefConstValue})
+		}
 	}
 
-	return res, err
+	return hits, nil
+}
+
+// valueRefHits wraps value-kind reference lookups for consts and enum
+// values.
+func valueRefHits(ctx context.Context, ix *Index, file uri.URI, name string) ([]indexHit, error) {
+	refs, err := ix.References(ctx, file, name, cache.RefConstValue)
+	if err != nil {
+		return nil, err
+	}
+
+	hits := make([]indexHit, 0, len(refs))
+	for _, h := range refs {
+		hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: cache.RefConstValue})
+	}
+
+	return hits, nil
 }
 
 func grandparent(path []syntax.Node) syntax.Node {
@@ -210,381 +333,20 @@ func definitionKindOf(n syntax.Node) (DefinitionKind, bool) {
 	return DefinitionNone, false
 }
 
-func searchTypeNameReferences(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) (res []referenceHit, err error) {
-	res = make([]referenceHit, 0)
-	ft := target.parent.(*syntax.FieldType)
-
-	typeName := typeReferenceName(ft)
-	if typeName == "" || IsBasicType(typeName) {
-		return res, err
-	}
-
-	// Search the type definition.
-	definitionFile, identifierNode, definitionType, err := FindTypeDefinition(ctx, ss, file, pf.AST(), ft)
-	if err != nil {
-		return res, err
-	}
-
-	if identifierNode == nil {
-		return res, err
-	}
-
-	loc, err := jumpInFile(ctx, ss, definitionFile, identifierNode)
-	if err != nil {
-		return res, err
-	}
-
-	res = append(res, referenceHit{loc: loc, text: identifierNode.Text})
-
-	// Search usages of the type name.
-	locations, err := searchIdentifierReferences(ctx, ss, definitionFile, typeName, definitionType)
-	if err != nil {
-		return res, err
-	}
-
-	res = append(res, locations...)
-
-	return res, err
+// indexHit is a referenceSearch result: location, text as written, and
+// reference kind — the replacement for referenceHit.
+type indexHit struct {
+	loc  protocol.Location
+	text string
+	kind cache.RefKind
 }
 
-func searchServiceReferences(ctx context.Context, ss *cache.Snapshot, file uri.URI, svcName string) (res []referenceHit, err error) {
-	slog.Debug("searching service references", "file", file, "svcName", svcName)
-
-	locations, err := searchServiceDefinitionReferences(ctx, ss, file, strings.TrimPrefix(svcName, fmt.Sprintf("%s.", includeNameOf(file))))
-	if err != nil {
-		return nil, err
-	}
-
-	res = append(res, locations...)
-
-	for _, referenceFile := range referenceFiles(ss, file) {
-		// References in including files may use the bare name or the
-		// include-qualified name; the match function accepts both.
-		locations, err := searchServiceDefinitionReferences(ctx, ss, referenceFile, svcName)
-		if err != nil {
-			return nil, err
-		}
-
-		res = append(res, locations...)
-	}
-
-	return res, err
-}
-
-// referenceFiles returns the files that include the given file, per the
-// include graph.
-func referenceFiles(ss *cache.Snapshot, file uri.URI) []uri.URI {
-	includeNode := ss.Graph().Get(file)
-	if includeNode == nil {
-		return nil
-	}
-
-	if len(includeNode.InDegree()) == 0 && len(includeNode.OutDegree()) == 0 {
-		ss.Graph().Debug()
-	}
-
-	return includeNode.InDegree()
-}
-
-func searchServiceDefinitionReferences(ctx context.Context, ss *cache.Snapshot, file uri.URI, svcName string) (res []referenceHit, err error) {
-	pf, err := ss.Parse(ctx, file)
-	if err != nil {
-		return res, err
-	}
-
-	if pf.AST() == nil {
-		return res, err
-	}
-
-	for _, svc := range pf.AST().Services() {
-		if svc.Extends == nil {
-			continue
-		}
-
-		// Accept both the bare name and the include-qualified literal.
-		if bareName(svc.Extends.Text) != bareName(svcName) {
-			continue
-		}
-
-		res = append(res, referenceHit{loc: jump(file, pf, svc.Extends), text: svc.Extends.Text})
-	}
-
-	return res, err
-}
-
-func searchIdentifierReferences(ctx context.Context, ss *cache.Snapshot, file uri.URI, typeName string, definitionType DefinitionKind) (res []referenceHit, err error) {
-	slog.Debug("searching identifier references", "file", file, "typeName", typeName)
-
-	locations, err := searchDefinitionIdentifierReferences(ctx, ss, file,
-		strings.TrimPrefix(typeName, fmt.Sprintf("%s.", includeNameOf(file))), definitionType)
-	if err != nil {
-		return nil, err
-	}
-
-	res = append(res, locations...)
-
-	for _, referenceFile := range referenceFiles(ss, file) {
-		// References in including files may use the bare name or the
-		// include-qualified name; the match function accepts both.
-		locations, err := searchDefinitionIdentifierReferences(ctx, ss, referenceFile, typeName, definitionType)
-		if err != nil {
-			return nil, err
-		}
-
-		res = append(res, locations...)
-	}
-
-	return res, err
-}
-
-// searchDefinitionIdentifierReferences finds type references matching
-// typeName in one file: field types, function return types, arguments,
-// throws, typedef types, and const types.
-func searchDefinitionIdentifierReferences(ctx context.Context, ss *cache.Snapshot, file uri.URI, typeName string, definitionType DefinitionKind) (res []referenceHit, err error) {
-	pf, err := ss.Parse(ctx, file)
-	if err != nil {
-		return res, err
-	}
-
-	if pf.AST() == nil {
-		return res, err
-	}
-
-	jumpFieldType := func(ft *syntax.FieldType) {
-		if ft == nil {
-			return
-		}
-
-		// Accept every reference form of the same definition: bare
-		// ("Test"), include-name-qualified ("user.Test"), and
-		// file-base-qualified ("user.thrift.Test").
-		if bareName(typeReferenceName(ft)) != bareName(typeName) {
-			return
-		}
-
-		res = append(res, referenceHit{loc: jump(file, pf, ft.Ident), text: ft.Ident.Text})
-	}
-
-	var searchFieldType func(ft *syntax.FieldType)
-
-	searchFieldType = func(ft *syntax.FieldType) {
-		if ft == nil {
-			return
-		}
-
-		if ft.KeyType != nil {
-			searchFieldType(ft.KeyType)
-		}
-
-		if ft.ValueType != nil {
-			searchFieldType(ft.ValueType)
-		}
-
-		jumpFieldType(ft)
-	}
-	jumpField := func(field *syntax.Field) {
-		searchFieldType(field.Type)
-	}
-	processStructLike := func(fields []*syntax.Field) {
-		for _, field := range fields {
-			jumpField(field)
-		}
-	}
-
-	for _, svc := range pf.AST().Services() {
-		for _, fn := range svc.Functions {
-			searchFieldType(fn.Type)
-			processStructLike(fn.Args)
-
-			if fn.Throws != nil {
-				processStructLike(fn.Throws.Fields)
-			}
-		}
-	}
-
-	if definitionType == DefinitionException {
-		return res, err
-	}
-
-	for _, st := range pf.AST().Structs() {
-		processStructLike(st.Fields)
-	}
-
-	for _, st := range pf.AST().Unions() {
-		processStructLike(st.Fields)
-	}
-
-	for _, st := range pf.AST().Exceptions() {
-		processStructLike(st.Fields)
-	}
-
-	for _, typedef := range pf.AST().Typedefs() {
-		searchFieldType(typedef.Type)
-	}
-
-	for _, cst := range pf.AST().Consts() {
-		searchFieldType(cst.Type)
-	}
-
-	return res, err
-}
-
-func searchConstValueReferences(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) (res []referenceHit, err error) {
-	res = make([]referenceHit, 0)
-	value := target.node.(*syntax.ConstValue)
-
-	definitionFile, identifierNode, err := FindConstValueDefinition(ctx, ss, file, pf.AST(), value)
-	if err != nil {
-		return res, err
-	}
-
-	if identifierNode == nil {
-		return res, err
-	}
-
-	loc, err := jumpInFile(ctx, ss, definitionFile, identifierNode)
-	if err != nil {
-		return res, err
-	}
-
-	res = append(res, referenceHit{loc: loc, text: identifierNode.Text})
-
-	locations, err := searchConstValueIdentifierReferences(ctx, ss, definitionFile, value.Text)
-	if err != nil {
-		return res, err
-	}
-
-	res = append(res, locations...)
-
-	return res, err
-}
-
-// searchConstValueIdentifierReferences finds usages of a const or enum
-// value name: field default values and const values.
-func searchConstValueIdentifierReferences(ctx context.Context, ss *cache.Snapshot, file uri.URI, valueName string) (res []referenceHit, err error) {
-	locations, err := searchConstValueIdentifierReference(ctx, ss, file, strings.TrimPrefix(valueName, fmt.Sprintf("%s.", includeNameOf(file))))
-	if err != nil {
-		return nil, err
-	}
-
-	res = append(res, locations...)
-
-	for _, referenceFile := range referenceFiles(ss, file) {
-		// References in including files may use the bare name or the
-		// include-qualified name; the match function accepts both.
-		locations, err := searchConstValueIdentifierReference(ctx, ss, referenceFile, valueName)
-		if err != nil {
-			return nil, err
-		}
-
-		res = append(res, locations...)
-	}
-
-	return res, err
-}
-
-func searchConstValueIdentifierReference(ctx context.Context, ss *cache.Snapshot, file uri.URI, valueName string) (res []referenceHit, err error) {
-	pf, err := ss.Parse(ctx, file)
-	if err != nil {
-		return res, err
-	}
-
-	if pf.AST() == nil {
-		return res, err
-	}
-
-	walkValueIdentifiers(pf.AST(), func(v *syntax.ConstValue) {
-		if v.Kind == syntax.ValueIdent && bareName(v.Text) == bareName(valueName) {
-			res = append(res, referenceHit{loc: jump(file, pf, v), text: v.Text})
-		}
-	})
-
-	return res, err
-}
-
-// searchEnumQualifiedValueReferences finds references to an enum in value
-// positions: field defaults and const values qualified with the enum name,
-// e.g. songs.Song.FUWA_FUWA_TIME or Song.FUWA_FUWA_TIME. Each hit covers
-// only the enum segment of the identifier, so the rename rewrites the
-// qualifier and keeps the value.
-func searchEnumQualifiedValueReferences(ctx context.Context, ss *cache.Snapshot, file uri.URI, enumName string) (res []referenceHit, err error) {
-	locations, err := searchEnumQualifiedValueReference(ctx, ss, file, enumName)
-	if err != nil {
-		return nil, err
-	}
-
-	res = append(res, locations...)
-
-	for _, referenceFile := range referenceFiles(ss, file) {
-		locations, err := searchEnumQualifiedValueReference(ctx, ss, referenceFile, enumName)
-		if err != nil {
-			return nil, err
-		}
-
-		res = append(res, locations...)
-	}
-
-	return res, err
-}
-
-func searchEnumQualifiedValueReference(ctx context.Context, ss *cache.Snapshot, file uri.URI, enumName string) (res []referenceHit, err error) {
-	pf, err := ss.Parse(ctx, file)
-	if err != nil || pf.AST() == nil {
-		return res, err
-	}
-
-	// qualifier returns the enum segment of a value identifier and its
-	// byte offset within the identifier, when the identifier is
-	// <enum>.<value> or <include>.<enum>.<value> with the enum name.
-	qualifier := func(text string) (seg string, off int, ok bool) {
-		items := strings.Split(text, ".")
-		if len(items) == 2 && items[0] == enumName {
-			return items[0], 0, true
-		}
-
-		if len(items) == 3 && items[1] == enumName {
-			return items[1], len(items[0]) + 1, true
-		}
-
-		return "", 0, false
-	}
-
-	walkValueIdentifiers(pf.AST(), func(v *syntax.ConstValue) {
-		if v.Kind != syntax.ValueIdent {
-			return
-		}
-
-		seg, off, ok := qualifier(v.Text)
-		if !ok {
-			return
-		}
-
-		start, _ := pf.AST().Range(v)
-		segStart := toLSPPosition(pf, syntax.Position{Line: start.Line, Col: start.Col, Offset: start.Offset + off})
-		segEnd := toLSPPosition(pf, syntax.Position{Line: start.Line, Col: start.Col, Offset: start.Offset + off + len(seg)})
-
-		res = append(res, referenceHit{
-			loc:  protocol.Location{URI: file, Range: protocol.Range{Start: segStart, End: segEnd}},
-			text: seg,
-		})
-	})
-
-	return res, err
-}
-
-// walkValueIdentifiers visits every constant value in a value position:
-// field defaults, const values, and service argument and throws defaults.
-// Positions without a default are skipped.
-func walkValueIdentifiers(doc *syntax.Document, fn func(v *syntax.ConstValue)) {
-	doc.WalkFieldLists(func(fields []*syntax.Field, _ syntax.FieldListKind) {
-		for _, field := range fields {
-			if field.Value != nil {
-				fn(field.Value)
-			}
-		}
-	})
-
-	for _, cst := range doc.Consts() {
-		fn(cst.Value)
-	}
+// validReferenceDefinitionType lists definition kinds that can have type
+// references (i.e. everything except services and consts).
+var validReferenceDefinitionType = map[DefinitionKind]struct{}{
+	DefinitionStruct:    {},
+	DefinitionUnion:     {},
+	DefinitionEnum:      {},
+	DefinitionException: {},
+	DefinitionTypedef:   {},
 }

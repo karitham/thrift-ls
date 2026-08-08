@@ -31,7 +31,7 @@ func TestResolver(t *testing.T) {
 	c := New(nil)
 	fs := NewOverlayFS(c)
 
-	view := NewView("test", uri.File(tmpDir), fs, nil)
+	view := NewView(uri.File(tmpDir), fs, nil)
 	includePaths := []string{sharedDir}
 	ss := NewSnapshot(view, includePaths)
 

@@ -21,10 +21,10 @@ const (
 
 // buildTestContext registers the given include edges, where the map value is
 // the list of files the key file includes, and returns the context.
-func buildTestContext(t *testing.T, edges map[string][]string) *Context {
+func buildTestContext(t *testing.T, edges map[string][]string) *IncludeDeps {
 	t.Helper()
 
-	c := NewContext()
+	c := NewIncludeDeps()
 
 	for file, includes := range edges {
 		inc := make([]*syntax.Include, 0, len(includes))
@@ -190,7 +190,7 @@ func Test_Context_Forget(t *testing.T) {
 }
 
 func Test_Context_DuplicateIncludes(t *testing.T) {
-	c := NewContext()
+	c := NewIncludeDeps()
 
 	duplicates := []*syntax.Include{
 		{Path: &syntax.Token{Text: "federation.gundam.thrift"}},
@@ -208,7 +208,7 @@ func Test_Context_DuplicateIncludes(t *testing.T) {
 }
 
 func Test_Context_UnknownInclude(t *testing.T) {
-	c := NewContext()
+	c := NewIncludeDeps()
 
 	// A resolve func returning an unresolvable URI must not crash Register;
 	// the unknown target still records its dependent.
