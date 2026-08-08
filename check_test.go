@@ -85,7 +85,7 @@ func Test_CheckMadeInAbyss(t *testing.T) {
 	// its id (FieldIDCheck) and its name (DuplicateCheck).
 	var repeatLine uint32
 	for _, d := range lints {
-		if strings.Contains(string(d.Message.(protocol.String)), "duplicate field repeat") {
+		if strings.Contains(message(d), "duplicate field repeat") {
 			repeatLine = d.Range.Start.Line
 		}
 	}
@@ -131,10 +131,15 @@ func corpusAbs(t *testing.T, name string) string {
 	return p
 }
 
+// message is the diagnostic message as plain text.
+func message(d protocol.Diagnostic) string {
+	return string(d.Message.(protocol.String))
+}
+
 // hasMessage reports whether any diagnostic carries msg.
 func hasMessage(diags []protocol.Diagnostic, msg string) bool {
 	for _, d := range diags {
-		if strings.Contains(string(d.Message.(protocol.String)), msg) {
+		if strings.Contains(message(d), msg) {
 			return true
 		}
 	}

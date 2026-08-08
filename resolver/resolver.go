@@ -65,19 +65,15 @@ func NewWithFS(includePaths []string, fsys fs.FS) *Resolver {
 
 // Resolve resolves an include path relative to the current file.
 // It first tries relative to currentFile's directory, then tries each
-// configured include path in order. Returns the resolved absolute file path,
-// or the relative path as a fallback if not found.
+// configured include path in order. Returns the resolved path, or the
+// candidate relative to currentFile's directory as a fallback if not found.
 func (r *Resolver) Resolve(currentFile, includePath string) string {
-	// First try relative to current file's directory
 	basePath := filepath.Dir(currentFile)
 	resolvedPath := filepath.Join(basePath, includePath)
-
-	// Check if file exists
 	if r.exists(resolvedPath) {
 		return resolvedPath
 	}
 
-	// Try each configured include path
 	for _, ip := range r.includePaths {
 		candidatePath := filepath.Join(ip, includePath)
 		if r.exists(candidatePath) {
@@ -85,7 +81,6 @@ func (r *Resolver) Resolve(currentFile, includePath string) string {
 		}
 	}
 
-	// Return relative path as fallback
 	return resolvedPath
 }
 

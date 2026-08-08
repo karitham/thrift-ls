@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/karitham/thrift-ls/formatter"
@@ -66,29 +65,8 @@ func (p Patch) Apply(base Patch) Patch {
 		out.Align = p.Align
 	}
 
-	if p.Separators != nil {
-		if out.Separators == nil {
-			out.Separators = &Separators{}
-		}
-
-		for _, c := range formatter.AllConstructs {
-			if v := p.Separators.Get(c); v != nil {
-				out.Separators.Set(c, v)
-			}
-		}
-	}
-
-	if p.Break != nil {
-		if out.Break == nil {
-			out.Break = &Break{}
-		}
-
-		for _, c := range formatter.AllConstructs {
-			if v := p.Break.Get(c); v != nil {
-				out.Break.Set(c, v)
-			}
-		}
-	}
+	out.Separators = overlayPerConstruct(out.Separators, p.Separators)
+	out.Break = overlayPerConstruct(out.Break, p.Break)
 
 	if p.IncludePaths != nil {
 		out.IncludePaths = p.IncludePaths
@@ -99,6 +77,26 @@ func (p Patch) Apply(base Patch) Patch {
 	}
 
 	return out
+}
+
+// overlayPerConstruct copies the set fields of src onto dst, creating dst
+// when it is nil.
+func overlayPerConstruct[T *E, E any](dst, src *formatter.PerConstruct[T]) *formatter.PerConstruct[T] {
+	if src == nil {
+		return dst
+	}
+
+	if dst == nil {
+		dst = &formatter.PerConstruct[T]{}
+	}
+
+	for _, c := range formatter.AllConstructs {
+		if v := src.Get(c); v != nil {
+			dst.Set(c, v)
+		}
+	}
+
+	return dst
 }
 
 // Default returns the default options as a fully-set patch.
@@ -135,22 +133,24 @@ func (p Patch) Validate() error {
 		return errors.New("tabWidth must be positive")
 	}
 
-	if p.Align != nil && !slices.Contains([]string{"field", "assign", "disable"}, *p.Align) {
-		return fmt.Errorf("align must be one of \"field\", \"assign\", \"disable\", got %q", *p.Align)
+	if p.Align != nil {
+		if _, ok := alignMode(*p.Align); !ok {
+			return fmt.Errorf("align must be one of \"field\", \"assign\", \"disable\", got %q", *p.Align)
+		}
 	}
 
 	if p.Separators != nil {
 		for _, c := range formatter.AllConstructs {
-			if v := p.Separators.Get(c); v != nil && !slices.Contains([]string{"comma", "semicolon", "none", "preserve"}, *v) {
-				return fmt.Errorf("separators.%s must be one of \"comma\", \"semicolon\", \"none\", \"preserve\" (keep as written), got %q", c, *v)
+			if v := p.Separators.Get(c); v != nil {
+				if _, ok := separatorMode(*v); !ok {
+					return fmt.Errorf("separators.%s must be one of \"comma\", \"semicolon\", \"none\", \"preserve\" (keep as written), got %q", c, *v)
+				}
 			}
 		}
 	}
 
-	if p.Indent != nil {
-		if p.Indent.Width <= 0 || !isWhitespaceOnly(p.Indent.Value) {
-			return errors.New("indent must be a string of spaces or tabs")
-		}
+	if p.Indent != nil && (p.Indent.Width <= 0 || !isWhitespaceOnly(p.Indent.Value)) {
+		return errors.New("indent must be a string of spaces or tabs")
 	}
 
 	return nil
@@ -177,20 +177,17 @@ func (p Patch) Formatter() (formatter.Options, error) {
 	}
 
 	if p.Align != nil {
-		switch *p.Align {
-		case "field":
-			o.Align = formatter.AlignField
-		case "assign":
-			o.Align = formatter.AlignAssign
-		case "disable":
-			o.Align = formatter.AlignDisable
+		if mode, ok := alignMode(*p.Align); ok {
+			o.Align = mode
 		}
 	}
 
 	if p.Separators != nil {
 		for _, c := range formatter.AllConstructs {
 			if v := p.Separators.Get(c); v != nil {
-				o.Separator.Set(c, separatorMode(*v))
+				if mode, ok := separatorMode(*v); ok {
+					o.Separator.Set(c, mode)
+				}
 			}
 		}
 	}
@@ -206,31 +203,46 @@ func (p Patch) Formatter() (formatter.Options, error) {
 	return o, nil
 }
 
+// alignMode maps a config value to a formatter align mode. The second
+// result reports whether the value is a known align mode.
+func alignMode(s string) (formatter.AlignMode, bool) {
+	switch s {
+	case "field":
+		return formatter.AlignField, true
+	case "assign":
+		return formatter.AlignAssign, true
+	case "disable":
+		return formatter.AlignDisable, true
+	default:
+		return 0, false
+	}
+}
+
 // separatorMode maps a config value to a formatter separator mode. The
-// value is validated before this is called.
-func separatorMode(s string) formatter.SeparatorMode {
+// second result reports whether the value is a known separator mode.
+func separatorMode(s string) (formatter.SeparatorMode, bool) {
 	switch s {
 	case "comma":
-		return formatter.SeparatorComma
+		return formatter.SeparatorComma, true
 	case "semicolon":
-		return formatter.SeparatorSemicolon
+		return formatter.SeparatorSemicolon, true
 	case "none":
-		return formatter.SeparatorNone
-	default: // "preserve"
-		return formatter.SeparatorPreserve
+		return formatter.SeparatorNone, true
+	case "preserve":
+		return formatter.SeparatorPreserve, true
+	default:
+		return 0, false
 	}
 }
 
 // Indent is a resolved indentation: the string emitted for one level and
-// its display width. It is set from a config value that may be a literal
-// string of spaces or tabs, or a number of spaces.
+// its display width. It is set from a literal string of spaces or tabs.
 type Indent struct {
 	Value string // the indentation string, spaces or tabs
 	Width int    // display width of one level
 }
 
-// UnmarshalJSON accepts a number (spaces) or a literal string of spaces
-// or tabs.
+// UnmarshalJSON accepts a literal string of spaces or tabs.
 func (i *Indent) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
@@ -247,11 +259,10 @@ func (i *Indent) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// ParseIndentValue resolves a friendly indent spec:
+// ParseIndentValue resolves a literal indent string:
 //
 //	"  "   literal spaces, used as written
 //	"\t"   literal tabs, used as written
-//	"8"    a number of spaces
 //
 // An empty spec yields the default of four spaces.
 func ParseIndentValue(s string) (Indent, error) {
@@ -350,9 +361,12 @@ func FindConfig(dir string) (string, error) {
 
 	for d := dir; ; d = filepath.Dir(d) {
 		path := filepath.Join(d, ConfigFileName)
-		if _, err := os.Stat(path); err == nil {
+		_, err := os.Stat(path)
+		if err == nil {
 			return path, nil
-		} else if !os.IsNotExist(err) {
+		}
+
+		if !os.IsNotExist(err) {
 			return "", err
 		}
 

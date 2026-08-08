@@ -2,7 +2,6 @@ package source
 
 import (
 	"context"
-	"sort"
 	"strings"
 
 	"go.lsp.dev/protocol"
@@ -43,7 +42,7 @@ func typeCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, c Con
 			})
 		}
 
-		sort.Slice(res, func(i, j int) bool { return res[i].showText < res[j].showText })
+		sortCandidates(res)
 
 		return res
 	}
@@ -51,14 +50,7 @@ func typeCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, c Con
 	names := make(map[string]struct{})
 	collectTypeNames(c.Doc, names)
 
-	var res []Candidate
-	for name := range names {
-		res = append(res, Candidate{
-			showText:   name,
-			insertText: name,
-			format:     protocol.InsertTextFormatPlainText,
-		})
-	}
+	res := setCandidates(names)
 
 	// Types from included files are suggested with their include
 	// qualifier: a bare reference to an imported type does not resolve.
@@ -90,7 +82,7 @@ func typeCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, c Con
 		})
 	}
 
-	sort.Slice(res, func(i, j int) bool { return res[i].showText < res[j].showText })
+	sortCandidates(res)
 
 	return res
 }
@@ -168,18 +160,7 @@ func valueCandidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, doc 
 		}
 	}
 
-	var res []Candidate
-	for name := range names {
-		res = append(res, Candidate{
-			showText:   name,
-			insertText: name,
-			format:     protocol.InsertTextFormatPlainText,
-		})
-	}
-
-	sort.Slice(res, func(i, j int) bool { return res[i].showText < res[j].showText })
-
-	return res
+	return setCandidates(names)
 }
 
 // includedFiles returns the files transitively included by file, per the

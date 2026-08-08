@@ -18,6 +18,13 @@ import (
 // it does not already carry: an unqualified field gets both, a required
 // field gets "Make field optional", and vice versa. Union fields never
 // offer "Make field required": unions have no required members.
+// pickedFieldAction pairs an action with the declaration offset of its
+// field, so the actions can be ordered into document order.
+type pickedFieldAction struct {
+	offset int
+	code   protocol.CodeAction
+}
+
 func MakeFieldQualifierAction(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, rng protocol.Range) ([]protocol.CodeAction, error) {
 	pf, err := ss.Parse(ctx, fh.URI())
 	if err != nil {
@@ -28,12 +35,7 @@ func MakeFieldQualifierAction(ctx context.Context, ss *cache.Snapshot, fh cache.
 		return nil, nil
 	}
 
-	// Each picked action is kept beside the declaration offset of its
-	// field, so the final list can be sorted into document order.
-	var picked []struct {
-		offset int
-		code   protocol.CodeAction
-	}
+	var picked []pickedFieldAction
 
 	pf.AST().WalkFieldLists(func(fields []*syntax.Field, kind syntax.FieldListKind) {
 		for _, field := range fields {
@@ -45,10 +47,7 @@ func MakeFieldQualifierAction(ctx context.Context, ss *cache.Snapshot, fh cache.
 
 			unionField := kind == syntax.UnionFields
 			for _, qualifier := range fieldQualifiers(field, unionField) {
-				picked = append(picked, struct {
-					offset int
-					code   protocol.CodeAction
-				}{
+				picked = append(picked, pickedFieldAction{
 					offset: pf.AST().TokenPosition(field.TokStart()).Offset,
 					code:   fieldQualifierAction(pf, fh, field, qualifier),
 				})

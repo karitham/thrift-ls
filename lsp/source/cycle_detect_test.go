@@ -24,7 +24,7 @@ func Test_cycleDetect(t *testing.T) {
 	}
 
 	type args struct {
-		includesMap *map[uri.URI][]Include
+		includesMap map[uri.URI][]Include
 	}
 
 	tests := []struct {
@@ -35,7 +35,7 @@ func Test_cycleDetect(t *testing.T) {
 		{
 			name: "cycle",
 			args: args{
-				includesMap: &includesMap,
+				includesMap: includesMap,
 			},
 			want: []CyclePair{
 				{
@@ -184,7 +184,7 @@ func Test_cycleDetectN(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := cycleDetect(&tt.graph)
+			got := cycleDetect(tt.graph)
 			sort.SliceStable(got, func(i, j int) bool {
 				if got[i].file == got[j].file {
 					return got[i].include.file < got[j].include.file

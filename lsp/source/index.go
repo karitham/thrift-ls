@@ -3,10 +3,8 @@ package source
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"log/slog"
-	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"go.lsp.dev/protocol"
@@ -156,11 +154,17 @@ type Hit struct {
 	File  uri.URI
 	Range protocol.Range
 	Text  string // as written: "User", "shared.User", "shared.thrift.User"
+
+	// Kind is the grammar slot the reference sits in, so callers can tell
+	// type hits from value hits (e.g. for highlight kinds).
+	Kind cache.RefKind
 }
 
 // References returns every occurrence of name in file and in every file
 // that transitively includes it, restricted to the given reference kinds.
-// The definition site is not included (no self-referencing hit).
+// The definition site is not included (no self-referencing hit). Hits are
+// matched by bare name only; use ReferencesTo for resolution-matched
+// results.
 func (x *Index) References(ctx context.Context, file uri.URI, name string, kinds ...cache.RefKind) ([]Hit, error) {
 	files := x.searchFiles(file)
 
@@ -185,51 +189,72 @@ func (x *Index) References(ctx context.Context, file uri.URI, name string, kinds
 	return out, nil
 }
 
-// QualifiedValues returns value-position references whose qualifier is
-// enumName: "Song.FUWA_FUWA_TIME" or "songs.Song.FUWA_FUWA_TIME", each
-// hit covering only the enum segment so a rename rewrites the qualifier
-// while keeping the member name.
-func (x *Index) QualifiedValues(ctx context.Context, file uri.URI, enumName string) ([]Hit, error) {
-	files := x.searchFiles(file)
-
+// ReferencesTo returns every reference to def: in def.File and every file
+// that transitively includes it. Hits are name- and resolution-matched, so
+// same-named definitions elsewhere are not reported.
+//
+// For an enum def, value references qualified with the enum name
+// ("Color.RED", "shared.Color.RED") are matched too, provided the
+// qualifier resolves to this very enum; the hit covers only the enum
+// segment, so a rename rewrites the qualifier while keeping the member
+// name.
+func (x *Index) ReferencesTo(ctx context.Context, def *Resolved, kinds ...cache.RefKind) ([]Hit, error) {
 	var out []Hit
-	seen := map[uri.URI]bool{}
 
-	for _, f := range files {
-		if seen[f] {
-			continue
-		}
-
-		seen[f] = true
-
+	for _, f := range x.searchFiles(def.File) {
 		pf, err := x.ss.Parse(ctx, f)
 		if err != nil || pf.AST() == nil {
 			continue
 		}
 
 		for _, r := range pf.Index().References() {
-			if r.Kind != cache.RefConstValue {
+			if r.Kind == cache.RefConstValue && def.Kind == DefinitionEnum && referenceKind(cache.RefConstValue, kinds) {
+				// Value position qualified with the enum: only the enum
+				// segment is rewritten.
+				seg, off, ok := enumSegment(r.Name, def.Name.Text)
+				if !ok {
+					continue
+				}
+
+				// The qualifier ("Color", "shared.Color") must resolve to
+				// this very enum, not to a same-named one elsewhere.
+				qualifier := r.Name[:off+len(seg)]
+				enum, err := x.ResolveType(ctx, pf, typeReference(qualifier))
+				if err != nil {
+					return nil, err
+				}
+
+				if !sameDefinition(enum, def) {
+					continue
+				}
+
+				out = append(out, enumSegmentHit(pf, r.Node, off, seg))
+
 				continue
 			}
 
-			seg, off, ok := enumSegment(r.Name, enumName)
-			if !ok {
+			if !referenceKind(r.Kind, kinds) {
 				continue
 			}
 
-			start, _ := pf.AST().Range(r.Node)
+			if bareName(r.Name) != bareName(def.Name.Text) {
+				continue
+			}
 
-			segStart := toLSPPosition(pf, syntax.Position{
-				Line: start.Line, Col: start.Col, Offset: start.Offset + off,
-			})
-			segEnd := toLSPPosition(pf, syntax.Position{
-				Line: start.Line, Col: start.Col, Offset: start.Offset + off + len(seg),
-			})
+			resolved, err := x.resolveReference(ctx, pf, r)
+			if err != nil {
+				return nil, err
+			}
+
+			if !sameDefinition(resolved, def) {
+				continue
+			}
 
 			out = append(out, Hit{
-				File:  f,
-				Range: protocol.Range{Start: segStart, End: segEnd},
-				Text:  seg,
+				File:  pf.URI(),
+				Range: nodeRange(pf, r.Node),
+				Text:  r.Name,
+				Kind:  r.Kind,
 			})
 		}
 	}
@@ -269,21 +294,19 @@ func (x *Index) FindInWorkspace(ctx context.Context, name string) (*Resolved, er
 		}
 	}
 
-	// Fallback to the old directory walk when KnownFiles is empty.
-	root := view.Folder().Path()
+	// Fallback to the directory walk when KnownFiles is empty: the walk
+	// goes through the view's file source (disk, or the in-memory tree in
+	// tests).
+	root := view.Folder()
 	if root == "" {
 		return nil, nil
 	}
 
-	var files []string
+	var files []uri.URI
 
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-
-		if !d.IsDir() && strings.HasSuffix(d.Name(), ".thrift") {
-			files = append(files, p)
+	err := view.WalkFiles(ctx, root, func(u uri.URI) error {
+		if strings.HasSuffix(u.Path(), ".thrift") {
+			files = append(files, u)
 		}
 
 		return nil
@@ -292,13 +315,14 @@ func (x *Index) FindInWorkspace(ctx context.Context, name string) (*Resolved, er
 		return nil, nil
 	}
 
-	sort.Strings(files)
-	for _, p := range files {
-		if include != "" && includeNameOf(uri.File(p)) != include {
+	slices.Sort(files)
+
+	for _, f := range files {
+		if include != "" && includeNameOf(f) != include {
 			continue
 		}
 
-		pf, err := x.ss.Parse(ctx, uri.File(p))
+		pf, err := x.ss.Parse(ctx, f)
 		if err != nil || pf.AST() == nil {
 			continue
 		}
@@ -334,12 +358,87 @@ func refKindsFor(k DefinitionKind) []cache.RefKind {
 
 // --- helpers ---
 
-// searchFiles returns the file itself followed by its direct includers,
-// deduplicated. This matches the existing reference-search file ordering.
+// resolveReference resolves a reference to its definition, dispatching on
+// the grammar slot the reference sits in. Unresolvable references (parse
+// errors, unknown names) yield nil, not an error.
+func (x *Index) resolveReference(ctx context.Context, pf *cache.ParsedFile, r cache.Reference) (*Resolved, error) {
+	switch r.Kind {
+	case cache.RefFieldType, cache.RefSignatureType:
+		ident, ok := r.Node.(*syntax.Identifier)
+		if !ok {
+			return nil, nil
+		}
+
+		return x.ResolveType(ctx, pf, typeReference(ident.Text))
+	case cache.RefConstValue:
+		v, ok := r.Node.(*syntax.ConstValue)
+		if !ok {
+			return nil, nil
+		}
+
+		return x.ResolveValue(ctx, pf, v)
+	case cache.RefServiceExtends:
+		ident, ok := r.Node.(*syntax.Identifier)
+		if !ok {
+			return nil, nil
+		}
+
+		return x.ResolveService(ctx, pf, ident)
+	}
+
+	return nil, nil
+}
+
+// typeReference builds a FieldType for a reference text, for resolution
+// by name: the index resolves the text, the original node only carries it.
+func typeReference(name string) *syntax.FieldType {
+	return &syntax.FieldType{Kind: syntax.TypeIdent, Ident: &syntax.Identifier{Text: name}}
+}
+
+// sameDefinition reports whether resolved is the same definition as def:
+// same file and same name.
+func sameDefinition(resolved, def *Resolved) bool {
+	if resolved == nil || def == nil {
+		return false
+	}
+
+	return resolved.File == def.File && resolved.Name.Text == def.Name.Text
+}
+
+// referenceKind reports whether k is in kinds; an empty kinds matches all.
+func referenceKind(k cache.RefKind, kinds []cache.RefKind) bool {
+	return len(kinds) == 0 || slices.Contains(kinds, k)
+}
+
+// enumSegmentHit builds a hit covering one segment (off, seg) of the
+// reference node's text, so a rename rewrites just that segment.
+func enumSegmentHit(pf *cache.ParsedFile, node syntax.Node, off int, seg string) Hit {
+	start, _ := pf.AST().Range(node)
+
+	segStart := toLSPPosition(pf, syntax.Position{
+		Line: start.Line, Col: start.Col, Offset: start.Offset + off,
+	})
+	segEnd := toLSPPosition(pf, syntax.Position{
+		Line: start.Line, Col: start.Col, Offset: start.Offset + off + len(seg),
+	})
+
+	return Hit{
+		File:  pf.URI(),
+		Range: protocol.Range{Start: segStart, End: segEnd},
+		Text:  seg,
+		Kind:  cache.RefConstValue,
+	}
+}
+
+// searchFiles returns the file itself followed by its transitive
+// dependents (every file that includes it, directly or through other
+// includes), deduplicated. Resolution is transitive, so reference search
+// must be too: a definition reached through a chain of includes is
+// referenced from every file in the chain.
 func (x *Index) searchFiles(file uri.URI) []uri.URI {
 	files := []uri.URI{file}
 
-	for _, dep := range x.ReferencingFiles(file) {
+	for _, dep := range x.ss.Dependents(file) {
 		if dep != file {
 			files = append(files, dep)
 		}
@@ -351,17 +450,10 @@ func (x *Index) searchFiles(file uri.URI) []uri.URI {
 // matches returns hits for references in pf whose kind is in kinds and
 // whose bare name equals bareName(name).
 func (x *Index) matches(pf *cache.ParsedFile, name string, kinds []cache.RefKind) []Hit {
-	kindSet := make(map[cache.RefKind]bool, len(kinds))
-	for _, k := range kinds {
-		kindSet[k] = true
-	}
-
-	haveKindSet := len(kinds) > 0
-
 	var out []Hit
 
 	for _, r := range pf.Index().References() {
-		if haveKindSet && !kindSet[r.Kind] {
+		if !referenceKind(r.Kind, kinds) {
 			continue
 		}
 
@@ -373,6 +465,7 @@ func (x *Index) matches(pf *cache.ParsedFile, name string, kinds []cache.RefKind
 			File:  pf.URI(),
 			Range: nodeRange(pf, r.Node),
 			Text:  r.Name,
+			Kind:  r.Kind,
 		})
 	}
 

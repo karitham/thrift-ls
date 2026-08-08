@@ -22,7 +22,5 @@ func BuildCompletionItem(candidate Candidate) *CompletionItem {
 		InsertText:       candidate.insertText,
 		InsertTextFormat: candidate.format,
 		Kind:             protocol.CompletionItemKindText,
-		Deprecated:       false,
-		Documentation:    "",
 	}
 }

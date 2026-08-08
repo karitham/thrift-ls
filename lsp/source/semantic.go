@@ -102,8 +102,8 @@ func Tokens(ctx context.Context, ss *cache.Snapshot, file uri.URI) ([]uint32, er
 	return data, nil
 }
 
-// classify maps a token to its semantic type. Definition names win over
-// type keywords so a field named "string" stays a property; type
+// classifyToken maps a token to its semantic type. Definition names win
+// over type keywords so a field named "string" stays a property; type
 // references win over keywords so "string" in a type position is a type.
 func classifyToken(i int, tok syntax.Token, names map[int]int, types map[int]bool) (int, bool) {
 	if syntax.IsComment(tok.Kind) {

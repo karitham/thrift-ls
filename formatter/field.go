@@ -19,12 +19,10 @@ func (f *formatter) fieldList(fields []*syntax.Field, bodyID int, sepMode Separa
 	for i, field := range fields {
 		if i > 0 {
 			parts = append(parts, f.fieldSep(fields[i-1].Sep, sepMode))
-			parts = append(parts, f.blankLines(field, doc.HardLine)...)
-		} else {
-			parts = append(parts, f.blankLines(field, doc.HardLine)...)
 		}
 
-		parts = append(parts, f.field(field, f.alignmentFor(fields, i, sepMode), bodyID, sepMode))
+		parts = append(parts, f.blankLines(field, doc.HardLine)...)
+		parts = append(parts, f.fieldDoc(field, f.alignmentFor(fields, i, sepMode), bodyID, sepMode))
 	}
 
 	return f.Concat(parts...)
@@ -72,11 +70,9 @@ func (f *formatter) enumValueList(values []*syntax.EnumValue, bodyID int) doc.Do
 	for i, value := range values {
 		if i > 0 {
 			parts = append(parts, f.fieldSep(values[i-1].Sep, f.opts.Separator.Get(ConstructEnum)))
-			parts = append(parts, f.blankLines(value, doc.HardLine)...)
-		} else {
-			parts = append(parts, f.blankLines(value, doc.HardLine)...)
 		}
 
+		parts = append(parts, f.blankLines(value, doc.HardLine)...)
 		parts = append(parts, f.enumValue(value, f.alignmentForEnum(values, i, f.opts.Separator.Get(ConstructEnum)), bodyID))
 	}
 
@@ -323,35 +319,34 @@ func (f *formatter) nodeTrailingInline(end int, sep syntax.TokenKind, sepMode Se
 // forms on the body group's break state; with bodyID zero the broken form
 // renders directly (paren bodies are always broken).
 func (f *formatter) fieldDoc(v *syntax.Field, align *columnAlign, bodyID int, sepMode SeparatorMode) doc.Doc {
+	broken := f.Concat(
+		f.fieldContent(v, align, true, sepMode),
+		f.trailingSep(v.Sep, sepMode),
+	)
+
 	content := f.fieldContent(v, align, false, sepMode)
 	if bodyID != 0 {
-		broken := f.Parts(2)
-		broken = append(broken, f.fieldContent(v, align, true, sepMode))
-		broken = append(broken, f.trailingSep(v.Sep, sepMode))
-
-		content = f.IfBreakFor(f.Concat(broken...), content, bodyID)
+		content = f.IfBreakFor(broken, content, bodyID)
 	} else {
-		broken := f.Parts(2)
-		broken = append(broken, f.fieldContent(v, align, true, sepMode))
-		broken = append(broken, f.trailingSep(v.Sep, sepMode))
-
-		content = f.Concat(broken...)
+		content = broken
 	}
 
 	parts := append(f.ownLineComments(v.TokStart()), content)
-	if f.nodeTrailingInline(v.TokEnd(), v.Sep, sepMode) {
-		parts = append(parts, f.sameLineComments(v.TokEnd())...)
-	} else {
-		parts = append(parts, f.suppressedSepComments(v.TokEnd())...)
-	}
+	parts = append(parts, f.itemTrailing(v.TokEnd(), v.Sep, sepMode)...)
 
 	return f.Concat(parts...)
 }
 
-// field assembles a struct-like body field, switching on the body group's
-// break state.
-func (f *formatter) field(v *syntax.Field, align *columnAlign, bodyID int, sepMode SeparatorMode) doc.Doc {
-	return f.fieldDoc(v, align, bodyID, sepMode)
+// itemTrailing renders the same-line comments after the item's last token
+// (its separator, when present): inline, or each on its own line when the
+// separator text was dropped and the comments do not share the previous
+// content's line.
+func (f *formatter) itemTrailing(end int, sep syntax.TokenKind, sepMode SeparatorMode) []doc.Doc {
+	if f.nodeTrailingInline(end, sep, sepMode) {
+		return f.sameLineComments(end)
+	}
+
+	return f.suppressedSepComments(end)
 }
 
 // emitWithAnnotations renders a token run split at the node's annotations,
@@ -453,21 +448,22 @@ func (f *formatter) fieldPads(v *syntax.Field, a *columnAlign) ([]padEntry, stri
 // enumValue assembles an enum value with comments, aligning '=' signs when
 // the body breaks.
 func (f *formatter) enumValue(v *syntax.EnumValue, align *columnAlign, bodyID int) doc.Doc {
-	content := f.enumValueContent(v, align, false, f.opts.Separator.Get(ConstructEnum))
-	if bodyID != 0 {
-		broken := f.Parts(2)
-		broken = append(broken, f.enumValueContent(v, align, true, f.opts.Separator.Get(ConstructEnum)))
-		broken = append(broken, f.trailingSep(v.Sep, f.opts.Separator.Get(ConstructEnum)))
+	sepMode := f.opts.Separator.Get(ConstructEnum)
 
-		content = f.IfBreakFor(f.Concat(broken...), content, bodyID)
+	broken := f.Concat(
+		f.enumValueContent(v, align, true, sepMode),
+		f.trailingSep(v.Sep, sepMode),
+	)
+
+	content := f.enumValueContent(v, align, false, sepMode)
+	if bodyID != 0 {
+		content = f.IfBreakFor(broken, content, bodyID)
+	} else {
+		content = broken
 	}
 
 	parts := append(f.ownLineComments(v.TokStart()), content)
-	if f.nodeTrailingInline(v.TokEnd(), v.Sep, f.opts.Separator.Get(ConstructEnum)) {
-		parts = append(parts, f.sameLineComments(v.TokEnd())...)
-	} else {
-		parts = append(parts, f.suppressedSepComments(v.TokEnd())...)
-	}
+	parts = append(parts, f.itemTrailing(v.TokEnd(), v.Sep, sepMode)...)
 
 	return f.Concat(parts...)
 }

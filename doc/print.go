@@ -153,7 +153,6 @@ func (p *printer) reset(o Options) {
 }
 
 type printer struct {
-	fitsDBG         bool
 	o               Options
 	position        int
 	out             []byte
@@ -290,33 +289,15 @@ func (p *printer) run(d Doc) (string, error) {
 			p.position -= p.trim()
 
 		case *group:
-			{
-				gcmd := p.printGroup(cmd, v, commands)
+			gcmd := p.printGroup(cmd, v, commands)
 
-				commands = append(commands, gcmd)
-				if v.id != 0 {
-					p.groupMode[v.id] = gcmd.mode
-				}
+			commands = append(commands, gcmd)
+			if v.id != 0 {
+				p.groupMode[v.id] = gcmd.mode
 			}
 
 		case *ifBreak:
-			groupMode := cmd.mode
-			if v.groupID != 0 {
-				if m, ok := p.groupMode[v.groupID]; ok {
-					groupMode = m
-				} else {
-					groupMode = modeFlat
-				}
-			}
-
-			var contents Doc
-			if groupMode == modeBreak {
-				contents = v.breakDoc
-			} else {
-				contents = v.flatDoc
-			}
-
-			if contents != nil {
+			if contents := p.ifBreakContents(v, cmd.mode); contents != nil {
 				commands = append(commands, command{indentation: cmd.indentation, mode: cmd.mode, doc: contents})
 			}
 
@@ -421,6 +402,25 @@ func (p *printer) run(d Doc) (string, error) {
 	return string(p.out), nil
 }
 
+// ifBreakContents returns the doc an IfBreak prints in a group whose mode is
+// cmdMode: the mode of the named group when IfBreakFor names one, else the
+// enclosing mode.
+func (p *printer) ifBreakContents(v *ifBreak, cmdMode mode) Doc {
+	if v.groupID != 0 {
+		if m, ok := p.groupMode[v.groupID]; ok {
+			cmdMode = m
+		} else {
+			cmdMode = modeFlat
+		}
+	}
+
+	if cmdMode == modeBreak {
+		return v.breakDoc
+	}
+
+	return v.flatDoc
+}
+
 // printGroup decides whether g fits in the remaining width and returns the
 // command to print it. With expanded states it tries each state in order.
 func (p *printer) printGroup(cmd command, g *group, rest []command) command {
@@ -481,10 +481,6 @@ func (p *printer) fits(next command, rest []command, remainingWidth int, hasLine
 	defer func() { p.fitCommands = commands[:0] }()
 
 	for remainingWidth >= 0 {
-		if p.fitsDBG {
-			fmt.Printf("  fitloop rem=%d cmds=%d\n", remainingWidth, len(commands))
-		}
-
 		if len(commands) == 0 {
 			if restIndex == 0 {
 				return true
@@ -564,23 +560,7 @@ func (p *printer) fits(next command, rest []command, remainingWidth int, hasLine
 			commands = append(commands, command{indentation: cmd.indentation, mode: groupMode, doc: contents})
 
 		case *ifBreak:
-			groupMode := cmd.mode
-			if v.groupID != 0 {
-				if m, ok := p.groupMode[v.groupID]; ok {
-					groupMode = m
-				} else {
-					groupMode = modeFlat
-				}
-			}
-
-			var contents Doc
-			if groupMode == modeBreak {
-				contents = v.breakDoc
-			} else {
-				contents = v.flatDoc
-			}
-
-			if contents != nil {
+			if contents := p.ifBreakContents(v, cmd.mode); contents != nil {
 				commands = append(commands, command{indentation: cmd.indentation, mode: cmd.mode, doc: contents})
 			}
 
@@ -662,7 +642,7 @@ func propagateBreaks(d Doc) {
 			}
 		}
 	}
-	traverseDoc(d, enter, exit, true)
+	traverseDoc(d, enter, exit)
 }
 
 func breakParentGroup(stack []*group) {
@@ -671,7 +651,7 @@ func breakParentGroup(stack []*group) {
 	}
 }
 
-func traverseDoc(d Doc, enter func(Doc) bool, exit func(Doc), includeConditionalGroups bool) {
+func traverseDoc(d Doc, enter func(Doc) bool, exit func(Doc)) {
 	if d == nil || !enter(d) {
 		return
 	}
@@ -679,29 +659,27 @@ func traverseDoc(d Doc, enter func(Doc) bool, exit func(Doc), includeConditional
 	switch v := d.(type) {
 	case Concat:
 		for _, part := range v {
-			traverseDoc(part, enter, exit, includeConditionalGroups)
+			traverseDoc(part, enter, exit)
 		}
 	case *concatNode:
 		for _, part := range v.parts {
-			traverseDoc(part, enter, exit, includeConditionalGroups)
+			traverseDoc(part, enter, exit)
 		}
 	case *group:
-		if includeConditionalGroups {
-			for _, state := range v.expanded {
-				traverseDoc(state, enter, exit, includeConditionalGroups)
-			}
+		for _, state := range v.expanded {
+			traverseDoc(state, enter, exit)
 		}
 
-		traverseDoc(v.doc, enter, exit, includeConditionalGroups)
+		traverseDoc(v.doc, enter, exit)
 	case *indent:
-		traverseDoc(v.doc, enter, exit, includeConditionalGroups)
+		traverseDoc(v.doc, enter, exit)
 	case *align:
-		traverseDoc(v.doc, enter, exit, includeConditionalGroups)
+		traverseDoc(v.doc, enter, exit)
 	case *ifBreak:
-		traverseDoc(v.breakDoc, enter, exit, includeConditionalGroups)
-		traverseDoc(v.flatDoc, enter, exit, includeConditionalGroups)
+		traverseDoc(v.breakDoc, enter, exit)
+		traverseDoc(v.flatDoc, enter, exit)
 	case *lineSuffix:
-		traverseDoc(v.doc, enter, exit, includeConditionalGroups)
+		traverseDoc(v.doc, enter, exit)
 	}
 
 	exit(d)

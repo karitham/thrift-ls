@@ -2,7 +2,6 @@ package mapper
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -21,7 +20,7 @@ type Mapper struct {
 	nonASCII  bool
 }
 
-// NewMapper ...
+// NewMapper returns a Mapper for the given document content.
 func NewMapper(content []byte) *Mapper {
 	return &Mapper{
 		content: content,
@@ -76,7 +75,8 @@ func (m *Mapper) OffsetToLSPPosition(offset int) (protocol.Position, error) {
 	}, nil
 }
 
-// convert from utf16-based to rune-based position
+// LSPPosToParserPosition converts an LSP position (0-based line, UTF-16
+// code-unit column) to a parser position (1-based line, rune-based column).
 func (m *Mapper) LSPPosToParserPosition(pos protocol.Position) (syntax.Position, error) {
 	m.initLineStart()
 
@@ -85,23 +85,22 @@ func (m *Mapper) LSPPosToParserPosition(pos protocol.Position) (syntax.Position,
 		return syntax.InvalidPosition, fmt.Errorf("invalid position line, request line: %d, total line: %d", line, len(m.lineStart))
 	}
 
+	lineStart := m.lineStart[pos.Line]
+	lineEnd := len(m.content)
+	if line < len(m.lineStart) {
+		lineEnd = m.lineStart[line]
+	}
+
 	if !m.nonASCII {
 		col := int(pos.Character) + 1
 
-		offset := m.lineStart[pos.Line] + int(pos.Character)
+		offset := lineStart + int(pos.Character)
 		if offset > len(m.content) {
 			return syntax.InvalidPosition, fmt.Errorf("invalid position offset: %d, total content: %d, %s", offset, len(m.content), string(m.content))
 		}
 
-		var lineLength int
-		if int(pos.Line+1) >= len(m.lineStart) {
-			lineLength = len(m.content) - m.lineStart[pos.Line]
-		} else {
-			lineLength = m.lineStart[pos.Line+1] - m.lineStart[pos.Line]
-		}
-
-		if col > lineLength+1 { // if line length is 0, col is 1 means col is at end of line
-			return syntax.InvalidPosition, fmt.Errorf("invalid position column: %d, line length: %d, %s", col, lineLength, string(m.content))
+		if col > lineEnd-lineStart+1 { // if line length is 0, col is 1 means col is at end of line
+			return syntax.InvalidPosition, fmt.Errorf("invalid position column: %d, line length: %d, %s", col, lineEnd-lineStart, string(m.content))
 		}
 
 		return syntax.Position{
@@ -111,25 +110,12 @@ func (m *Mapper) LSPPosToParserPosition(pos protocol.Position) (syntax.Position,
 		}, nil
 	}
 
-	lineStart := m.lineStart[pos.Line]
-
-	lineEnd := 0
-	if int(pos.Line) == len(m.lineStart)-1 {
-		lineEnd = len(m.content)
-	} else {
-		lineEnd = m.lineStart[pos.Line+1]
-	}
-
 	lineBytes := m.content[lineStart:lineEnd]
 
 	utf16Col := 0
 	bytesCol := 0
 
-	for len(lineBytes) > 0 {
-		if utf16Col >= int(pos.Character) {
-			break
-		}
-
+	for len(lineBytes) > 0 && utf16Col < int(pos.Character) {
 		if lineBytes[0] < utf8.RuneSelf {
 			utf16Col++
 			lineBytes = lineBytes[1:]
@@ -150,11 +136,6 @@ func (m *Mapper) LSPPosToParserPosition(pos protocol.Position) (syntax.Position,
 	}
 
 	runeLen := utf8.RuneCount(m.content[lineStart : lineStart+bytesCol])
-
-	offset := lineStart + bytesCol
-	if offset > len(m.content) {
-		return syntax.InvalidPosition, errors.New("invalid position character")
-	}
 
 	return syntax.Position{
 		Line:   line,

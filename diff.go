@@ -77,7 +77,7 @@ func Diff(oldName string, old []byte, newName string, new []byte) []byte {
 
 		// Expand matching lines as far possible,
 		// establishing that x[start.x:end.x] == y[start.y:end.y].
-		// Note that on the first (or last) iteration we may (or definitey do)
+		// Note that on the first (or last) iteration we may (or definitely do)
 		// have an empty match: start.x==end.x and start.y==end.y.
 		start := m
 		for start.x > done.x && start.y > done.y && x[start.x-1] == y[start.y-1] {
@@ -196,7 +196,7 @@ func lines(x []byte) []string {
 // Subsequence Problem,” Princeton TR #170 (January 1975),
 // available at https://research.swtch.com/tgs170.pdf.
 func tgs(x, y []string) []pair {
-	// Count the number of times each string appears in a and b.
+	// Count the number of times each string appears in x and y.
 	// We only care about 0, 1, many, counted as 0, -1, -2
 	// for the x side and 0, -4, -8 for the y side.
 	// Using negative numbers now lets us distinguish positive line numbers later.

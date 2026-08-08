@@ -99,7 +99,7 @@ func Test_FormatCli_GoldenEnums(t *testing.T) {
 func Test_CheckCLI_MadeInAbyss(t *testing.T) {
 	stdout, stderr, err := runCLI(t, "check", "tests/made-in-abyss")
 	require.Error(t, err)
-	assert.Equal(t, "", stderr)
+	assert.Empty(t, stderr)
 
 	assert.Contains(t, stdout, "lints.thrift:")
 	assert.Contains(t, stdout, "cycle_a.thrift:")

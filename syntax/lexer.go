@@ -260,39 +260,29 @@ func (l *lexer) run() ([]Token, []Error) {
 // empty lines immediately before the next real token.
 func (l *lexer) scanTrivia() (blankLines int, comments []Token) {
 	for l.off < len(l.src) {
+		var t Token
 		switch c := l.src[l.off]; {
 		case isWhitespace(c):
 			blankLines += l.scanWhitespace()
-		case c == '/' && l.peekByte(1) == '/':
-			t := l.scanLineComment()
-			t.BlankLinesBefore = blankLines
-			blankLines = 0
 
-			comments = append(comments, t)
+			continue
+		case c == '/' && l.peekByte(1) == '/', c == '#':
+			t = l.scanLineComment()
 		case c == '/' && l.peekByte(1) == '*':
-			t := l.scanBlockComment()
-			t.BlankLinesBefore = blankLines
-			blankLines = 0
-
-			comments = append(comments, t)
-		case c == '#':
-			t := l.scanLineComment()
-			t.BlankLinesBefore = blankLines
-			blankLines = 0
-
-			comments = append(comments, t)
+			t = l.scanBlockComment()
 		case c == '@':
 			// Java-style annotations (@name{...}) are preserved as trivia,
 			// like comments, so they round-trip without being part of the
 			// grammar.
-			t := l.scanLineAnnotation()
-			t.BlankLinesBefore = blankLines
-			blankLines = 0
-
-			comments = append(comments, t)
+			t = l.scanLineAnnotation()
 		default:
 			return blankLines, comments
 		}
+
+		t.BlankLinesBefore = blankLines
+		blankLines = 0
+
+		comments = append(comments, t)
 	}
 
 	return blankLines, comments
@@ -320,14 +310,17 @@ func (l *lexer) scanWhitespace() int {
 		case ' ', '\t':
 			l.advanceByte()
 		default:
-			if newlines > 0 {
-				return newlines - 1
-			}
-
-			return 0
+			return blankLinesBefore(newlines)
 		}
 	}
 
+	return blankLinesBefore(newlines)
+}
+
+// blankLinesBefore converts a newline run into its blank-line count: n
+// consecutive newlines yield n-1 blank lines, the last newline only ending
+// the current line.
+func blankLinesBefore(newlines int) int {
 	if newlines > 0 {
 		return newlines - 1
 	}
@@ -369,7 +362,7 @@ func (l *lexer) scanBlockComment() Token {
 		if l.off >= len(l.src) {
 			l.errorfAt(start, "unterminated comment")
 
-			break
+			return l.finishTrivia(TokenBlockComment, start)
 		}
 
 		if l.src[l.off] == '*' && l.peekByte(1) == '/' {
@@ -392,8 +385,6 @@ func (l *lexer) scanBlockComment() Token {
 
 		l.advanceRune()
 	}
-
-	return l.finishTrivia(TokenBlockComment, start)
 }
 
 func (l *lexer) pos() srcPos {
@@ -658,7 +649,7 @@ func (l *lexer) scanString() Token {
 		if l.off >= len(l.src) {
 			l.errorfAt(start, "unterminated string literal")
 
-			break
+			return Token{Kind: TokenStringLiteral, Text: l.src[start.offset:l.off], Offset: start.offset, Line: start.line, Col: start.col}
 		}
 
 		c := l.src[l.off]
@@ -695,8 +686,6 @@ func (l *lexer) scanString() Token {
 			l.advanceRune()
 		}
 	}
-
-	return Token{Kind: TokenStringLiteral, Text: l.src[start.offset:l.off], Offset: start.offset, Line: start.line, Col: start.col}
 }
 
 func (l *lexer) peekByte(ahead int) byte {

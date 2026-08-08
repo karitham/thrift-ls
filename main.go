@@ -178,12 +178,12 @@ func lspAction(ctx context.Context, cmd *cli.Command) error {
 	cfg := loadConfig(cmd.String("config"), ".")
 	patch := options.Effective(cfg)
 
-	cli, err := lspPatch(cmd)
+	cliPatch, err := lspPatch(cmd)
 	if err != nil {
 		return err
 	}
 
-	patch = cli.Apply(patch)
+	patch = cliPatch.Apply(patch)
 
 	logLevelValue := 3
 	if patch.LogLevel != nil {
@@ -201,7 +201,7 @@ func lspAction(ctx context.Context, cmd *cli.Command) error {
 	lspOpts := &lsp.Options{
 		Config:     patch,
 		ConfigPath: cmd.String("config"),
-		CLI:        cli,
+		CLI:        cliPatch,
 	}
 
 	ss := lsp.NewStreamServer(lspOpts)
@@ -220,12 +220,12 @@ func lspAction(ctx context.Context, cmd *cli.Command) error {
 func formatAction(ctx context.Context, cmd *cli.Command) error {
 	file := cmd.Args().First()
 
-	cli, err := formatPatch(cmd)
+	cliPatch, err := formatPatch(cmd)
 	if err != nil {
 		return err
 	}
 
-	return formatFile(file, cmd.Writer, cmd.Bool("w"), cmd.Bool("d"), cmd.String("config"), cli)
+	return formatFile(file, cmd.Writer, cmd.Bool("w"), cmd.Bool("d"), cmd.String("config"), cliPatch)
 }
 
 // dumpAction prints the parse tree, and optionally the formatted document
@@ -310,10 +310,13 @@ func checkAction(ctx context.Context, cmd *cli.Command) error {
 
 	patch = cliPatch.Apply(patch)
 
-	root := path
-	if info, err := os.Stat(path); err != nil {
+	info, err := os.Stat(path)
+	if err != nil {
 		return err
-	} else if !info.IsDir() {
+	}
+
+	root := path
+	if !info.IsDir() {
 		root = filepath.Dir(path)
 	}
 
