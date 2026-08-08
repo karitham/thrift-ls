@@ -48,7 +48,7 @@ func TestReferenceQualifiedCrossFile(t *testing.T) {
 	mainFile := `include "federation.gundam.thrift"
 
 struct StrikeRouge {
-	1: required federation.Gundam pack
+	1: required federation.gundam.Gundam pack
 }`
 
 	gundamFile := `struct Gundam {

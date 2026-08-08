@@ -139,14 +139,13 @@ func searchTypeNameRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, pf *
 
 	hits := []indexHit{{loc: loc, text: def.Name.Text, kind: cache.RefFieldType}}
 
-	kinds := refKindsFor(def.Kind)
-	refs, err := ix.References(ctx, def.File, typeName, kinds...)
+	refs, err := ix.ReferencesTo(ctx, def, refKindsFor(def.Kind)...)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, h := range refs {
-		hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: cache.RefFieldType})
+		hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: h.Kind})
 	}
 
 	return hits, nil
@@ -172,13 +171,13 @@ func searchConstValueRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, pf
 
 	hits := []indexHit{{loc: loc, text: def.Name.Text, kind: cache.RefConstValue}}
 
-	refs, err := ix.References(ctx, def.File, value.Text, cache.RefConstValue)
+	refs, err := ix.ReferencesTo(ctx, def, cache.RefConstValue)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, h := range refs {
-		hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: cache.RefConstValue})
+		hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: h.Kind})
 	}
 
 	return hits, nil
@@ -196,14 +195,14 @@ func searchServiceRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, file 
 		return nil, nil
 	}
 
-	refs, err := ix.References(ctx, def.File, svcName, cache.RefServiceExtends)
+	refs, err := ix.ReferencesTo(ctx, def, cache.RefServiceExtends)
 	if err != nil {
 		return nil, err
 	}
 
 	hits := make([]indexHit, 0, len(refs))
 	for _, h := range refs {
-		hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: cache.RefServiceExtends})
+		hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: h.Kind})
 	}
 
 	return hits, nil
@@ -218,20 +217,17 @@ func searchDefRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, file uri.
 	}
 
 	parent := target.parent
+
+	var def *Resolved
+	var kinds []cache.RefKind
+
 	switch parent.(type) {
 	case *syntax.Const:
-		typeName := fmt.Sprintf("%s.%s", includeNameOf(file), id.Text)
-
-		return valueRefHits(ctx, ix, file, typeName)
+		def = defFromNode(pf, parent)
+		kinds = []cache.RefKind{cache.RefConstValue}
 	case *syntax.EnumValue:
-		enum, ok := grandparent(target.path).(*syntax.Enum)
-		if !ok {
-			return nil, nil
-		}
-
-		typeName := fmt.Sprintf("%s.%s.%s", includeNameOf(file), enum.Name.Text, id.Text)
-
-		return valueRefHits(ctx, ix, file, typeName)
+		def = defFromNode(pf, id)
+		kinds = []cache.RefKind{cache.RefConstValue}
 	case *syntax.Service:
 		svcName := id.Text
 		if strings.Contains(svcName, ".") {
@@ -246,66 +242,37 @@ func searchDefRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, file uri.
 		}
 
 		return searchServiceRefs(ctx, ix, ss, file, svcName)
-	}
-
-	kind, ok := definitionKindOf(parent)
-	if !ok {
-		return nil, nil
-	}
-
-	if _, ok := validReferenceDefinitionType[kind]; !ok {
-		return nil, nil
-	}
-
-	typeName := fmt.Sprintf("%s.%s", includeNameOf(file), id.Text)
-
-	typeRefs, err := ix.References(ctx, file, typeName, refKindsFor(kind)...)
-	if err != nil {
-		return nil, err
-	}
-
-	hits := make([]indexHit, 0, len(typeRefs))
-	for _, h := range typeRefs {
-		hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: cache.RefFieldType})
-	}
-
-	// Enum renames also touch value positions qualified with the enum name.
-	if kind == DefinitionEnum {
-		valRefs, err := ix.QualifiedValues(ctx, file, id.Text)
-		if err != nil {
-			return nil, err
+	default:
+		kind, ok := definitionKindOf(parent)
+		if !ok {
+			return nil, nil
 		}
 
-		for _, h := range valRefs {
-			hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: cache.RefConstValue})
+		if _, ok := validReferenceDefinitionType[kind]; !ok {
+			return nil, nil
+		}
+
+		def = defFromNode(pf, parent)
+		kinds = refKindsFor(kind)
+
+		// Renaming an enum definition also touches value positions
+		// qualified with the enum name ("Color.RED").
+		if kind == DefinitionEnum {
+			kinds = append(kinds, cache.RefConstValue)
 		}
 	}
 
-	return hits, nil
-}
-
-// valueRefHits wraps value-kind reference lookups for consts and enum
-// values.
-func valueRefHits(ctx context.Context, ix *Index, file uri.URI, name string) ([]indexHit, error) {
-	refs, err := ix.References(ctx, file, name, cache.RefConstValue)
+	refs, err := ix.ReferencesTo(ctx, def, kinds...)
 	if err != nil {
 		return nil, err
 	}
 
 	hits := make([]indexHit, 0, len(refs))
 	for _, h := range refs {
-		hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: cache.RefConstValue})
+		hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: h.Kind})
 	}
 
 	return hits, nil
-}
-
-func grandparent(path []syntax.Node) syntax.Node {
-	if len(path) < 3 {
-		return nil
-	}
-
-	return path[len(path)-3]
 }
 
 // definitionKindOf maps a definition node to its kind.

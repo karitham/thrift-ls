@@ -21,17 +21,9 @@ func dumpDoc(b *strings.Builder, d Doc, ind string) {
 	case nil:
 		fmt.Fprintf(b, "%s<nil>\n", ind)
 	case Concat:
-		fmt.Fprintf(b, "%sConcat\n", ind)
-
-		for _, c := range v {
-			dumpDoc(b, c, ind+"  ")
-		}
+		dumpConcat(b, v, ind)
 	case *concatNode:
-		fmt.Fprintf(b, "%sConcat\n", ind)
-
-		for _, c := range v.parts {
-			dumpDoc(b, c, ind+"  ")
-		}
+		dumpConcat(b, v.parts, ind)
 	case *group:
 		extra := ""
 		if v.id != 0 {
@@ -74,17 +66,9 @@ func dumpDoc(b *strings.Builder, d Doc, ind string) {
 	case trim:
 		fmt.Fprintf(b, "%sTrim\n", ind)
 	case Text:
-		if v == "" {
-			fmt.Fprintf(b, "%sText \"\"\n", ind)
-		} else {
-			fmt.Fprintf(b, "%sText %q\n", ind, string(v))
-		}
+		dumpText(b, ind, string(v))
 	case *textNode:
-		if v.s == "" {
-			fmt.Fprintf(b, "%sText \"\"\n", ind)
-		} else {
-			fmt.Fprintf(b, "%sText %q\n", ind, v.s)
-		}
+		dumpText(b, ind, v.s)
 	case LineDoc:
 		kind := "Line"
 		if v.Hard {
@@ -103,4 +87,22 @@ func dumpDoc(b *strings.Builder, d Doc, ind string) {
 	default:
 		fmt.Fprintf(b, "%s%T\n", ind, d)
 	}
+}
+
+func dumpConcat(b *strings.Builder, parts []Doc, ind string) {
+	fmt.Fprintf(b, "%sConcat\n", ind)
+
+	for _, c := range parts {
+		dumpDoc(b, c, ind+"  ")
+	}
+}
+
+func dumpText(b *strings.Builder, ind, s string) {
+	if s == "" {
+		fmt.Fprintf(b, "%sText \"\"\n", ind)
+
+		return
+	}
+
+	fmt.Fprintf(b, "%sText %q\n", ind, s)
 }

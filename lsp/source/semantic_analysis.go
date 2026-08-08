@@ -58,9 +58,8 @@ func (s *SemanticAnalysis) diagnostic(ctx context.Context, ss *cache.Snapshot, c
 func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, ss *cache.Snapshot, pf *cache.ParsedFile) []protocol.Diagnostic {
 	ret := make([]protocol.Diagnostic, 0)
 
-	processStructLike := func(fields []*syntax.Field) {
-		for i := range fields {
-			field := fields[i]
+	processFields := func(fields []*syntax.Field) {
+		for _, field := range fields {
 			items := s.checkTypeExist(ctx, ss, pf, field.Type)
 			ret = append(ret, items...)
 
@@ -77,7 +76,7 @@ func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, ss *cache.S
 	}
 
 	pf.AST().WalkFieldLists(func(fields []*syntax.Field, _ syntax.FieldListKind) {
-		processStructLike(fields)
+		processFields(fields)
 	})
 
 	for _, cst := range pf.AST().Consts() {

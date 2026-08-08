@@ -8,21 +8,16 @@ import (
 )
 
 func TestParse(t *testing.T) {
-	type args struct {
-		fh FileHandle
-	}
-
 	tests := []struct {
 		name      string
-		args      args
+		fh        FileHandle
 		assertion assert.ErrorAssertionFunc
 	}{
 		{
 			name: "normal",
-			args: args{
-				fh: &Overlay{
-					uri: "file:///tmp/types.thrift",
-					content: []byte(`
+			fh: &Overlay{
+				uri: "file:///tmp/types.thrift",
+				content: []byte(`
 #include "base.thrift"
 struct Xtruct3
 {
@@ -31,18 +26,16 @@ struct Xtruct3
   9:  i32    i32_thing,
   11: i64    i64_thing
 }
-					`),
-					version: 0,
-				},
+				`),
+				version: 0,
 			},
 			assertion: assert.NoError,
 		},
 		{
 			name: "invalid ast",
-			args: args{
-				fh: &Overlay{
-					uri: "file:///tmp/types.thrift",
-					content: []byte(`
+			fh: &Overlay{
+				uri: "file:///tmp/types.thrift",
+				content: []byte(`
 #include "base.thrift"
 struct Xtruct3
 {
@@ -52,16 +45,15 @@ struct Xtruct3
   11: i64    i64_thing,
   12: 
 }
-					`),
-					version: 0,
-				},
+				`),
+				version: 0,
 			},
 			assertion: assert.NoError,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Parse(tt.args.fh)
+			got, err := Parse(tt.fh)
 			tt.assertion(t, err)
 			t.Logf("got: %v\n", got)
 		})

@@ -193,20 +193,18 @@ func (f *formatter) itemSep(sep int, mode SeparatorMode) []doc.Doc {
 		text = ""
 	}
 
-	if text == f.token(sep).Text {
-		p := f.Parts(2)
-		p = append(p, f.emitTokens(sep, sep, emitOpts{leading: true, trailing: true}))
-		p = append(p, f.foldBreak(sep, " "))
-
-		return p
-	}
-
 	// Forced separator differing from the source: the forced text replaces
 	// the suppressed text inside the run, so the source token's comments
 	// stay ordered around it — own-line comments before it, same-line
 	// comments after.
+	o := emitOpts{leading: true, trailing: true}
+	if text != f.token(sep).Text {
+		o.skipText = []int{sep}
+		o.text = text
+	}
+
 	p := f.Parts(2)
-	p = append(p, f.emitTokens(sep, sep, emitOpts{leading: true, trailing: true, skipText: []int{sep}, text: text}))
+	p = append(p, f.emitTokens(sep, sep, o))
 	p = append(p, f.foldBreak(sep, " "))
 
 	return p

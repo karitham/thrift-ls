@@ -20,7 +20,7 @@ func NewIncludeDeps() *IncludeDeps {
 	return &IncludeDeps{graph: NewIncludeGraph()}
 }
 
-// Includes returns the files file includes directly, in include order.
+// Includes returns the files file includes directly, sorted ascending by URI.
 func (c *IncludeDeps) Includes(file uri.URI) []uri.URI {
 	node := c.graph.Get(file)
 	if node == nil {

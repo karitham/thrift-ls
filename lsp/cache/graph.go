@@ -197,7 +197,6 @@ func (g *IncludeGraph) removeWithoutLock(file uri.URI) {
 			continue
 		}
 
-		// update outNode indegree
 		for i := range outNode.indegree {
 			if outNode.indegree[i] == file {
 				outNode.indegree = append(outNode.indegree[0:i], outNode.indegree[i+1:]...)

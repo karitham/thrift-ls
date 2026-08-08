@@ -111,12 +111,16 @@ func TestIndex_References_ConstValue(t *testing.T) {
 	require.Len(t, hits, 1)
 }
 
-func TestIndex_QualifiedValues(t *testing.T) {
+func TestIndex_ReferencesToEnumValues(t *testing.T) {
 	ctx := t.Context()
 	ss := snap(t, "/t.thrift", "enum Color { RED = 0, BLUE = 1 }\nstruct Foo { 1: i32 id = Color.RED, }\nconst i32 C = Color.BLUE")
-	_ = parseOne(t, ss, fu("/t.thrift"))
+	pf := parseOne(t, ss, fu("/t.thrift"))
 
-	hits, err := NewIndex(ss).QualifiedValues(ctx, fu("/t.thrift"), "Color")
+	def, err := NewIndex(ss).ResolveType(ctx, pf, ft("Color"))
+	require.NoError(t, err)
+	require.NotNil(t, def)
+
+	hits, err := NewIndex(ss).ReferencesTo(ctx, def, cache.RefFieldType, cache.RefSignatureType, cache.RefConstValue)
 	require.NoError(t, err)
 	require.Len(t, hits, 2)
 	for _, h := range hits {

@@ -126,14 +126,7 @@ func (annotationKeyProvider) Candidates(ctx context.Context, ss *cache.Snapshot,
 		}
 	}
 
-	var res []Candidate
-	for key := range keys {
-		res = append(res, Candidate{showText: key, insertText: key, format: protocol.InsertTextFormatPlainText})
-	}
-
-	sortCandidates(res)
-
-	return res
+	return setCandidates(keys)
 }
 
 // annotationKeys collects the names of every annotation in the document:
@@ -206,7 +199,13 @@ func (serviceExtendsProvider) Candidates(ctx context.Context, ss *cache.Snapshot
 		}
 	}
 
-	var res []Candidate
+	return setCandidates(names)
+}
+
+// setCandidates converts a name set into alphabetically sorted candidates.
+func setCandidates(names map[string]struct{}) []Candidate {
+	res := make([]Candidate, 0, len(names))
+
 	for name := range names {
 		res = append(res, Candidate{showText: name, insertText: name, format: protocol.InsertTextFormatPlainText})
 	}

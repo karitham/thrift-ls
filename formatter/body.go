@@ -22,6 +22,17 @@ func (f *formatter) structLike(v *syntax.Struct) doc.Doc {
 	return f.Concat(parts...)
 }
 
+// bracedBody formats struct, union, and exception declarations. The header
+// renders as a token run up to and including the open brace; the brace
+// text itself is emitted by bracedGroup.
+func (f *formatter) bracedBody(fields []*syntax.Field, open, close int, closeTrailing bool, c Construct) doc.Doc {
+	bodyID := f.id()
+	sepMode := f.opts.Separator.Get(c)
+	forced := f.opts.Break.Get(c) || sepForcesBreak(sepsOfFields(fields), sepMode)
+
+	return f.bracedGroup(f.fieldList(fields, bodyID, sepMode), bodyID, len(fields), open, close, closeTrailing, forced)
+}
+
 // enum formats an enum declaration.
 func (f *formatter) enum(v *syntax.Enum) doc.Doc {
 	open := f.scanKind(v.TokStart(), v.TokEnd(), syntax.TokenLBrace)
@@ -49,12 +60,6 @@ func (f *formatter) scanKind(start, end int, kind syntax.TokenKind) int {
 	return end
 }
 
-// bracedBody formats "{ fields }": flat as "S { 1: i32 a }" when it fits,
-// otherwise one field per line. Field alignment and trailing separators
-// switch on the body group breaking. open and close are the brace token
-// indices; closeTrailing reports whether the close brace is not the last
-// token of the declaration (annotations follow), so its trailing trivia
-// belongs here rather than to the declaration's trailing comments.
 // constructOf returns the construct for the struct-like kind.
 func (f *formatter) constructOf(kind syntax.StructKind) Construct {
 	switch kind {
@@ -67,15 +72,20 @@ func (f *formatter) constructOf(kind syntax.StructKind) Construct {
 	return ConstructStruct
 }
 
-func (f *formatter) bracedBody(fields []*syntax.Field, open, close int, closeTrailing bool, c Construct) doc.Doc {
-	bodyID := f.id()
-	sepMode := f.opts.Separator.Get(c)
-	inner := append([]doc.Doc{doc.Line, f.fieldList(fields, bodyID, sepMode)}, f.ownLineComments(close)...)
-	closeBreak := f.IfBreak(doc.SoftLine, f.Text(" "))
+// bracedGroup assembles "{ body }" from the prebuilt body list: flat as
+// "S { 1: i32 a }" when it fits, otherwise one item per line. bodyID is
+// the group id the list's IfBreakFor references; n is the item count;
+// forced requires the broken layout. open and close are the brace token
+// indices; closeTrailing reports whether the close brace is not the last
+// token of the declaration (annotations follow), so its trailing trivia
+// belongs here rather than to the declaration's trailing comments.
+func (f *formatter) bracedGroup(body doc.Doc, bodyID, n, open, close int, closeTrailing, forced bool) doc.Doc {
+	inner := f.ownLineComments(close)
+	closeBreak := f.IfBreak(doc.SoftLine, f.Concat())
 
-	if len(fields) == 0 {
-		inner = append([]doc.Doc{}, f.ownLineComments(close)...)
-		closeBreak = f.IfBreak(doc.SoftLine, f.Concat())
+	if n > 0 {
+		inner = append([]doc.Doc{doc.Line, body}, inner...)
+		closeBreak = f.IfBreak(doc.SoftLine, f.Text(" "))
 	}
 
 	openComments := f.sameLineComments(open)
@@ -91,12 +101,9 @@ func (f *formatter) bracedBody(fields []*syntax.Field, open, close int, closeTra
 		closeBreak,
 		f.emitTokens(close, close, emitOpts{trailing: closeTrailing}),
 	)
-	if len(fields) > 0 && (f.opts.Break.Get(c) || sepForcesBreak(sepsOfFields(fields), sepMode)) {
+	if n > 0 && forced {
 		// BreakParent inside the group forces it to the broken layout.
-		p := f.Parts(2)
-		p = append(p, doc.BreakParent)
-		p = append(p, content)
-		content = f.Concat(p...)
+		content = f.Concat(doc.BreakParent, content)
 	}
 
 	return f.GroupID(bodyID, content)
@@ -105,35 +112,10 @@ func (f *formatter) bracedBody(fields []*syntax.Field, open, close int, closeTra
 // bracedEnumBody is bracedBody for enum values.
 func (f *formatter) bracedEnumBody(values []*syntax.EnumValue, open, close int, closeTrailing bool) doc.Doc {
 	bodyID := f.id()
-	inner := append([]doc.Doc{doc.Line, f.enumValueList(values, bodyID)}, f.ownLineComments(close)...)
-	closeBreak := f.IfBreak(doc.SoftLine, f.Text(" "))
+	sepMode := f.opts.Separator.Get(ConstructEnum)
+	forced := f.opts.Break.Get(ConstructEnum) || sepForcesBreak(sepsOfValues(values), sepMode)
 
-	if len(values) == 0 {
-		inner = append([]doc.Doc{}, f.ownLineComments(close)...)
-		closeBreak = f.IfBreak(doc.SoftLine, f.Concat())
-	}
-
-	openComments := f.sameLineComments(open)
-
-	openDoc := append([]doc.Doc{f.Text(" {")}, openComments...)
-	if len(openComments) > 0 {
-		openDoc = append(openDoc, doc.BreakParent)
-	}
-
-	content := f.Concat(
-		f.Concat(openDoc...),
-		f.Indent(f.Concat(inner...)),
-		closeBreak,
-		f.emitTokens(close, close, emitOpts{trailing: closeTrailing}),
-	)
-	if len(values) > 0 && (f.opts.Break.Get(ConstructEnum) || sepForcesBreak(sepsOfValues(values), f.opts.Separator.Get(ConstructEnum))) {
-		p := f.Parts(2)
-		p = append(p, doc.BreakParent)
-		p = append(p, content)
-		content = f.Concat(p...)
-	}
-
-	return f.GroupID(bodyID, content)
+	return f.bracedGroup(f.enumValueList(values, bodyID), bodyID, len(values), open, close, closeTrailing, forced)
 }
 
 // service formats a service declaration. The body is always multiline:
@@ -149,24 +131,22 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 			// The separator line collapses when the previous function
 			// ended with a line comment (which owns its line end).
 			parts = append(parts, doc.Line)
-			parts = append(parts, f.blankLines(fn, doc.HardLine)...)
-		} else {
-			parts = append(parts, f.blankLines(fn, doc.HardLine)...)
 		}
 
+		parts = append(parts, f.blankLines(fn, doc.HardLine)...)
 		parts = append(parts, f.function(fn))
 	}
 
 	p := f.Parts(2)
 	p = append(p, f.Concat(parts...))
 	p = append(p, f.Concat(f.ownLineComments(close)...))
-
 	inner := f.Concat(p...)
+
 	if len(v.Functions) > 0 {
 		// The first function starts its own line; the closing trivia
 		// provides the break before it for empty bodies, so the blank
 		// count does not double.
-		inner = f.Concat(doc.Line, f.Concat(parts...), f.Concat(f.ownLineComments(close)...))
+		inner = f.Concat(doc.Line, inner)
 	} else if !f.hasOwnLineComments(close) && f.token(close).BlankLinesBefore > 0 {
 		// Empty body with blank lines before the close and no comments:
 		// the blanks round-trip through the close's own line.
@@ -234,20 +214,14 @@ func (f *formatter) functionBody(v *syntax.Function) doc.Doc {
 	// field per line otherwise, like the throws clause.
 	args := f.parenGroup(v.Args, open, f.parenClose(v.Args, open), false, argsMode)
 
-	if v.Throws == nil {
-		return f.Group(f.Concat(
-			header,
-			args,
-			f.functionTail(v, open),
-		))
+	parts := f.Parts(4)
+	parts = append(parts, header, args)
+	if v.Throws != nil {
+		parts = append(parts, f.throwsGroup(v))
 	}
+	parts = append(parts, f.functionTail(v, open))
 
-	return f.Group(f.Concat(
-		header,
-		args,
-		f.throwsGroup(v),
-		f.functionTail(v, open),
-	))
+	return f.Group(f.Concat(parts...))
 }
 
 // parenGroup renders "(fields)" as its own group, folding independently:
@@ -422,11 +396,9 @@ func (f *formatter) brokenFields(fields []*syntax.Field, sepMode SeparatorMode) 
 			// The separator line collapses when the previous field ended
 			// with a line comment (which owns its line end).
 			parts = append(parts, doc.Line)
-			parts = append(parts, f.blankLines(field, doc.HardLine)...)
-		} else {
-			parts = append(parts, f.blankLines(field, doc.HardLine)...)
 		}
 
+		parts = append(parts, f.blankLines(field, doc.HardLine)...)
 		parts = append(parts, f.fieldDoc(field, f.alignmentFor(fields, i, sepMode), 0, sepMode))
 	}
 

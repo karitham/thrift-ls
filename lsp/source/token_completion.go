@@ -2,7 +2,7 @@ package source
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sort"
 	"strings"
 
@@ -65,7 +65,7 @@ func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cm
 	}
 
 	if parsedFile.AST() == nil {
-		return nil, protocol.Range{}, false, fmt.Errorf("parser ast failed")
+		return nil, protocol.Range{}, false, errors.New("parser ast failed")
 	}
 
 	pos, err := parsedFile.Mapper().LSPPosToParserPosition(cmp.Pos)
@@ -170,7 +170,7 @@ func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cm
 		truncated = true
 	}
 
-	cursor := protocol.Position{Line: cmp.Pos.Line, Character: cmp.Pos.Character}
+	cursor := cmp.Pos
 
 	rng := protocol.Range{End: cursor}
 	if start, err := parsedFile.Mapper().OffsetToLSPPosition(editStart); err == nil {

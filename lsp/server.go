@@ -101,6 +101,7 @@ func (s *Server) addFolderView(folder uri.URI) *cache.View {
 
 // viewConfig resolves the config for a view rooted at folder: the pinned
 // --config file, or the nearest thrift-ls.json walking up, plus CLI flags.
+// A folder with no usable config formats with defaults.
 func (s *Server) viewConfig(folder uri.URI) options.Patch {
 	if s.configPath != "" {
 		return s.cli.Apply(s.explicit)
@@ -110,21 +111,27 @@ func (s *Server) viewConfig(folder uri.URI) options.Patch {
 	if err != nil {
 		slog.Error("config discovery failed", "dir", folder.FsPath(), "err", err)
 
-		return s.cli.Apply(options.Default())
+		return s.defaultConfig()
 	}
 
 	if cfgPath == "" {
-		return s.cli.Apply(options.Default())
+		return s.defaultConfig()
 	}
 
 	cfg, err := options.Load(cfgPath)
 	if err != nil {
 		slog.Error("config file rejected", "path", cfgPath, "err", err)
 
-		return s.cli.Apply(options.Default())
+		return s.defaultConfig()
 	}
 
 	return s.cli.Apply(options.Effective(cfg))
+}
+
+// defaultConfig is the fallback for a folder without a usable config
+// file: the defaults with the CLI overlay.
+func (s *Server) defaultConfig() options.Patch {
+	return s.cli.Apply(options.Default())
 }
 
 // applyLogLevel applies the first view config's log level; the logger is

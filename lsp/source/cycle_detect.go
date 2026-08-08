@@ -20,7 +20,7 @@ func (c *CycleCheck) Diagnostic(ctx context.Context, ss *cache.Snapshot, changeF
 		_ = getIncludes(ctx, ss, file, &includesMap)
 	}
 
-	cyclePairs := cycleDetect(&includesMap)
+	cyclePairs := cycleDetect(includesMap)
 
 	return cycleToDiagnosticItems(cyclePairs), nil
 }
@@ -64,7 +64,7 @@ type CyclePair struct {
 // cycleDetect returns every include edge that closes a cycle: the pair
 // (file, include file->Y) is reported when Y transitively includes file.
 // Cycles of any length are caught, including self-includes.
-func cycleDetect(includesMap *map[uri.URI][]Include) []CyclePair {
+func cycleDetect(includesMap map[uri.URI][]Include) []CyclePair {
 	// reaches reports whether from can reach target via include edges,
 	// cycle-safe via the seen set.
 	var reaches func(from, target uri.URI, seen map[uri.URI]bool) bool
@@ -80,7 +80,7 @@ func cycleDetect(includesMap *map[uri.URI][]Include) []CyclePair {
 
 		seen[from] = true
 
-		for _, inc := range (*includesMap)[from] {
+		for _, inc := range includesMap[from] {
 			if reaches(inc.file, target, seen) {
 				return true
 			}
@@ -91,7 +91,7 @@ func cycleDetect(includesMap *map[uri.URI][]Include) []CyclePair {
 
 	cyclePairs := make([]CyclePair, 0)
 
-	for file, includes := range *includesMap {
+	for file, includes := range includesMap {
 		for _, inc := range includes {
 			if reaches(inc.file, file, make(map[uri.URI]bool)) {
 				cyclePairs = append(cyclePairs, CyclePair{

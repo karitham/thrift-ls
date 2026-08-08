@@ -82,6 +82,12 @@ func (v *View) Config() options.Patch {
 	return v.config
 }
 
+// WalkFiles enumerates the view's file source under root: the disk in
+// production, the in-memory tree in tests.
+func (v *View) WalkFiles(ctx context.Context, root uri.URI, fn func(uri.URI) error) error {
+	return v.fs.WalkFiles(ctx, root, fn)
+}
+
 func (v *View) MarkFileKnown(fileURI uri.URI) {
 	v.knownFilesMu.Lock()
 	defer v.knownFilesMu.Unlock()

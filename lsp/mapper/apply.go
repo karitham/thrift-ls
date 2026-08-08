@@ -33,7 +33,6 @@ func (m *Mapper) ApplyEdits(edits []protocol.TextEdit) ([]byte, error) {
 		all = append(all, pending{start, end, e.NewText})
 	}
 
-	// Later edits apply first so earlier offsets stay valid.
 	sort.Slice(all, func(i, j int) bool { return all[i].start > all[j].start })
 
 	buf := m.content
@@ -53,6 +52,9 @@ func (m *Mapper) ApplyEdits(edits []protocol.TextEdit) ([]byte, error) {
 // content.
 func (m *Mapper) offsetAt(pos protocol.Position) (int, error) {
 	p, err := m.LSPPosToParserPosition(protocol.Position{Line: pos.Line, Character: pos.Character})
+	if err != nil {
+		return 0, err
+	}
 
-	return p.Offset, err
+	return p.Offset, nil
 }

@@ -342,11 +342,6 @@ type padEntry struct {
 	text string
 }
 
-// containsInt reports whether xs contains v.
-func containsInt(xs []int, v int) bool {
-	return slices.Contains(xs, v)
-}
-
 // padAt returns the combined pads for the token index, or "". Multiple
 // entries at the same index (id pad + requiredness column) concatenate.
 func padAt(pads []padEntry, idx int) string {
@@ -409,7 +404,7 @@ func (f *formatter) emitTokens(start, end int, o emitOpts) doc.Doc {
 			continue
 		}
 
-		skipped := containsInt(o.skipText, i)
+		skipped := slices.Contains(o.skipText, i)
 
 		if !first {
 			// Comments between the previous real token and this one
@@ -446,23 +441,26 @@ func (f *formatter) emitTokens(start, end int, o emitOpts) doc.Doc {
 		first = false
 	}
 
-	if o.trailing {
-		// Same-line comments after the last real token. When the token's
-		// text is suppressed (the separator mode drops it), its same-line
-		// comments render inline only when they also share the previous
-		// content's line; otherwise they start their own line, so the
-		// output round-trips — the next emission would skip them as
-		// same-line with the suppressed token.
-		if containsInt(o.skipText, prev) && o.text == "" {
-			prevTok := f.prevReal(prev - 1)
-			if prevTok >= 0 && f.token(prevTok).Line == f.token(prev).Line {
-				parts = append(parts, f.sameLineComments(prev)...)
-			} else {
-				parts = append(parts, f.suppressedSepComments(prev)...)
-			}
-		} else {
-			parts = append(parts, f.sameLineComments(prev)...)
-		}
+	if !o.trailing {
+		return f.Concat(parts...)
+	}
+
+	if !slices.Contains(o.skipText, prev) || o.text != "" {
+		parts = append(parts, f.sameLineComments(prev)...)
+
+		return f.Concat(parts...)
+	}
+
+	// Same-line comments after the last real token. When the token's text
+	// is suppressed (the separator mode drops it), its same-line comments
+	// render inline only when they also share the previous content's line;
+	// otherwise they start their own line, so the output round-trips — the
+	// next emission would skip them as same-line with the suppressed token.
+	prevTok := f.prevReal(prev - 1)
+	if prevTok >= 0 && f.token(prevTok).Line == f.token(prev).Line {
+		parts = append(parts, f.sameLineComments(prev)...)
+	} else {
+		parts = append(parts, f.suppressedSepComments(prev)...)
 	}
 
 	return f.Concat(parts...)
@@ -601,39 +599,31 @@ func (f *formatter) cppInclude(v *syntax.CPPInclude) doc.Doc {
 }
 
 func (f *formatter) namespace(v *syntax.Namespace) doc.Doc {
-	end := v.TokEnd()
-	if v.Annotations != nil {
-		end = v.Annotations.TokStart() - 1
-	}
-
-	o := emitOpts{}
-	if v.Annotations != nil {
-		o.trailing = true
-	}
-
-	parts := f.Parts(3)
-	parts = append(parts, f.emitTokens(v.TokStart(), end, o))
-	parts = append(parts, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
-	parts = append(parts, f.afterAnnotations(v.Annotations, v.TokEnd()))
-
-	return f.Concat(parts...)
+	return f.headerWithAnnotations(v.TokStart(), v.TokEnd(), v.Annotations)
 }
 
 func (f *formatter) typedef(v *syntax.Typedef) doc.Doc {
-	end := v.TokEnd()
-	if v.Annotations != nil {
-		end = v.Annotations.TokStart() - 1
+	return f.headerWithAnnotations(v.TokStart(), v.TokEnd(), v.Annotations)
+}
+
+// headerWithAnnotations emits the node's header tokens up to its
+// annotations (which keep their own foldable group), and any stray tokens
+// after them.
+func (f *formatter) headerWithAnnotations(start, end int, ann *syntax.Annotations) doc.Doc {
+	headerEnd := end
+	if ann != nil {
+		headerEnd = ann.TokStart() - 1
 	}
 
 	o := emitOpts{}
-	if v.Annotations != nil {
+	if ann != nil {
 		o.trailing = true
 	}
 
 	parts := f.Parts(3)
-	parts = append(parts, f.emitTokens(v.TokStart(), end, o))
-	parts = append(parts, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
-	parts = append(parts, f.afterAnnotations(v.Annotations, v.TokEnd()))
+	parts = append(parts, f.emitTokens(start, headerEnd, o))
+	parts = append(parts, f.annotationsDoc(ann, ann != nil && ann.TokEnd() == end))
+	parts = append(parts, f.afterAnnotations(ann, end))
 
 	return f.Concat(parts...)
 }
