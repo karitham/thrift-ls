@@ -1,6 +1,8 @@
 package lsp
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -142,6 +144,83 @@ func Test_CodeAction(t *testing.T) {
 			}
 
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestCodeActionAddMissingInclude(t *testing.T) {
+	const content = "struct S {\n  1: User u,\n}\n"
+	diagnosticRange := protocol.Range{
+		Start: protocol.Position{Line: 1, Character: 5},
+		End:   protocol.Position{Line: 1, Character: 9},
+	}
+
+	tests := []struct {
+		name          string
+		requestRange  protocol.Range
+		diagnostic    protocol.Diagnostic
+		wantAddAction bool
+	}{
+		{
+			name: "selection starts before diagnostic",
+			requestRange: protocol.Range{
+				Start: protocol.Position{Line: 1, Character: 2},
+				End:   protocol.Position{Line: 1, Character: 9},
+			},
+			diagnostic: protocol.Diagnostic{
+				Range:   diagnosticRange,
+				Code:    protocol.String(source.CodeUndefinedType),
+				Message: protocol.String("field type doesn't exist"),
+			},
+			wantAddAction: true,
+		},
+		{
+			name:         "wrong diagnostic code",
+			requestRange: diagnosticRange,
+			diagnostic: protocol.Diagnostic{
+				Range:   diagnosticRange,
+				Code:    protocol.String(source.CodeUndefinedValue),
+				Message: protocol.String("default value doesn't exist"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			shared := filepath.Join(dir, "shared.thrift")
+			user := filepath.Join(dir, "user.thrift")
+			require.NoError(t, os.WriteFile(shared, []byte("struct User { 1: i32 id }\n"), 0o644))
+			require.NoError(t, os.WriteFile(user, []byte(content), 0o644))
+
+			srv := newTestServer(nil)
+			fileURI := uri.File(user)
+			openDocument(t, srv, fileURI, content)
+
+			actions, err := srv.codeAction(t.Context(), &protocol.CodeActionParams{
+				TextDocument: protocol.TextDocumentIdentifier{URI: fileURI},
+				Range:        tt.requestRange,
+				Context: protocol.CodeActionContext{
+					Diagnostics: []protocol.Diagnostic{tt.diagnostic},
+					Only:        []protocol.CodeActionKind{protocol.CodeActionKindQuickFix},
+				},
+			})
+			require.NoError(t, err)
+
+			var found *protocol.CodeAction
+			for _, action := range actions {
+				codeAction, ok := action.(*protocol.CodeAction)
+				if ok && codeAction.Title == `Add include "shared.thrift"` {
+					found = codeAction
+				}
+			}
+
+			if tt.wantAddAction {
+				require.NotNil(t, found)
+				return
+			}
+
+			assert.Nil(t, found)
 		})
 	}
 }

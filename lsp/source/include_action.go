@@ -147,21 +147,23 @@ func MakeAddMissingIncludeAction(ctx context.Context, ss *cache.Snapshot, fh cac
 // missingTypeAt returns the type name of a "field type doesn't exist"
 // diagnostic on the selection, or "".
 func missingTypeAt(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, rng protocol.Range, diags []protocol.Diagnostic) string {
-	overlap := false
+	var diagnosticRange protocol.Range
+	found := false
 
 	for _, d := range diags {
 		if hasCode(d, CodeUndefinedType) && RangesOverlap(rng, d.Range) {
-			overlap = true
+			diagnosticRange = d.Range
+			found = true
 
 			break
 		}
 	}
 
-	if !overlap {
+	if !found {
 		return ""
 	}
 
-	_, target, err := resolveTarget(ctx, ss, fh.URI(), rng.Start)
+	_, target, err := resolveTarget(ctx, ss, fh.URI(), diagnosticRange.Start)
 	if err != nil {
 		return ""
 	}

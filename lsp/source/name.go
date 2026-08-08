@@ -51,6 +51,14 @@ func parseIdent(cur uri.URI, includes []*syntax.Include, identifier string) (inc
 	return "", identifier
 }
 
+func splitQualifiedName(name string) (include, identifier string) {
+	if i := strings.LastIndexByte(name, '.'); i >= 0 {
+		return name[:i], name[i+1:]
+	}
+
+	return "", name
+}
+
 // includeNames returns include names from include ast nodes
 func includeNames(cur uri.URI, includes []*syntax.Include) (includeNames []string) {
 	for _, inc := range includes {

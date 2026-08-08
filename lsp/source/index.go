@@ -252,13 +252,19 @@ func (x *Index) FindInWorkspace(ctx context.Context, name string) (*Resolved, er
 		return nil, nil
 	}
 
+	include, identifier := splitQualifiedName(name)
+
 	for _, f := range view.KnownFiles() {
+		if include != "" && includeNameOf(f) != include {
+			continue
+		}
+
 		pf, err := x.ss.Parse(ctx, f)
 		if err != nil || pf.AST() == nil {
 			continue
 		}
 
-		if n, ok := pf.Definitions()[name]; ok {
+		if n, ok := pf.Definitions()[identifier]; ok {
 			return defFromNode(pf, n), nil
 		}
 	}
@@ -288,12 +294,16 @@ func (x *Index) FindInWorkspace(ctx context.Context, name string) (*Resolved, er
 
 	sort.Strings(files)
 	for _, p := range files {
+		if include != "" && includeNameOf(uri.File(p)) != include {
+			continue
+		}
+
 		pf, err := x.ss.Parse(ctx, uri.File(p))
 		if err != nil || pf.AST() == nil {
 			continue
 		}
 
-		if n, ok := pf.Definitions()[name]; ok {
+		if n, ok := pf.Definitions()[identifier]; ok {
 			return defFromNode(pf, n), nil
 		}
 	}

@@ -128,15 +128,28 @@ func TestIndex_ReferencingFiles(t *testing.T) {
 }
 
 func TestIndex_FindInWorkspace(t *testing.T) {
-	ss := crossSnap(t, "/a.thrift", "struct User {}", "/b.thrift", "struct Account {}")
-	_ = parseOne(t, ss, fu("/a.thrift"))
-	_ = parseOne(t, ss, fu("/b.thrift"))
+	tests := []struct {
+		name  string
+		query string
+		file  string
+	}{
+		{name: "unqualified", query: "Account", file: "/b.thrift"},
+		{name: "qualified", query: "zeon.Account", file: "/zeon.thrift"},
+	}
 
-	def, err := NewIndex(ss).FindInWorkspace(ctx, "Account")
-	require.NoError(t, err)
-	require.NotNil(t, def)
-	assert.Equal(t, fu("/b.thrift"), def.File)
-	assert.Equal(t, DefinitionStruct, def.Kind)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ss := crossSnap(t, "/a.thrift", "struct User {}", tt.file, "struct Account {}")
+			_ = parseOne(t, ss, fu("/a.thrift"))
+			_ = parseOne(t, ss, fu(tt.file))
+
+			def, err := NewIndex(ss).FindInWorkspace(ctx, tt.query)
+			require.NoError(t, err)
+			require.NotNil(t, def)
+			assert.Equal(t, fu(tt.file), def.File)
+			assert.Equal(t, DefinitionStruct, def.Kind)
+		})
+	}
 }
 
 func TestRefKindsFor(t *testing.T) {
