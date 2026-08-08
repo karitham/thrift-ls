@@ -17,6 +17,11 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "configurationDefaults": {
+      "[thrift]": {
+        "editor.defaultFormatter": "karitham.thrift-ls"
+      }
+    },
     "languages": [
       {
         "id": "thrift",
