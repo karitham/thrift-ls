@@ -15,11 +15,10 @@ import {
   LanguageClientOptions,
   ServerOptions,
 } from 'vscode-languageclient/node';
-import { assetName, findOnPath, parseChecksums, sha256Hex } from './platform';
+import { assetName, findOnPath, parseChecksums, releaseTag, sha256Hex } from './platform';
 
 const REPO = 'karitham/thrift-ls';
 const RELEASES_URL = `https://github.com/${REPO}/releases`;
-const DOWNLOAD_URL = `${RELEASES_URL}/latest/download`;
 
 // The constructs with per-construct separator and break settings.
 const CONSTRUCTS = [
@@ -149,7 +148,7 @@ async function resolveBinary(context: ExtensionContext): Promise<string | undefi
     return onPath;
   }
 
-  const target = releaseTarget();
+  const target = releaseTarget(context);
   if (!target) {
     window.showErrorMessage(
       `thrift-ls publishes no binary for ${process.platform}/${process.arch}. Install from source or set thrift-ls.path.`
@@ -189,7 +188,7 @@ async function reinstall(context: ExtensionContext): Promise<void> {
     return;
   }
 
-  const target = releaseTarget();
+  const target = releaseTarget(context);
   if (!target) {
     window.showErrorMessage(
       `thrift-ls publishes no binary for ${process.platform}/${process.arch}.`
@@ -311,15 +310,22 @@ function versionOf(bin: string): string | undefined {
   return text || undefined;
 }
 
-function releaseTarget(): ReleaseTarget | undefined {
+function releaseTarget(context: ExtensionContext): ReleaseTarget | undefined {
   const name = assetName(process.platform, process.arch);
   if (!name) {
     return undefined;
   }
+
+  // A dev vsix pins itself to its own commit's prerelease, so it pairs
+  // with the binaries built from the same code; stable builds use
+  // releases/latest (which never resolves to a prerelease).
+  const tag = releaseTag(context.extension.packageJSON.version);
+  const base = tag ? `${RELEASES_URL}/download/${tag}` : `${RELEASES_URL}/latest/download`;
+
   return {
     name,
-    url: `${DOWNLOAD_URL}/${name}`,
-    checksumUrl: `${DOWNLOAD_URL}/checksums.txt`,
+    url: `${base}/${name}`,
+    checksumUrl: `${base}/checksums.txt`,
   };
 }
 

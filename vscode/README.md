@@ -15,9 +15,14 @@ in the following order:
 2. `thrift-ls` on `PATH`, or
 3. a previously downloaded copy in the extension's storage.
 
-If none is found, a prompt offers to download the latest release binary for
-your platform (`linux`/`darwin`/`windows`, `amd64`/`arm64`) and verify its
+If none is found, a prompt offers to download the release binary for your
+platform (`linux`/`darwin`/`windows`, `amd64`/`arm64`) and verify its
 SHA-256 against `checksums.txt` from the release.
+
+A stable vsix downloads from `releases/latest` (never a prerelease). A dev
+vsix from a per-commit prerelease (`0.1.0-dev.<sha>`) pins itself to that
+same commit's release, so the extension and the server binary always come
+from the same code.
 
 Manual installs:
 
