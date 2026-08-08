@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"sync"
 
 	"go.lsp.dev/uri"
 
@@ -179,13 +180,22 @@ func (s *Server) postDiagnostics(ctx context.Context, view *cache.View) func([]u
 	}
 }
 
-// diagnose publishes diagnostics for every affected file.
+// diagnose publishes diagnostics for every affected file, in parallel: a
+// change to a shared include re-diagnoses all its dependents, and the
+// snapshot (and the client connection) are safe for concurrent reads and
+// notifications.
 func (s *Server) diagnose(ctx context.Context, ss *cache.Snapshot, affected []uri.URI) {
-	for i := range affected {
-		if err := s.diagnostic(ctx, ss, affected[i]); err != nil {
-			logError("diagnostic error", err)
-		}
+	var wg sync.WaitGroup
+
+	for _, file := range affected {
+		wg.Go(func() {
+			if err := s.diagnostic(ctx, ss, file); err != nil {
+				logError("diagnostic error", err)
+			}
+		})
 	}
+
+	wg.Wait()
 }
 
 func (s *Server) completion(ctx context.Context, params *protocol.CompletionParams) (*protocol.CompletionList, error) {

@@ -18,14 +18,52 @@ import (
 // resolution and reference search. It composes per-file
 // cache.FileIndexes over the include graph.
 //
-// An Index is cheap — construct one per request with NewIndex.
+// An Index is cheap — construct one per request with NewIndex. Resolutions
+// are memoized per (file, name), so a request resolving the same name in
+// the same file repeatedly (references, diagnostics) resolves it once.
 type Index struct {
 	ss *cache.Snapshot
+
+	resolved map[resolveKey]*Resolved
 }
 
 // NewIndex returns an Index for the snapshot.
 func NewIndex(ss *cache.Snapshot) *Index {
 	return &Index{ss: ss}
+}
+
+// resolveKey identifies one resolution: the referencing file, the name as
+// written, and the resolver (type, value, or service).
+type resolveKey struct {
+	file uri.URI
+	name string
+	kind resolveKind
+}
+
+type resolveKind uint8
+
+const (
+	resolveType resolveKind = iota + 1
+	resolveValue
+	resolveService
+)
+
+// memoized returns the memoized resolution for (file, name, kind), if any.
+func (x *Index) memoized(file uri.URI, name string, kind resolveKind) (*Resolved, bool) {
+	def, ok := x.resolved[resolveKey{file: file, name: name, kind: kind}]
+
+	return def, ok
+}
+
+// memoize records the resolution of (file, name, kind). A name resolves
+// identically everywhere in the same file, so nil (unresolved) results are
+// memoized too.
+func (x *Index) memoize(file uri.URI, name string, kind resolveKind, def *Resolved) {
+	if x.resolved == nil {
+		x.resolved = make(map[resolveKey]*Resolved)
+	}
+
+	x.resolved[resolveKey{file: file, name: name, kind: kind}] = def
 }
 
 // parseDefinitionFile parses the definition file, tolerating parse errors
@@ -74,6 +112,22 @@ func (x *Index) ResolveType(ctx context.Context, from *cache.ParsedFile, ft *syn
 		return nil, nil
 	}
 
+	if def, ok := x.memoized(from.URI(), name, resolveType); ok {
+		return def, nil
+	}
+
+	def, err := x.resolveType(ctx, from, name)
+	if err != nil {
+		return nil, err
+	}
+
+	x.memoize(from.URI(), name, resolveType, def)
+
+	return def, nil
+}
+
+// resolveType resolves a non-basic type name in from, without memoization.
+func (x *Index) resolveType(ctx context.Context, from *cache.ParsedFile, name string) (*Resolved, error) {
 	_, identifier := parseIdent(from.URI(), from.AST().Includes(), name)
 	for _, astFile := range definitionFiles(ctx, x.ss, from.URI(), from.AST(), name) {
 		dst, err := parseDefinitionFile(ctx, x.ss, astFile)
@@ -105,10 +159,27 @@ func (x *Index) ResolveValue(ctx context.Context, from *cache.ParsedFile, v *syn
 		return nil, nil
 	}
 
-	_, identifier := parseIdent(from.URI(), from.AST().Includes(), v.Text)
+	if def, ok := x.memoized(from.URI(), v.Text, resolveValue); ok {
+		return def, nil
+	}
+
+	def, err := x.resolveValue(ctx, from, v.Text)
+	if err != nil {
+		return nil, err
+	}
+
+	x.memoize(from.URI(), v.Text, resolveValue, def)
+
+	return def, nil
+}
+
+// resolveValue resolves a value-identifier text in from, without
+// memoization.
+func (x *Index) resolveValue(ctx context.Context, from *cache.ParsedFile, text string) (*Resolved, error) {
+	_, identifier := parseIdent(from.URI(), from.AST().Includes(), text)
 	identifier = bareName(identifier)
 
-	for _, astFile := range definitionFiles(ctx, x.ss, from.URI(), from.AST(), v.Text) {
+	for _, astFile := range definitionFiles(ctx, x.ss, from.URI(), from.AST(), text) {
 		dst, err := parseDefinitionFile(ctx, x.ss, astFile)
 		if err != nil {
 			return nil, err
@@ -133,8 +204,25 @@ func (x *Index) ResolveService(ctx context.Context, from *cache.ParsedFile, iden
 		return nil, nil
 	}
 
-	_, identifier := parseIdent(from.URI(), from.AST().Includes(), ident.Text)
-	for _, astFile := range definitionFiles(ctx, x.ss, from.URI(), from.AST(), ident.Text) {
+	if def, ok := x.memoized(from.URI(), ident.Text, resolveService); ok {
+		return def, nil
+	}
+
+	def, err := x.resolveService(ctx, from, ident.Text)
+	if err != nil {
+		return nil, err
+	}
+
+	x.memoize(from.URI(), ident.Text, resolveService, def)
+
+	return def, nil
+}
+
+// resolveService resolves a service name text in from, without
+// memoization.
+func (x *Index) resolveService(ctx context.Context, from *cache.ParsedFile, name string) (*Resolved, error) {
+	_, identifier := parseIdent(from.URI(), from.AST().Includes(), name)
+	for _, astFile := range definitionFiles(ctx, x.ss, from.URI(), from.AST(), name) {
 		dst, err := parseDefinitionFile(ctx, x.ss, astFile)
 		if err != nil {
 			return nil, err

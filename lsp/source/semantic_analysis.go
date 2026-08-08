@@ -2,7 +2,6 @@ package source
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -41,30 +40,35 @@ func (s *SemanticAnalysis) diagnostic(ctx context.Context, ss *cache.Snapshot, c
 	}
 
 	if pf.AST() == nil {
-		return nil, errors.New("parse ast failed")
+		// The file does not parse; the Parse checker reports that.
+		slog.Debug("semantic analysis skipped: file does not parse", "file", changeFile)
+
+		return nil, nil
 	}
 
 	for _, err := range pf.Errors() {
 		slog.Debug("parse failed", "err", err)
 	}
 
-	res := s.checkDefinitionExist(ctx, ss, pf)
+	// One index per file: resolutions are memoized per (file, name), so
+	// repeated references resolve once.
+	res := s.checkDefinitionExist(ctx, ss, NewIndex(ss), pf)
 
 	return res, nil
 }
 
 // checkDefinitionExist reports field types, const values, and return types
 // that reference undefined definitions.
-func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, ss *cache.Snapshot, pf *cache.ParsedFile) []protocol.Diagnostic {
+func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, ss *cache.Snapshot, ix *Index, pf *cache.ParsedFile) []protocol.Diagnostic {
 	ret := make([]protocol.Diagnostic, 0)
 
 	processFields := func(fields []*syntax.Field) {
 		for _, field := range fields {
-			items := s.checkTypeExist(ctx, ss, pf, field.Type)
+			items := s.checkTypeExist(ctx, ss, ix, pf, field.Type)
 			ret = append(ret, items...)
 
 			if field.Value != nil {
-				items := s.checkConstValueExist(ctx, ss, pf, field.Value)
+				items := s.checkConstValueExist(ctx, ss, ix, pf, field.Value)
 				ret = append(ret, items...)
 
 				dig := s.checkConstValueMatchType(pf, field)
@@ -80,13 +84,13 @@ func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, ss *cache.S
 	})
 
 	for _, cst := range pf.AST().Consts() {
-		items := s.checkConstValueExist(ctx, ss, pf, cst.Value)
+		items := s.checkConstValueExist(ctx, ss, ix, pf, cst.Value)
 		ret = append(ret, items...)
 	}
 
 	for _, svc := range pf.AST().Services() {
 		for _, fn := range svc.Functions {
-			items := s.checkTypeExist(ctx, ss, pf, fn.Type)
+			items := s.checkTypeExist(ctx, ss, ix, pf, fn.Type)
 			ret = append(ret, items...)
 		}
 	}
@@ -94,7 +98,7 @@ func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, ss *cache.S
 	return ret
 }
 
-func (s *SemanticAnalysis) checkConstValueExist(ctx context.Context, ss *cache.Snapshot,
+func (s *SemanticAnalysis) checkConstValueExist(ctx context.Context, ss *cache.Snapshot, ix *Index,
 	pf *cache.ParsedFile, cst *syntax.ConstValue,
 ) (res []protocol.Diagnostic) {
 	if cst == nil || cst.Kind != syntax.ValueIdent {
@@ -105,7 +109,7 @@ func (s *SemanticAnalysis) checkConstValueExist(ctx context.Context, ss *cache.S
 		return res
 	}
 
-	def, err := NewIndex(ss).ResolveValue(ctx, pf, cst)
+	def, err := ix.ResolveValue(ctx, pf, cst)
 	if err != nil || def == nil {
 		res = append(res, protocol.Diagnostic{
 			Range:    nodeRange(pf, cst),
@@ -224,7 +228,7 @@ func typeName(ft *syntax.FieldType) string {
 	return ""
 }
 
-func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, ss *cache.Snapshot,
+func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, ss *cache.Snapshot, ix *Index,
 	pf *cache.ParsedFile, ft *syntax.FieldType,
 ) (res []protocol.Diagnostic) {
 	if ft == nil {
@@ -233,11 +237,11 @@ func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, ss *cache.Snapsho
 
 	switch ft.Kind {
 	case syntax.TypeMap, syntax.TypeList, syntax.TypeSet:
-		return s.checkContainerTypeExist(ctx, ss, pf, ft)
+		return s.checkContainerTypeExist(ctx, ix, ss, pf, ft)
 	case syntax.TypeBase:
 		return nil
 	case syntax.TypeIdent:
-		def, err := NewIndex(ss).ResolveType(ctx, pf, ft)
+		def, err := ix.ResolveType(ctx, pf, ft)
 		if err != nil || def == nil {
 			res = append(res, protocol.Diagnostic{
 				Range:    nodeRange(pf, ft.Ident),
@@ -252,21 +256,21 @@ func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, ss *cache.Snapsho
 	return res
 }
 
-func (s *SemanticAnalysis) checkContainerTypeExist(ctx context.Context,
+func (s *SemanticAnalysis) checkContainerTypeExist(ctx context.Context, ix *Index,
 	ss *cache.Snapshot, pf *cache.ParsedFile, ft *syntax.FieldType,
 ) (res []protocol.Diagnostic) {
 	if ft.KeyType != nil {
-		res = append(res, s.checkTypeExist(ctx, ss, pf, ft.KeyType)...)
+		res = append(res, s.checkTypeExist(ctx, ss, ix, pf, ft.KeyType)...)
 
 		if ft.Kind == syntax.TypeMap {
-			if dig := s.checkMapKeyScalar(ctx, ss, pf, ft.KeyType); dig != nil {
+			if dig := s.checkMapKeyScalar(ctx, ss, ix, pf, ft.KeyType); dig != nil {
 				res = append(res, *dig)
 			}
 		}
 	}
 
 	if ft.ValueType != nil {
-		res = append(res, s.checkTypeExist(ctx, ss, pf, ft.ValueType)...)
+		res = append(res, s.checkTypeExist(ctx, ss, ix, pf, ft.ValueType)...)
 	}
 
 	return res
@@ -275,8 +279,8 @@ func (s *SemanticAnalysis) checkContainerTypeExist(ctx context.Context,
 // checkMapKeyScalar returns an error when the map key type is not scalar:
 // thrift requires map keys to be a base type or an enum. Structs, unions,
 // exceptions, and containers cannot be keys; typedefs are followed.
-func (s *SemanticAnalysis) checkMapKeyScalar(ctx context.Context, ss *cache.Snapshot, pf *cache.ParsedFile, key *syntax.FieldType) *protocol.Diagnostic {
-	kind := s.mapKeyKind(ctx, ss, pf, key, 0)
+func (s *SemanticAnalysis) checkMapKeyScalar(ctx context.Context, ss *cache.Snapshot, ix *Index, pf *cache.ParsedFile, key *syntax.FieldType) *protocol.Diagnostic {
+	kind := s.mapKeyKind(ctx, ss, ix, pf, key, 0)
 	if kind == "" {
 		return nil
 	}
@@ -293,7 +297,7 @@ func (s *SemanticAnalysis) checkMapKeyScalar(ctx context.Context, ss *cache.Snap
 // mapKeyKind reports why key is not a scalar map key: the container kind,
 // or the definition kind for struct-like types. "" means scalar: a base
 // type, an enum, or a typedef chain ending there.
-func (s *SemanticAnalysis) mapKeyKind(ctx context.Context, ss *cache.Snapshot, pf *cache.ParsedFile, key *syntax.FieldType, depth int) string {
+func (s *SemanticAnalysis) mapKeyKind(ctx context.Context, ss *cache.Snapshot, ix *Index, pf *cache.ParsedFile, key *syntax.FieldType, depth int) string {
 	if key == nil {
 		return ""
 	}
@@ -313,7 +317,7 @@ func (s *SemanticAnalysis) mapKeyKind(ctx context.Context, ss *cache.Snapshot, p
 			return ""
 		}
 
-		def, err := NewIndex(ss).ResolveType(ctx, pf, key)
+		def, err := ix.ResolveType(ctx, pf, key)
 		if err != nil || def == nil {
 			return ""
 		}
@@ -329,7 +333,7 @@ func (s *SemanticAnalysis) mapKeyKind(ctx context.Context, ss *cache.Snapshot, p
 				return ""
 			}
 
-			return s.mapKeyKind(ctx, ss, def.Parsed, td.Type, depth+1)
+			return s.mapKeyKind(ctx, ss, ix, def.Parsed, td.Type, depth+1)
 		}
 	}
 
