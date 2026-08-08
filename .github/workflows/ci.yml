@@ -62,9 +62,10 @@ jobs:
           path: vscode/*.vsix
 
   # Per-commit prerelease: every main push gets binaries + vsix attached to
-  # a release tagged with the commit SHA. Prereleases never become
+  # a release tagged with the short commit SHA. Prereleases never become
   # `releases/latest`, so the extension's downloader keeps serving tagged
-  # releases.
+  # releases. The tag is prefixed: GitHub rejects ref names that are purely
+  # 40 or 60 hex characters.
   dev-release:
     needs: [build, vsix]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -72,6 +73,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: short sha
+        run: echo "SHORT_SHA=${GITHUB_SHA:0:7}" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -82,7 +85,7 @@ jobs:
           sha256sum * > checksums.txt
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.sha }}
-          name: "dev build ${{ github.sha }}"
+          tag_name: dev-${{ env.SHORT_SHA }}
+          name: "dev build ${{ env.SHORT_SHA }}"
           prerelease: true
           files: artifacts/*
