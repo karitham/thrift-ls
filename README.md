@@ -1,8 +1,12 @@
 # thrift-ls
 
-A Thrift language server and formatter, written from scratch around a lossless
-lexer and CST parser, a Prettier-style width-aware formatter, and a clean LSP
-implementation.
+A Thrift language server, formatter, and linter.
+
+> **Fork notice.** This project is a fork of
+> [joyme123/thrift-ls](https://github.com/joyme123/thrift-ls), an Apache-2.0
+> Thrift language server and formatter. The lexer and CST parser were
+> rewritten from scratch, the formatter is a complete rewrite, and the LSP
+> was overhauled; the upstream copyright is retained in [NOTICE](NOTICE).
 
 - **Language server**: completion, go to definition, find references, hover,
   diagnostics, rename, document symbols, and formatting — including
@@ -10,8 +14,8 @@ implementation.
 - **Formatter**: a full rewrite of the old template-based formatter. It is
   lossless (comments, annotations, and blank lines survive everywhere),
   width-aware, deterministic, and idempotent — properties enforced by fuzzing.
-
-Fork of https://github.com/joyme123/thrift-ls, parser + lexer + formatter rewritten, lsp overhauled
+- **Linter**: `thrift-ls check` runs the full diagnostic pipeline,
+  fix code actions from the editor
 
 ## Installation
 
@@ -124,17 +128,17 @@ find . -name "*.thrift" | xargs -n 1 thrift-ls format -w
 
 Formatting flags:
 
-| Flag                   | Meaning                                                                                            |
-| ---------------------- | -------------------------------------------------------------------------------------------------- |
-| `-w`                   | Overwrite the file with the formatted result                                                       |
-| `-d`                   | Print a diff instead of the formatted result                                                       |
-| `--printWidth`         | Target line width (default 80)                                                                     |
-| `--indent`             | Indentation: a literal like `"  "` or `"\t"` |
-| `--align`              | `field`, `assign`, or `disable`                                                                    |
+| Flag                      | Meaning                                                                                                                                                               |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-w`                      | Overwrite the file with the formatted result                                                                                                                          |
+| `-d`                      | Print a diff instead of the formatted result                                                                                                                          |
+| `--printWidth`            | Target line width (default 80)                                                                                                                                        |
+| `--indent`                | Indentation: a literal like `"  "` or `"\t"`                                                                                                                          |
+| `--align`                 | `field`, `assign`, or `disable`                                                                                                                                       |
 | `--<construct>-separator` | Separators per construct (`struct`, `union`, `exception`, `enum`, `argument`, `throws`, `list`, `map`): `comma`, `semicolon`, `none`, or `preserve` (keep as written) |
-| `--break-<construct>`  | Always break the construct's bodies onto multiple lines (same constructs)                          |
-| `--config`             | Path to a `thrift-ls.json` config file                                                              |
-| `-I`                   | Additional include path, like the thrift compiler's `-I` (repeatable)                              |
+| `--break-<construct>`     | Always break the construct's bodies onto multiple lines (same constructs)                                                                                             |
+| `--config`                | Path to a `thrift-ls.json` config file                                                                                                                                |
+| `-I`                      | Additional include path, like the thrift compiler's `-I` (repeatable)                                                                                                 |
 
 Flags override the config file.
 
@@ -178,21 +182,22 @@ lints.thrift:132:10  error  map key must be a scalar type, found struct
 
 The checks:
 
-| Diagnostic | Severity | Meaning |
-| ---------- | -------- | ------- |
-| parse errors | error | the file does not parse |
-| `field id conflict` / invalid field id | error | duplicate or out-of-range field ids |
-| `duplicate <kind> <name>` | error | duplicate struct/enum/typedef/const/service names, members, fields, arguments, functions |
-| `enum value N duplicates X` | error | two enum members resolve to the same value |
-| `duplicate map key` / `duplicate set value` | error | repeated constant keys/values |
-| `map key must be a scalar type` | error | struct, union, exception, or container used as a map key |
-| `field type doesn't exist` / `default value doesn't exist` | error | unresolved reference |
-| `expect X but got Y` | error | default value does not match the field type |
-| `unused include "x.thrift"` | warning | no reference in the file resolves into the include |
-| `cycle dependency` | warning | the include graph contains a cycle |
-| `X has no explicit value` | warning | enum member relies on implicit value |
+| Diagnostic                                                 | Severity | Meaning                                                                                  |
+| ---------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------- |
+| parse errors                                               | error    | the file does not parse                                                                  |
+| `field id conflict` / invalid field id                     | error    | duplicate or out-of-range field ids                                                      |
+| `duplicate <kind> <name>`                                  | error    | duplicate struct/enum/typedef/const/service names, members, fields, arguments, functions |
+| `enum value N duplicates X`                                | error    | two enum members resolve to the same value                                               |
+| `duplicate map key` / `duplicate set value`                | error    | repeated constant keys/values                                                            |
+| `map key must be a scalar type`                            | error    | struct, union, exception, or container used as a map key                                 |
+| `field type doesn't exist` / `default value doesn't exist` | error    | unresolved reference                                                                     |
+| `expect X but got Y`                                       | error    | default value does not match the field type                                              |
+| `unused include "x.thrift"`                                | warning  | no reference in the file resolves into the include                                       |
+| `cycle dependency`                                         | warning  | the include graph contains a cycle                                                       |
+| `X has no explicit value`                                  | warning  | enum member relies on implicit value                                                     |
 
 Code actions (refactors and quickfixes) fix these from the editor:
+
 - **Make enum values explicit** — fills in the implicit enum values.
 - **Make field required / optional** — rewrites the field qualifier.
 - **Remove unused include** — deletes the include line (quickfix on the
@@ -379,7 +384,7 @@ The separator mode also interacts with [conditional
 breaking](#conditional-breaking-zig-style): a mode that keeps or adds
 trailing separators (`preserve`, `comma`, `semicolon`) lets a source
 trailing delimiter force the multiline layout, while `none` always folds
-when the group fits. Under `preserve`, a *mixed* separator pattern (some
+when the group fits. Under `preserve`, a _mixed_ separator pattern (some
 fields separated, some not) also forces the multiline layout — a flat line
 whose separators are inconsistently present looks broken.
 
