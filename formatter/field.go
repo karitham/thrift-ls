@@ -476,10 +476,12 @@ func (f *formatter) enumValueContent(v *syntax.EnumValue, align *columnAlign, pa
 		o.skipText = []int{v.TokEnd()}
 	}
 
-	if padded && align.enumAssign && align.nameWidth > 0 {
-		// A comment after the name (or anywhere before the value's end)
-		// makes the pad ambiguous; the value's own same-line comments
-		// render after the pads and are fine.
+	if padded && align.enumAssign && align.nameWidth > 0 && v.Value != nil {
+		// Only members with a value get the '=' alignment pad: a pad on a
+		// name-only member would trail straight into the separator. A
+		// comment between the name and the value's end makes the pad
+		// ambiguous; the value's own same-line comments render after the
+		// pads and are fine.
 		contentEnd := v.TokEnd()
 		if v.Sep != 0 {
 			contentEnd = f.prevReal(v.TokEnd() - 1)
@@ -493,13 +495,6 @@ func (f *formatter) enumValueContent(v *syntax.EnumValue, align *columnAlign, pa
 			if isComment(f.token(i).Kind) {
 				clean = false
 			}
-		}
-
-		// A name-only value renders a same-line comment (directly or
-		// after its separator) against the pad when no separator text
-		// separates them.
-		if clean && contentEnd == v.TokStart() && !sepEmits(v.Sep, sepMode) && f.nameOnlyComment(v.TokStart()) {
-			clean = false
 		}
 
 		if clean {

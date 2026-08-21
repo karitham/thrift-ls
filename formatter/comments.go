@@ -232,22 +232,3 @@ func (f *formatter) commentBreaksGroup(prevEnd, curStart int, sep syntax.TokenKi
 
 	return false
 }
-
-// nameOnlyComment reports whether a comment follows the name of a
-// name-only value (no content tokens) on the same source line, directly
-// or after the separator: with the separator text dropped it renders
-// against the name pad.
-func (f *formatter) nameOnlyComment(name int) bool {
-	for c := name + 1; c < len(f.toks); c++ {
-		ct := f.token(c)
-		if isComment(ct.Kind) {
-			return ct.Line == f.token(name).Line
-		}
-
-		if ct.Line != f.token(name).Line {
-			return false
-		}
-	}
-
-	return false
-}
