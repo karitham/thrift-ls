@@ -133,11 +133,45 @@ var keywordNames = func() map[TokenKind]string {
 	return m
 }()
 
-// isKeyword reports whether the token kind is one of the reserved words.
-func isKeyword(k TokenKind) bool {
+// IsKeyword reports whether the token kind is one of the reserved words.
+func IsKeyword(k TokenKind) bool {
 	_, ok := keywordNames[k]
 
 	return ok
+}
+
+// IsTypeKeyword reports whether the token kind is a base or container
+// type keyword, which always appears in a type position.
+func IsTypeKeyword(k TokenKind) bool {
+	switch k {
+	case TokenMap, TokenList, TokenSet, TokenVoid,
+		TokenBool, TokenByte, TokenI8, TokenI16, TokenI32, TokenI64,
+		TokenDouble, TokenString, TokenBinary, TokenSlist, TokenUUID:
+		return true
+	}
+
+	return false
+}
+
+// PrevReal returns the index of the previous real (non-comment) token
+// strictly before i, or -1. Comments are stream tokens but never
+// participate in the grammar, so every adjacency lookup skips them.
+func PrevReal(toks []Token, i int) int {
+	for i >= 0 && IsComment(toks[i].Kind) {
+		i--
+	}
+
+	return i
+}
+
+// NextReal returns the index of the next real (non-comment) token at or
+// after i.
+func NextReal(toks []Token, i int) int {
+	for i < len(toks) && IsComment(toks[i].Kind) {
+		i++
+	}
+
+	return i
 }
 
 var tokenKindNames = map[TokenKind]string{

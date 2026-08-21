@@ -50,7 +50,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: test
-        run: go test ./...
+        run: go test -race ./...
 
   vsix:
     runs-on: ubuntu-latest

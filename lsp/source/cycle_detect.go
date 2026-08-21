@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
@@ -12,42 +13,50 @@ import (
 	"github.com/karitham/thrift-ls/syntax"
 )
 
+// CycleCheck reports include edges that close a cycle: the include
+// X -> Y is reported when Y transitively includes X back. Cycles of any
+// length are caught, including self-includes.
 type CycleCheck struct{}
 
 func (c *CycleCheck) Diagnostic(ctx context.Context, ss *cache.Snapshot, changeFiles []uri.URI) (DiagnosticResult, error) {
-	includesMap := make(map[uri.URI][]Include)
+	closure := make(map[uri.URI][]Include)
 	for _, file := range changeFiles {
-		_ = getIncludes(ctx, ss, file, &includesMap)
+		_ = getIncludes(ctx, ss, file, &closure)
 	}
 
-	cyclePairs := cycleDetect(includesMap)
+	diagnostics := make(DiagnosticResult)
+	for file, includes := range closure {
+		// Reachability comes from the snapshot's include graph: parsing
+		// the closure above registered exactly these edges via Register,
+		// so there is no second graph to keep in sync. Dependents is
+		// cycle-safe, so the walk terminates on the cycles it finds.
+		deps := ss.Dependents(file)
+		for _, inc := range includes {
+			if !slices.Contains(deps, inc.file) {
+				continue
+			}
 
-	return cycleToDiagnosticItems(cyclePairs), nil
+			diagnostics[file] = append(diagnostics[file], cycleDiagnostic(inc))
+		}
+	}
+
+	return diagnostics, nil
 }
 
 func (c *CycleCheck) Name() string {
 	return "CycleCheck"
 }
 
-func cycleToDiagnosticItems(pairs []CyclePair) DiagnosticResult {
-	diagnostics := make(DiagnosticResult)
-	for i := range pairs {
-		diagnostics[pairs[i].file] = append(diagnostics[pairs[i].file], cyclePairToDiagnostic(pairs[i]))
-	}
-
-	return diagnostics
-}
-
-func cyclePairToDiagnostic(pair CyclePair) protocol.Diagnostic {
-	res := protocol.Diagnostic{
-		Range:    nodeRange(pair.include.pf, pair.include.include),
+// cycleDiagnostic builds the warning for one include edge that closes a
+// cycle back to its including file.
+func cycleDiagnostic(inc Include) protocol.Diagnostic {
+	return protocol.Diagnostic{
+		Range:    nodeRange(inc.pf, inc.include),
 		Severity: protocol.DiagnosticSeverityWarning,
 		Code:     protocol.String(CodeIncludeCycle),
 		Source:   protocol.NewOptional("thrift-ls"),
-		Message:  protocol.String(fmt.Sprintf("cycle dependency in %s", pair.include.file)),
+		Message:  protocol.String(fmt.Sprintf("cycle dependency in %s", inc.file)),
 	}
-
-	return res
 }
 
 type Include struct {
@@ -56,55 +65,10 @@ type Include struct {
 	pf      *cache.ParsedFile
 }
 
-type CyclePair struct {
-	file    uri.URI
-	include Include
-}
-
-// cycleDetect returns every include edge that closes a cycle: the pair
-// (file, include file->Y) is reported when Y transitively includes file.
-// Cycles of any length are caught, including self-includes.
-func cycleDetect(includesMap map[uri.URI][]Include) []CyclePair {
-	// reaches reports whether from can reach target via include edges,
-	// cycle-safe via the seen set.
-	var reaches func(from, target uri.URI, seen map[uri.URI]bool) bool
-
-	reaches = func(from, target uri.URI, seen map[uri.URI]bool) bool {
-		if from == target {
-			return true
-		}
-
-		if seen[from] {
-			return false
-		}
-
-		seen[from] = true
-
-		for _, inc := range includesMap[from] {
-			if reaches(inc.file, target, seen) {
-				return true
-			}
-		}
-
-		return false
-	}
-
-	cyclePairs := make([]CyclePair, 0)
-
-	for file, includes := range includesMap {
-		for _, inc := range includes {
-			if reaches(inc.file, file, make(map[uri.URI]bool)) {
-				cyclePairs = append(cyclePairs, CyclePair{
-					file:    file,
-					include: inc,
-				})
-			}
-		}
-	}
-
-	return cyclePairs
-}
-
+// getIncludes collects the include closure of file into includesMap: the
+// include edges of every file reachable from file, parsed through the
+// snapshot so the ParsedFiles (and the graph edges Register records) are
+// shared with the rest of the analysis.
 func getIncludes(ctx context.Context, ss *cache.Snapshot, file uri.URI, includesMap *map[uri.URI][]Include) error {
 	pf, err := ss.Parse(ctx, file)
 	if err != nil {

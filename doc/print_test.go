@@ -4,18 +4,18 @@ import (
 	"testing"
 )
 
-// T builds a Text from a string.
-func T(s string) Doc { return Text(s) }
-
 // testOpts are the defaults used by most cases.
 func testOpts(width int) Options {
 	return Options{PrintWidth: width, Indent: "  ", TabWidth: 2, NewLine: "\n"}
 }
 
-func printT(t *testing.T, d Doc, o Options) string {
+// printT builds the doc on a fresh arena and prints it.
+func printT(t *testing.T, build func(a *Arena) Doc, o Options) string {
 	t.Helper()
 
-	got, err := Print(d, o)
+	var a Arena
+
+	got, err := Print(build(&a), o)
 	if err != nil {
 		t.Fatalf("Print: %v", err)
 	}
@@ -26,21 +26,21 @@ func printT(t *testing.T, d Doc, o Options) string {
 func TestPrintText(t *testing.T) {
 	tests := []struct {
 		name string
-		doc  func() Doc
+		doc  func(a *Arena) Doc
 		want string
 	}{
-		{"empty", func() Doc { return Concat{} }, ""},
-		{"text", func() Doc { return T("hello world") }, "hello world"},
-		{"concat", func() Doc { return Concat{T("a"), T("b"), T("c")} }, "abc"},
-		{"join", func() Doc { return Join(T(","), []Doc{T("a"), T("b"), T("c")}) }, "a,b,c"},
-		{"join empty", func() Doc { return Join(T(","), nil) }, ""},
-		{"group fits", func() Doc { return Group(Concat{T("hello"), T(" world")}) }, "hello world"},
-		{"empty group", func() Doc { return Group(Concat{}) }, ""},
+		{"empty", func(a *Arena) Doc { return a.Concat() }, ""},
+		{"text", func(a *Arena) Doc { return a.Text("hello world") }, "hello world"},
+		{"concat", func(a *Arena) Doc { return a.Concat(a.Text("a"), a.Text("b"), a.Text("c")) }, "abc"},
+		{"join", func(a *Arena) Doc { return a.Join(a.Text(","), []Doc{a.Text("a"), a.Text("b"), a.Text("c")}) }, "a,b,c"},
+		{"join empty", func(a *Arena) Doc { return a.Join(a.Text(","), nil) }, ""},
+		{"group fits", func(a *Arena) Doc { return a.Group(a.Concat(a.Text("hello"), a.Text(" world"))) }, "hello world"},
+		{"empty group", func(a *Arena) Doc { return a.Group(a.Concat()) }, ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := printT(t, tt.doc(), testOpts(80)); got != tt.want {
+			if got := printT(t, tt.doc, testOpts(80)); got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})
@@ -50,118 +50,120 @@ func TestPrintText(t *testing.T) {
 func TestPrintLineBreaking(t *testing.T) {
 	tests := []struct {
 		name  string
-		doc   func() Doc
+		doc   func(a *Arena) Doc
 		width int
 		want  string
 	}{
 		{
 			name:  "line stays flat when it fits",
-			doc:   func() Doc { return Group(Concat{T("a"), Line, T("b")}) },
+			doc:   func(a *Arena) Doc { return a.Group(a.Concat(a.Text("a"), Line, a.Text("b"))) },
 			width: 10,
 			want:  "a b",
 		},
 		{
 			name:  "line breaks when it does not fit",
-			doc:   func() Doc { return Group(Concat{T("a"), Line, T("b")}) },
+			doc:   func(a *Arena) Doc { return a.Group(a.Concat(a.Text("a"), Line, a.Text("b"))) },
 			width: 2,
 			want:  "a\nb",
 		},
 		{
 			name:  "line breaks exactly at boundary",
-			doc:   func() Doc { return Group(Concat{T("ab"), Line, T("c")}) },
+			doc:   func(a *Arena) Doc { return a.Group(a.Concat(a.Text("ab"), Line, a.Text("c"))) },
 			width: 3,
 			want:  "ab\nc", // "ab c" is 4 columns and does not fit
 		},
 		{
 			name:  "softline is empty when flat",
-			doc:   func() Doc { return Group(Concat{T("a"), SoftLine, T("b")}) },
+			doc:   func(a *Arena) Doc { return a.Group(a.Concat(a.Text("a"), SoftLine, a.Text("b"))) },
 			width: 80,
 			want:  "ab",
 		},
 		{
 			name:  "softline breaks with the group",
-			doc:   func() Doc { return Group(Concat{T("a"), SoftLine, T("b")}) },
+			doc:   func(a *Arena) Doc { return a.Group(a.Concat(a.Text("a"), SoftLine, a.Text("b"))) },
 			width: 1,
 			want:  "a\nb",
 		},
 		{
 			name:  "canonical indent pattern",
-			doc:   func() Doc { return Group(Concat{T("a"), Indent(Concat{Line, T("b")})}) },
+			doc:   func(a *Arena) Doc { return a.Group(a.Concat(a.Text("a"), a.Indent(a.Concat(Line, a.Text("b"))))) },
 			width: 10,
 			want:  "a b",
 		},
 		{
 			name:  "canonical indent pattern breaks",
-			doc:   func() Doc { return Group(Concat{T("a"), Indent(Concat{Line, T("b")})}) },
+			doc:   func(a *Arena) Doc { return a.Group(a.Concat(a.Text("a"), a.Indent(a.Concat(Line, a.Text("b"))))) },
 			width: 2,
 			want:  "a\n  b",
 		},
 		{
 			name: "inner group stays flat inside broken outer",
-			doc: func() Doc {
-				return Group(Concat{
-					T("a"),
-					Group(Concat{T("b"), SoftLine, T("c")}),
+			doc: func(a *Arena) Doc {
+				return a.Group(a.Concat(
+					a.Text("a"),
+					a.Group(a.Concat(a.Text("b"), SoftLine, a.Text("c"))),
 					Line,
-					T("d"),
-				})
+					a.Text("d"),
+				))
 			},
 			width: 4,
 			want:  "abc\nd", // the inner group fits in the remaining width
 		},
 		{
 			name: "inner group breaks when it does not fit",
-			doc: func() Doc {
-				return Group(Concat{
-					T("aaaa"),
-					Group(Concat{T("bbbb"), SoftLine, T("cc")}),
+			doc: func(a *Arena) Doc {
+				return a.Group(a.Concat(
+					a.Text("aaaa"),
+					a.Group(a.Concat(a.Text("bbbb"), SoftLine, a.Text("cc"))),
 					Line,
-					T("d"),
-				})
+					a.Text("d"),
+				))
 			},
 			width: 8,
 			want:  "aaaabbbb\ncc\nd", // only the inner group's own line breaks
 		},
 		{
 			name: "inner group breaks when remaining width is too small",
-			doc: func() Doc {
-				return Group(Concat{
-					T("a"),
-					Group(Concat{T("b"), SoftLine, T("c")}),
+			doc: func(a *Arena) Doc {
+				return a.Group(a.Concat(
+					a.Text("a"),
+					a.Group(a.Concat(a.Text("b"), SoftLine, a.Text("c"))),
 					Line,
-					T("d"),
-				})
+					a.Text("d"),
+				))
 			},
 			width: 2,
 			want:  "ab\nc\nd",
 		},
 		{
 			name:  "hardline always breaks",
-			doc:   func() Doc { return Group(Concat{T("a"), HardLineNoBreak, T("b")}) },
+			doc:   func(a *Arena) Doc { return a.Group(a.Concat(a.Text("a"), HardLineNoBreak, a.Text("b"))) },
 			width: 80,
 			want:  "a\nb",
 		},
 		{
-			name:  "hardline breaks enclosing group",
-			doc:   func() Doc { return Group(Concat{T("a"), HardLine, T("b"), SoftLine, T("c")}) },
+			name: "hardline breaks enclosing group",
+			doc: func(a *Arena) Doc {
+				return a.Group(a.Concat(a.Text("a"), HardLine, a.Text("b"), SoftLine, a.Text("c")))
+			},
 			width: 80,
 			want:  "a\nb\nc",
 		},
 		{
 			name: "break propagates through nested groups",
-			doc: func() Doc {
-				return Group(Concat{
-					Group(Concat{T("x"), HardLine, T("y"), SoftLine, T("z")}),
+			doc: func(a *Arena) Doc {
+				return a.Group(a.Concat(
+					a.Group(a.Concat(a.Text("x"), HardLine, a.Text("y"), SoftLine, a.Text("z"))),
 					SoftLine,
-					T("w"),
-				})
+					a.Text("w"),
+				))
 			},
 			width: 80,
 			want:  "x\ny\nz\nw",
 		},
 		{
 			name:  "forced break group",
-			doc:   func() Doc { return GroupBreak(Concat{T("a"), SoftLine, T("b")}) },
+			doc:   func(a *Arena) Doc { return a.GroupBreak(a.Concat(a.Text("a"), SoftLine, a.Text("b"))) },
 			width: 80,
 			want:  "a\nb",
 		},
@@ -169,7 +171,7 @@ func TestPrintLineBreaking(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := printT(t, tt.doc(), testOpts(tt.width)); got != tt.want {
+			if got := printT(t, tt.doc, testOpts(tt.width)); got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})
@@ -179,40 +181,44 @@ func TestPrintLineBreaking(t *testing.T) {
 func TestPrintIfBreak(t *testing.T) {
 	tests := []struct {
 		name  string
-		doc   func() Doc
+		doc   func(a *Arena) Doc
 		width int
 		want  string
 	}{
 		{
-			name:  "flat takes flat contents",
-			doc:   func() Doc { return Group(Concat{T("a"), IfBreak(T(","), T("")), T("b")}) },
+			name: "flat takes flat contents",
+			doc: func(a *Arena) Doc {
+				return a.Group(a.Concat(a.Text("a"), a.IfBreak(a.Text(","), a.Text("")), a.Text("b")))
+			},
 			width: 80,
 			want:  "ab",
 		},
 		{
-			name:  "broken takes break contents",
-			doc:   func() Doc { return GroupBreak(Concat{T("a"), IfBreak(T(","), T("")), T("b")}) },
+			name: "broken takes break contents",
+			doc: func(a *Arena) Doc {
+				return a.GroupBreak(a.Concat(a.Text("a"), a.IfBreak(a.Text(","), a.Text("")), a.Text("b")))
+			},
 			width: 80,
 			want:  "a,b",
 		},
 		{
 			name: "ifBreak follows referenced group",
-			doc: func() Doc {
-				return Concat{
-					GroupID(1, Concat{T("aaaa"), SoftLine, T("bbbb")}),
-					IfBreakFor(T(","), T(""), 1),
-				}
+			doc: func(a *Arena) Doc {
+				return a.Concat(
+					a.GroupID(1, a.Concat(a.Text("aaaa"), SoftLine, a.Text("bbbb"))),
+					a.IfBreakFor(a.Text(","), a.Text(""), 1),
+				)
 			},
 			width: 80,
 			want:  "aaaabbbb",
 		},
 		{
 			name: "ifBreak follows broken referenced group",
-			doc: func() Doc {
-				return Concat{
-					GroupID(1, Concat{T("aaaa"), SoftLine, T("bbbb")}),
-					IfBreakFor(T(","), T(""), 1),
-				}
+			doc: func(a *Arena) Doc {
+				return a.Concat(
+					a.GroupID(1, a.Concat(a.Text("aaaa"), SoftLine, a.Text("bbbb"))),
+					a.IfBreakFor(a.Text(","), a.Text(""), 1),
+				)
 			},
 			width: 4,
 			want:  "aaaa\nbbbb,",
@@ -221,7 +227,7 @@ func TestPrintIfBreak(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := printT(t, tt.doc(), testOpts(tt.width)); got != tt.want {
+			if got := printT(t, tt.doc, testOpts(tt.width)); got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})
@@ -253,12 +259,14 @@ func TestPrintConditionalGroup(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			doc := ConditionalGroup(0,
-				Concat{T("a"), Line, T("b"), Line, T("c")},
-				Concat{T("a"), Line, T("b"), HardLineNoBreak, T("c")},
-				Concat{T("a"), HardLineNoBreak, T("b"), HardLineNoBreak, T("c")},
-			)
-			if got := printT(t, doc, testOpts(tt.width)); got != tt.want {
+			got := printT(t, func(a *Arena) Doc {
+				return a.ConditionalGroup(0,
+					a.Concat(a.Text("a"), Line, a.Text("b"), Line, a.Text("c")),
+					a.Concat(a.Text("a"), Line, a.Text("b"), HardLineNoBreak, a.Text("c")),
+					a.Concat(a.Text("a"), HardLineNoBreak, a.Text("b"), HardLineNoBreak, a.Text("c")),
+				)
+			}, testOpts(tt.width))
+			if got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})
@@ -268,34 +276,34 @@ func TestPrintConditionalGroup(t *testing.T) {
 func TestPrintIndentAndAlign(t *testing.T) {
 	tests := []struct {
 		name string
-		doc  func() Doc
+		doc  func(a *Arena) Doc
 		want string
 	}{
 		{
 			name: "indent applies at line breaks",
-			doc: func() Doc {
-				return GroupBreak(Concat{T("a"), Indent(Concat{Line, T("b"), Line, T("c")})})
+			doc: func(a *Arena) Doc {
+				return a.GroupBreak(a.Concat(a.Text("a"), a.Indent(a.Concat(Line, a.Text("b"), Line, a.Text("c")))))
 			},
 			want: "a\n  b\n  c",
 		},
 		{
 			name: "align by columns",
-			doc: func() Doc {
-				return GroupBreak(Concat{T("a"), Align(4, Concat{Line, T("b")})})
+			doc: func(a *Arena) Doc {
+				return a.GroupBreak(a.Concat(a.Text("a"), a.Align(4, a.Concat(Line, a.Text("b")))))
 			},
 			want: "a\n    b",
 		},
 		{
 			name: "align nests inside indent",
-			doc: func() Doc {
-				return GroupBreak(Concat{T("a"), Indent(Concat{Line, Align(2, Concat{T("b"), Line, T("c")})})})
+			doc: func(a *Arena) Doc {
+				return a.GroupBreak(a.Concat(a.Text("a"), a.Indent(a.Concat(Line, a.Align(2, a.Concat(a.Text("b"), Line, a.Text("c")))))))
 			},
 			want: "a\n  b\n    c",
 		},
 		{
 			name: "nested indent accumulates",
-			doc: func() Doc {
-				return GroupBreak(Concat{T("a"), Indent(Indent(Concat{Line, T("b")}))})
+			doc: func(a *Arena) Doc {
+				return a.GroupBreak(a.Concat(a.Text("a"), a.Indent(a.Indent(a.Concat(Line, a.Text("b"))))))
 			},
 			want: "a\n    b",
 		},
@@ -303,7 +311,7 @@ func TestPrintIndentAndAlign(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := printT(t, tt.doc(), testOpts(80)); got != tt.want {
+			if got := printT(t, tt.doc, testOpts(80)); got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})
@@ -313,13 +321,13 @@ func TestPrintIndentAndAlign(t *testing.T) {
 func TestPrintTabIndent(t *testing.T) {
 	tests := []struct {
 		name string
-		doc  func() Doc
+		doc  func(a *Arena) Doc
 		want string
 	}{
 		{
 			name: "tab indentation and measurement",
-			doc: func() Doc {
-				return GroupBreak(Concat{T("a"), Indent(Concat{Line, T("b")})})
+			doc: func(a *Arena) Doc {
+				return a.GroupBreak(a.Concat(a.Text("a"), a.Indent(a.Concat(Line, a.Text("b")))))
 			},
 			want: "a\n\tb",
 		},
@@ -327,7 +335,7 @@ func TestPrintTabIndent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			o := Options{PrintWidth: 80, Indent: "\t", TabWidth: 4, NewLine: "\n"}
-			if got := printT(t, tt.doc(), o); got != tt.want {
+			if got := printT(t, tt.doc, o); got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})
@@ -337,29 +345,29 @@ func TestPrintTabIndent(t *testing.T) {
 func TestPrintLineSuffix(t *testing.T) {
 	tests := []struct {
 		name string
-		doc  func() Doc
+		doc  func(a *Arena) Doc
 		want string
 	}{
 		{
 			name: "suffix prints before the line break",
-			doc: func() Doc {
-				return GroupBreak(Concat{T("a"), LineSuffix(T(" // c")), Line, T("b")})
+			doc: func(a *Arena) Doc {
+				return a.GroupBreak(a.Concat(a.Text("a"), a.LineSuffix(a.Text(" // c")), Line, a.Text("b")))
 			},
 			want: "a // c\nb",
 		},
 		{
 			name: "suffix flushes at document end without a break",
-			doc: func() Doc {
-				return Concat{T("a"), LineSuffix(T(" // c"))}
+			doc: func(a *Arena) Doc {
+				return a.Concat(a.Text("a"), a.LineSuffix(a.Text(" // c")))
 			},
 			want: "a // c",
 		},
 		{
 			name: "boundary flushes pending suffixes",
-			doc: func() Doc {
-				return GroupBreak(Concat{
-					T("a"), LineSuffix(T(" // first")), LineSuffixBoundary,
-				})
+			doc: func(a *Arena) Doc {
+				return a.GroupBreak(a.Concat(
+					a.Text("a"), a.LineSuffix(a.Text(" // first")), LineSuffixBoundary,
+				))
 			},
 			// The boundary schedules a hard line that flushes the suffix and
 			// ends the line, matching Prettier's boundary semantics.
@@ -367,8 +375,8 @@ func TestPrintLineSuffix(t *testing.T) {
 		},
 		{
 			name: "suffix counts against width",
-			doc: func() Doc {
-				return Group(Concat{T("aaaa"), LineSuffix(T(" // c")), Line, T("b")})
+			doc: func(a *Arena) Doc {
+				return a.Group(a.Concat(a.Text("aaaa"), a.LineSuffix(a.Text(" // c")), Line, a.Text("b")))
 			},
 			want: "aaaa b // c", // suffix width is not measured, like Prettier
 		},
@@ -376,7 +384,7 @@ func TestPrintLineSuffix(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := printT(t, tt.doc(), testOpts(80)); got != tt.want {
+			if got := printT(t, tt.doc, testOpts(80)); got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})
@@ -386,16 +394,16 @@ func TestPrintLineSuffix(t *testing.T) {
 func TestPrintTrim(t *testing.T) {
 	tests := []struct {
 		name string
-		doc  func() Doc
+		doc  func(a *Arena) Doc
 		want string
 	}{
-		{"trim removes trailing spaces", func() Doc { return Concat{T("a  "), TrimDoc, T("b")} }, "ab"},
-		{"trim removes trailing tabs", func() Doc { return Concat{T("a\t\t"), TrimDoc, T("b")} }, "ab"},
-		{"trim without trailing whitespace", func() Doc { return Concat{T("a"), TrimDoc, T("b")} }, "ab"},
+		{"trim removes trailing spaces", func(a *Arena) Doc { return a.Concat(a.Text("a  "), TrimDoc, a.Text("b")) }, "ab"},
+		{"trim removes trailing tabs", func(a *Arena) Doc { return a.Concat(a.Text("a\t\t"), TrimDoc, a.Text("b")) }, "ab"},
+		{"trim without trailing whitespace", func(a *Arena) Doc { return a.Concat(a.Text("a"), TrimDoc, a.Text("b")) }, "ab"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := printT(t, tt.doc(), testOpts(80)); got != tt.want {
+			if got := printT(t, tt.doc, testOpts(80)); got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})
@@ -406,13 +414,16 @@ func TestPrintRemeasure(t *testing.T) {
 	// A hard line printed inside a flat-measured group invalidates the
 	// measurement; the next group must remeasure instead of trusting the
 	// flat shortcut.
-	doc := Group(Concat{
-		T("a"), HardLineNoBreak,
-		Group(Concat{T("bbbb"), Line, T("cc")}),
-		Line,
-		T("dd"),
-	})
-	got := printT(t, doc, testOpts(8))
+	build := func(a *Arena) Doc {
+		return a.Group(a.Concat(
+			a.Text("a"), HardLineNoBreak,
+			a.Group(a.Concat(a.Text("bbbb"), Line, a.Text("cc"))),
+			Line,
+			a.Text("dd"),
+		))
+	}
+
+	got := printT(t, build, testOpts(8))
 
 	want := "a\nbbbb\ncc dd"
 	if got != want {
@@ -423,9 +434,9 @@ func TestPrintRemeasure(t *testing.T) {
 func TestPrintNewLineOption(t *testing.T) {
 	o := Options{PrintWidth: 2, Indent: "  ", TabWidth: 2, NewLine: "\r\n"}
 
-	doc := GroupBreak(Concat{T("a"), Line, T("b")})
-	if got := printT(t, doc, o); got != "a\r\nb" {
-		t.Errorf("got %q, want %q", got, "a\r\nb")
+	doc := printT(t, func(a *Arena) Doc { return a.GroupBreak(a.Concat(a.Text("a"), Line, a.Text("b"))) }, o)
+	if doc != "a\r\nb" {
+		t.Errorf("got %q, want %q", doc, "a\r\nb")
 	}
 }
 
@@ -440,7 +451,7 @@ func TestPrintValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := Print(T("x"), tt.opts); err == nil {
+			if _, err := Print(Text("x"), tt.opts); err == nil {
 				t.Error("expected validation error")
 			}
 		})
@@ -450,31 +461,31 @@ func TestPrintValidation(t *testing.T) {
 func TestPrintUnicodeWidth(t *testing.T) {
 	tests := []struct {
 		name  string
-		doc   func() Doc
+		doc   func(a *Arena) Doc
 		width int
 		want  string
 	}{
 		{
 			name:  "wide characters count as two columns",
-			doc:   func() Doc { return Group(Concat{T("日本語"), Line, T("x")}) },
+			doc:   func(a *Arena) Doc { return a.Group(a.Concat(a.Text("日本語"), Line, a.Text("x"))) },
 			width: 8,
 			want:  "日本語 x",
 		},
 		{
 			name:  "wide characters break the group",
-			doc:   func() Doc { return Group(Concat{T("日本語"), Line, T("x")}) },
+			doc:   func(a *Arena) Doc { return a.Group(a.Concat(a.Text("日本語"), Line, a.Text("x"))) },
 			width: 7,
 			want:  "日本語\nx",
 		},
 		{
 			name:  "combining marks are zero width",
-			doc:   func() Doc { return Group(Concat{T("e\u0301"), Line, T("x")}) },
+			doc:   func(a *Arena) Doc { return a.Group(a.Concat(a.Text("e\u0301"), Line, a.Text("x"))) },
 			width: 3,
 			want:  "e\u0301 x",
 		},
 		{
 			name:  "emoji count as two columns",
-			doc:   func() Doc { return Group(Concat{T("😀"), Line, T("x")}) },
+			doc:   func(a *Arena) Doc { return a.Group(a.Concat(a.Text("😀"), Line, a.Text("x"))) },
 			width: 4,
 			want:  "😀 x",
 		},
@@ -482,7 +493,7 @@ func TestPrintUnicodeWidth(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := printT(t, tt.doc(), testOpts(tt.width)); got != tt.want {
+			if got := printT(t, tt.doc, testOpts(tt.width)); got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})
@@ -513,18 +524,33 @@ func TestStringWidth(t *testing.T) {
 func TestPrintIdempotentDocs(t *testing.T) {
 	// These docs must print identically at the same width twice in a row;
 	// break propagation must not change the result on the second pass.
-	docs := []Doc{
-		Group(Concat{T("a"), Line, T("b")}),
-		Group(Concat{T("a"), HardLine, T("b"), SoftLine, T("c")}),
-		ConditionalGroup(0,
-			Concat{T("a"), Line, T("b"), Line, T("c")},
-			Concat{T("a"), Line, T("b"), HardLineNoBreak, T("c")},
-		),
+	builds := []func(a *Arena) Doc{
+		func(a *Arena) Doc { return a.Group(a.Concat(a.Text("a"), Line, a.Text("b"))) },
+		func(a *Arena) Doc {
+			return a.Group(a.Concat(a.Text("a"), HardLine, a.Text("b"), SoftLine, a.Text("c")))
+		},
+		func(a *Arena) Doc {
+			return a.ConditionalGroup(0,
+				a.Concat(a.Text("a"), Line, a.Text("b"), Line, a.Text("c")),
+				a.Concat(a.Text("a"), Line, a.Text("b"), HardLineNoBreak, a.Text("c")),
+			)
+		},
 	}
-	for _, d := range docs {
-		first := printT(t, d, testOpts(2))
+	for _, build := range builds {
+		var a Arena
 
-		second := printT(t, d, testOpts(2))
+		d := build(&a)
+
+		first, err := Print(d, testOpts(2))
+		if err != nil {
+			t.Fatalf("Print: %v", err)
+		}
+
+		second, err := Print(d, testOpts(2))
+		if err != nil {
+			t.Fatalf("Print: %v", err)
+		}
+
 		if first != second {
 			t.Errorf("not idempotent: %q vs %q", first, second)
 		}
@@ -533,14 +559,19 @@ func TestPrintIdempotentDocs(t *testing.T) {
 
 func TestDocMutability(t *testing.T) {
 	// Print mutates the doc (break propagation); printing a fresh doc each
-	// time must yield stable output.
+	// time must yield stable output. The arena is reset between prints, so
+	// the fresh doc reuses the arena's regions.
+	var a Arena
+
 	build := func() Doc {
-		return Group(Concat{T("a"), HardLine, T("b"), SoftLine, T("c")})
+		a.Reset()
+
+		return a.Group(a.Concat(a.Text("a"), HardLine, a.Text("b"), SoftLine, a.Text("c")))
 	}
 
-	first := printT(t, build(), testOpts(80))
+	first := printT(t, func(*Arena) Doc { return build() }, testOpts(80))
 	for i := range 10 {
-		if got := printT(t, build(), testOpts(80)); got != first {
+		if got := printT(t, func(*Arena) Doc { return build() }, testOpts(80)); got != first {
 			t.Fatalf("iteration %d: got %q, want %q", i, got, first)
 		}
 	}

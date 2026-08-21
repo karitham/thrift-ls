@@ -125,11 +125,11 @@ func classifyToken(i int, tok syntax.Token, names map[int]int, types map[int]boo
 		return tokNumber, true
 	}
 
-	if isTypeKeyword(tok.Kind) {
+	if syntax.IsTypeKeyword(tok.Kind) {
 		return tokType, true
 	}
 
-	if isKeyword(tok.Kind) {
+	if syntax.IsKeyword(tok.Kind) {
 		return tokKeyword, true
 	}
 
@@ -233,32 +233,4 @@ func typeReferences(doc *syntax.Document) map[int]bool {
 	return types
 }
 
-// isTypeKeyword reports whether the kind is a base or container type
-// keyword, which always appears in a type position.
-func isTypeKeyword(k syntax.TokenKind) bool {
-	switch k {
-	case syntax.TokenMap, syntax.TokenList, syntax.TokenSet, syntax.TokenVoid,
-		syntax.TokenBool, syntax.TokenByte, syntax.TokenI8, syntax.TokenI16,
-		syntax.TokenI32, syntax.TokenI64, syntax.TokenDouble,
-		syntax.TokenString, syntax.TokenBinary, syntax.TokenSlist, syntax.TokenUUID:
-		return true
-	}
-
-	return false
-}
-
 // isKeyword reports whether the kind is a reserved word.
-func isKeyword(k syntax.TokenKind) bool {
-	switch k {
-	case syntax.TokenInclude, syntax.TokenCPPInclude, syntax.TokenCPPType,
-		syntax.TokenNamespace, syntax.TokenStruct, syntax.TokenUnion,
-		syntax.TokenException, syntax.TokenService, syntax.TokenEnum,
-		syntax.TokenConst, syntax.TokenTypedef, syntax.TokenOneway,
-		syntax.TokenAsync, syntax.TokenThrows, syntax.TokenExtends,
-		syntax.TokenRequired, syntax.TokenOptional, syntax.TokenTrue,
-		syntax.TokenFalse:
-		return true
-	}
-
-	return false
-}

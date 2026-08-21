@@ -4,6 +4,10 @@
 // that decide independently whether they fit, and conditional pieces. The
 // single printer turns any document into a string given a print width.
 //
+// Documents are built through an Arena: it is a bump allocator whose nodes
+// die with the print. The package's exported Doc values (Line, SoftLine,
+// HardLine, ...) are shared and immutable and may be embedded anywhere.
+//
 // This is a faithful port of Prettier's document algebra
 // (src/document/builders and src/document/printer).
 //
@@ -24,18 +28,13 @@ type Text string
 
 func (Text) isDoc() {}
 
-// textNode is the heap or arena allocated form of Text: a pointer, so
-// boxing it into Doc does not allocate.
+// textNode is the arena-allocated form of Text: a pointer, so boxing it
+// into Doc does not allocate.
 type textNode struct {
 	s string
 }
 
 func (textNode) isDoc() {}
-
-// NewText returns a doc for literal output. The value type Text also
-// exists for direct construction; prefer NewText or Arena.Text so the
-// node is a pointer.
-func NewText(s string) Doc { return &textNode{s: s} }
 
 // Concat is a sequence of documents printed in order.
 type Concat []Doc
@@ -48,24 +47,6 @@ type concatNode struct {
 }
 
 func (concatNode) isDoc() {}
-
-// Join returns a Concat of parts joined by sep.
-func Join(sep Doc, parts []Doc) Doc {
-	if len(parts) == 0 {
-		return Concat(nil)
-	}
-
-	out := make(Concat, 0, len(parts)*2-1)
-	for i, part := range parts {
-		if i > 0 {
-			out = append(out, sep)
-		}
-
-		out = append(out, part)
-	}
-
-	return out
-}
 
 // Arena is a bump allocator for doc nodes. A document built through an
 // arena allocates its nodes from a few growing regions instead of one
@@ -121,7 +102,7 @@ func (a *Arena) Concat(parts ...Doc) Doc {
 // Join returns a doc for parts joined by sep, allocated from the arena.
 func (a *Arena) Join(sep Doc, parts []Doc) Doc {
 	if len(parts) == 0 {
-		return a.Concat(nil)
+		return a.Concat()
 	}
 
 	out := a.Parts(len(parts)*2 - 1)
@@ -276,21 +257,6 @@ type group struct {
 
 func (*group) isDoc() {}
 
-// Group wraps d in a group that breaks only when it does not fit.
-func Group(d Doc) Doc { return &group{doc: d} }
-
-// GroupBreak wraps d in a group that always breaks.
-func GroupBreak(d Doc) Doc { return &group{doc: d, brk: true} }
-
-// GroupID wraps d in a group with an ID so IfBreak can query its mode.
-func GroupID(id int, d Doc) Doc { return &group{doc: d, id: id} }
-
-// ConditionalGroup tries each state in order (least expanded first) and
-// prints the first that fits; the last state breaks if none fit.
-func ConditionalGroup(id int, states ...Doc) Doc {
-	return &group{doc: states[0], id: id, expanded: states}
-}
-
 // ifBreak prints BreakDoc when the group it belongs to (or the group with
 // GroupID) is broken, and FlatDoc when it is flat.
 type ifBreak struct {
@@ -301,22 +267,11 @@ type ifBreak struct {
 
 func (*ifBreak) isDoc() {}
 
-// IfBreak builds an IfBreak for the innermost enclosing group.
-func IfBreak(broken, flat Doc) Doc { return &ifBreak{breakDoc: broken, flatDoc: flat} }
-
-// IfBreakFor builds an IfBreak that follows the group with the given ID.
-func IfBreakFor(broken, flat Doc, groupID int) Doc {
-	return &ifBreak{breakDoc: broken, flatDoc: flat, groupID: groupID}
-}
-
 type indent struct {
 	doc Doc
 }
 
 func (*indent) isDoc() {}
-
-// Indent increases the indentation of its contents by one level.
-func Indent(d Doc) Doc { return &indent{doc: d} }
 
 type align struct {
 	n   int
@@ -325,19 +280,11 @@ type align struct {
 
 func (*align) isDoc() {}
 
-// Align indents its contents by n columns relative to the current
-// indentation. With tabs enabled, n is rounded up to one tab.
-func Align(n int, d Doc) Doc { return &align{n: n, doc: d} }
-
 type lineSuffix struct {
 	doc Doc
 }
 
 func (*lineSuffix) isDoc() {}
-
-// LineSuffix prints its contents at the end of the current line, after the
-// next line break (used for end-of-line comments).
-func LineSuffix(d Doc) Doc { return &lineSuffix{doc: d} }
 
 type lineSuffixBoundary struct{}
 

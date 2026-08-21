@@ -123,6 +123,7 @@ var constructFlags = []struct {
 	{"throws", formatter.ConstructThrows},
 	{"list", formatter.ConstructList},
 	{"map", formatter.ConstructMap},
+	{"set", formatter.ConstructSet},
 }
 
 // formatFlags are the flags of the format subcommand.

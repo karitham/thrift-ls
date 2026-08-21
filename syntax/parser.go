@@ -35,13 +35,7 @@ type parser struct {
 // --- token helpers ---------------------------------------------------------
 
 // nextReal returns the index of the next non-comment token at or after i.
-func (p *parser) nextReal(i int) int {
-	for i < len(p.toks) && IsComment(p.toks[i].Kind) {
-		i++
-	}
-
-	return i
-}
+func (p *parser) nextReal(i int) int { return NextReal(p.toks, i) }
 
 func (p *parser) cur() Token { return p.toks[p.nextReal(p.pos)] }
 
@@ -551,7 +545,7 @@ func (p *parser) parseField() (*Field, bool) {
 	// as uuid are both valid types and common field names, and the thrift
 	// compiler accepts them there. Rejecting keywords as field names breaks
 	// valid IDLs.
-	if p.at(TokenIdentifier) || isKeyword(p.cur().Kind) {
+	if p.at(TokenIdentifier) || IsKeyword(p.cur().Kind) {
 		f.Name = p.identifier()
 	} else {
 		p.errorfCur("expected field name, got %q", p.cur().Text)

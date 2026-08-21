@@ -1,199 +1,225 @@
 package source
 
 import (
-	"context"
-	"sort"
+	"maps"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/options"
 )
 
-func Test_cycleDetect(t *testing.T) {
-	includesMap := map[uri.URI][]Include{
-		"/user.thrift": {
-			Include{file: "/goods.thrift"},
-			Include{file: "/address.thrift"},
-		},
-		"/goods.thrift":   {Include{file: "/user.thrift"}},
-		"/address.thrift": {Include{file: "/user.thrift"}},
-	}
+func buildSnapshotForTest(t *testing.T, files []*cache.FileChange) *cache.Snapshot {
+	t.Helper()
 
-	type args struct {
-		includesMap map[uri.URI][]Include
-	}
+	c := cache.New()
+	fs := cache.NewOverlayFS(c)
+	_ = fs.Update(t.Context(), files)
 
-	tests := []struct {
-		name string
-		args args
-		want []CyclePair
-	}{
-		{
-			name: "cycle",
-			args: args{
-				includesMap: includesMap,
-			},
-			want: []CyclePair{
-				{
-					file: "/user.thrift",
-					include: Include{
-						file: "/goods.thrift",
-					},
-				},
-				{
-					file:    "/goods.thrift",
-					include: Include{file: "/user.thrift"},
-				},
-				{
-					file:    "/user.thrift",
-					include: Include{file: "/address.thrift"},
-				},
-				{
-					file:    "/address.thrift",
-					include: Include{file: "/user.thrift"},
-				},
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			sort.SliceStable(tt.want, func(i, j int) bool {
-				if tt.want[i].file == tt.want[j].file {
-					return tt.want[i].include.file < tt.want[j].include.file
-				}
+	view := cache.NewView("file:///tmp", fs, nil, options.Patch{})
+	ss := cache.NewSnapshot(view, nil)
 
-				return tt.want[i].file < tt.want[j].file
-			})
-
-			got := cycleDetect(tt.args.includesMap)
-			sort.SliceStable(got, func(i, j int) bool {
-				if got[i].file == got[j].file {
-					return got[i].include.file < got[j].include.file
-				}
-
-				return got[i].file < got[j].file
-			})
-
-			assert.Equal(t, tt.want, got)
-		})
-	}
+	return ss
 }
 
-// Test_cycleDetectN pins cycle detection on arbitrary-length cycles: an
-// include edge X -> Y closes a cycle when Y transitively includes X, no
-// matter the cycle length. The existing 2-cycle case is covered in
-// Test_cycleDetect; these cases exercise longer cycles, self-includes, and
-// acyclic graphs.
-func Test_cycleDetectN(t *testing.T) {
-	// K-On themed include graph: the band's songs include each other's
-	// tabs, and the clubroom includes everything.
+// cyclePair identifies one reported cycle include: the file containing the
+// include statement and the resolved URI it points at. Diagnostics carry
+// this as the message "cycle dependency in <to>".
+type cyclePair struct {
+	from uri.URI
+	to   uri.URI
+}
+
+func sortedPairs(t *testing.T, res DiagnosticResult) []cyclePair {
+	t.Helper()
+
+	pairs := make([]cyclePair, 0)
+	for file, diags := range res {
+		for _, d := range diags {
+			msg, ok := d.Message.(protocol.String)
+			require.True(t, ok, "diagnostic message must be protocol.String")
+
+			pairs = append(pairs, cyclePair{
+				from: file,
+				to:   uri.URI(strings.TrimPrefix(string(msg), "cycle dependency in ")),
+			})
+		}
+	}
+
+	slices.SortFunc(pairs, func(a, b cyclePair) int {
+		if c := strings.Compare(string(a.from), string(b.from)); c != 0 {
+			return c
+		}
+
+		return strings.Compare(string(a.to), string(b.to))
+	})
+
+	if len(pairs) == 0 {
+		return nil
+	}
+
+	return pairs
+}
+
+// runCycleCheck builds a snapshot from an in-memory file tree rooted at
+// file:///tmp and runs CycleCheck starting from root. It asserts every
+// diagnostic carries the cycle code and warning severity, and returns the
+// reported (from, to) pairs sorted.
+func runCycleCheck(t *testing.T, files map[string]string, root string) []cyclePair {
+	t.Helper()
+
+	names := slices.Sorted(maps.Keys(files))
+
+	changes := make([]*cache.FileChange, 0, len(files))
+	for _, name := range names {
+		changes = append(changes, &cache.FileChange{
+			URI:     uri.URI("file:///tmp/" + name),
+			Version: 0,
+			Content: []byte(files[name]),
+			From:    cache.FileChangeTypeDidOpen,
+		})
+	}
+
+	ss := buildSnapshotForTest(t, changes)
+
+	res, err := (&CycleCheck{}).Diagnostic(t.Context(), ss, []uri.URI{uri.URI("file:///tmp/" + root)})
+	require.NoError(t, err)
+
+	for file, diags := range res {
+		for _, d := range diags {
+			assert.Equal(t, protocol.DiagnosticSeverityWarning, d.Severity, file)
+			assert.Equal(t, protocol.String(CodeIncludeCycle), d.Code, file)
+		}
+	}
+
+	return sortedPairs(t, res)
+}
+
+// TestCycleCheck pins cycle detection end to end: an include edge X -> Y
+// closes a cycle when Y transitively includes X back, no matter the cycle
+// length. Every reported edge must point back along the cycle; acyclic
+// graphs and unresolvable includes must produce nothing.
+func TestCycleCheck(t *testing.T) {
 	const (
-		tea  = "/songs/tea_time.thrift"
-		git  = "/songs/gitah.thrift"
-		bass = "/songs/mio.thrift"
-		drum = "/songs/ritsu.thrift"
-		club = "/clubroom.thrift"
+		a    = "a.thrift"
+		b    = "b.thrift"
+		c    = "c.thrift"
+		d    = "d.thrift"
+		club = "clubroom.thrift"
+		tea  = "tea_time.thrift"
+		git  = "gitah.thrift"
+		bass = "mio.thrift"
+		drum = "ritsu.thrift"
 	)
 
 	tests := []struct {
 		name  string
-		graph map[uri.URI][]Include
-		want  []CyclePair
+		files map[string]string
+		root  string
+		want  []cyclePair
 	}{
 		{
 			name: "acyclic chain",
-			graph: map[uri.URI][]Include{
-				tea:  {Include{file: git}},
-				git:  {Include{file: bass}},
-				bass: {},
+			files: map[string]string{
+				a: `include "b.thrift"`,
+				b: `include "c.thrift"`,
+				c: ``,
 			},
+			root: a,
 			want: nil,
 		},
 		{
-			name: "2-cycle",
-			graph: map[uri.URI][]Include{
-				tea: {Include{file: git}},
-				git: {Include{file: tea}},
+			name: "two file cycle",
+			files: map[string]string{
+				a: `include "b.thrift"`,
+				b: `include "a.thrift"`,
 			},
-			want: []CyclePair{
-				{file: tea, include: Include{file: git}},
-				{file: git, include: Include{file: tea}},
-			},
-		},
-		{
-			name: "3-cycle",
-			graph: map[uri.URI][]Include{
-				tea:  {Include{file: git}},
-				git:  {Include{file: bass}},
-				bass: {Include{file: tea}},
-			},
-			want: []CyclePair{
-				{file: tea, include: Include{file: git}},
-				{file: git, include: Include{file: bass}},
-				{file: bass, include: Include{file: tea}},
+			root: a,
+			want: []cyclePair{
+				{"file:///tmp/" + a, "file:///tmp/" + b},
+				{"file:///tmp/" + b, "file:///tmp/" + a},
 			},
 		},
 		{
-			name: "4-cycle",
-			graph: map[uri.URI][]Include{
-				tea:  {Include{file: git}},
-				git:  {Include{file: bass}},
-				bass: {Include{file: drum}},
-				drum: {Include{file: tea}},
+			name: "three file cycle",
+			files: map[string]string{
+				a: `include "b.thrift"`,
+				b: `include "c.thrift"`,
+				c: `include "a.thrift"`,
 			},
-			want: []CyclePair{
-				{file: tea, include: Include{file: git}},
-				{file: git, include: Include{file: bass}},
-				{file: bass, include: Include{file: drum}},
-				{file: drum, include: Include{file: tea}},
+			root: a,
+			want: []cyclePair{
+				{"file:///tmp/" + a, "file:///tmp/" + b},
+				{"file:///tmp/" + b, "file:///tmp/" + c},
+				{"file:///tmp/" + c, "file:///tmp/" + a},
 			},
 		},
 		{
-			name: "self-include",
-			graph: map[uri.URI][]Include{
-				tea: {Include{file: tea}},
+			name: "four file cycle",
+			files: map[string]string{
+				a: `include "b.thrift"`,
+				b: `include "c.thrift"`,
+				c: `include "d.thrift"`,
+				d: `include "a.thrift"`,
 			},
-			want: []CyclePair{
-				{file: tea, include: Include{file: tea}},
+			root: a,
+			want: []cyclePair{
+				{"file:///tmp/" + a, "file:///tmp/" + b},
+				{"file:///tmp/" + b, "file:///tmp/" + c},
+				{"file:///tmp/" + c, "file:///tmp/" + d},
+				{"file:///tmp/" + d, "file:///tmp/" + a},
+			},
+		},
+		{
+			name: "self include",
+			files: map[string]string{
+				a: `include "a.thrift"`,
+			},
+			root: a,
+			want: []cyclePair{
+				{"file:///tmp/" + a, "file:///tmp/" + a},
 			},
 		},
 		{
 			name: "diamond into a cycle",
-			graph: map[uri.URI][]Include{
-				club: {Include{file: tea}, Include{file: git}},
-				tea:  {Include{file: bass}},
-				git:  {Include{file: drum}},
-				bass: {Include{file: drum}, Include{file: club}},
-				drum: {Include{file: tea}},
+			files: map[string]string{
+				club: "include \"" + tea + "\"\ninclude \"" + git + "\"",
+				tea:  "include \"" + bass + "\"",
+				git:  "include \"" + drum + "\"",
+				bass: "include \"" + drum + "\"\ninclude \"" + club + "\"",
+				drum: "include \"" + tea + "\"",
 			},
-			want: []CyclePair{
-				{file: club, include: Include{file: tea}},
-				{file: club, include: Include{file: git}},
-				{file: tea, include: Include{file: bass}},
-				{file: git, include: Include{file: drum}},
-				{file: bass, include: Include{file: drum}},
-				{file: bass, include: Include{file: club}},
-				{file: drum, include: Include{file: tea}},
+			root: club,
+			want: []cyclePair{
+				{"file:///tmp/" + club, "file:///tmp/" + git},
+				{"file:///tmp/" + club, "file:///tmp/" + tea},
+				{"file:///tmp/" + git, "file:///tmp/" + drum},
+				{"file:///tmp/" + bass, "file:///tmp/" + club},
+				{"file:///tmp/" + bass, "file:///tmp/" + drum},
+				{"file:///tmp/" + drum, "file:///tmp/" + tea},
+				{"file:///tmp/" + tea, "file:///tmp/" + bass},
 			},
+		},
+		{
+			name: "unresolvable include is not a cycle",
+			files: map[string]string{
+				a: `include "ghost.thrift"`,
+			},
+			root: a,
+			want: nil,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := cycleDetect(tt.graph)
-			sort.SliceStable(got, func(i, j int) bool {
-				if got[i].file == got[j].file {
-					return got[i].include.file < got[j].include.file
-				}
-
-				return got[i].file < got[j].file
-			})
-
-			assert.ElementsMatch(t, tt.want, got)
+			got := runCycleCheck(t, tt.files, tt.root)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -252,47 +278,8 @@ include "./test/address.thrift"`
 
 	includeMap := make(map[uri.URI][]Include)
 
-	type args struct {
-		ctx         context.Context
-		ss          *cache.Snapshot
-		file        uri.URI
-		includesMap *map[uri.URI][]Include
-	}
+	err := getIncludes(t.Context(), ss, "file:///tmp/user.thrift", &includeMap)
+	require.NoError(t, err)
 
-	tests := []struct {
-		name      string
-		args      args
-		want      *map[uri.URI][]Include
-		assertion assert.ErrorAssertionFunc
-	}{
-		{
-			name: "normal",
-			args: args{
-				ctx:         t.Context(),
-				ss:          ss,
-				file:        "file:///tmp/user.thrift",
-				includesMap: &includeMap,
-			},
-			want:      &expectIncludeMap,
-			assertion: assert.NoError,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.assertion(t, getIncludes(tt.args.ctx, tt.args.ss, tt.args.file, tt.args.includesMap))
-
-			assert.Equal(t, tt.want, tt.args.includesMap)
-		})
-	}
-}
-
-func buildSnapshotForTest(t *testing.T, files []*cache.FileChange) *cache.Snapshot {
-	c := cache.New()
-	fs := cache.NewOverlayFS(c)
-	_ = fs.Update(t.Context(), files)
-
-	view := cache.NewView("file:///tmp", fs, nil, options.Patch{})
-	ss := cache.NewSnapshot(view, nil)
-
-	return ss
+	assert.Equal(t, expectIncludeMap, includeMap)
 }

@@ -66,9 +66,9 @@ func ResolveContext(doc *syntax.Document, pos syntax.Position) Context {
 	// The token before the cursor: the token containing the cursor when the
 	// cursor sits at its end, the previous token when mid-token. Comments
 	// are skipped — the grammar slot is determined by the real tokens.
-	prevIdx := prevReal(doc.Tokens, atIdx)
+	prevIdx := syntax.PrevReal(doc.Tokens, atIdx)
 	if at != nil && pos.Offset < at.Offset+len(at.Text) {
-		prevIdx = prevReal(doc.Tokens, atIdx-1)
+		prevIdx = syntax.PrevReal(doc.Tokens, atIdx-1)
 	}
 
 	c.Prefix, c.EditStart = prefixRange(doc, pos, atIdx, at)
@@ -103,7 +103,7 @@ func ResolveContext(doc *syntax.Document, pos syntax.Position) Context {
 	// before the struct member rule, so "{ |1:" is CtxFieldID, not a
 	// member name position.
 	if at != nil && at.Kind == syntax.TokenIntConstant {
-		if n := nextReal(doc.Tokens, atIdx+1); n < len(doc.Tokens) && doc.Tokens[n].Kind == syntax.TokenColon {
+		if n := syntax.NextReal(doc.Tokens, atIdx+1); n < len(doc.Tokens) && doc.Tokens[n].Kind == syntax.TokenColon {
 			c.Kind = CtxFieldID
 
 			return c
@@ -201,7 +201,7 @@ func ResolveContext(doc *syntax.Document, pos syntax.Position) Context {
 			// "songs.A" — a dotted identifier in a type slot: the type
 			// provider scopes to the include and the edit replaces the
 			// whole qualified prefix.
-			if strings.Contains(at.Text, ".") && typeSlotAfterIdent(doc, prevReal(doc.Tokens, atIdx-1)) {
+			if strings.Contains(at.Text, ".") && typeSlotAfterIdent(doc, syntax.PrevReal(doc.Tokens, atIdx-1)) {
 				c.Kind = CtxType
 
 				return c
@@ -282,7 +282,7 @@ func identifierKind(path []syntax.Node, n *syntax.Identifier) ContextKind {
 
 // afterParenKind classifies the cursor right after '(' (prev is the opener).
 func afterParenKind(doc *syntax.Document, opener int) ContextKind {
-	prevIdx := prevReal(doc.Tokens, opener-1)
+	prevIdx := syntax.PrevReal(doc.Tokens, opener-1)
 	if prevIdx < 0 {
 		return CtxAnnotationKey
 	}
@@ -310,7 +310,7 @@ func afterParenKind(doc *syntax.Document, opener int) ContextKind {
 // insideParenKind classifies the cursor after ','/';' inside the group
 // opened at opener.
 func insideParenKind(doc *syntax.Document, opener int) ContextKind {
-	prevIdx := prevReal(doc.Tokens, opener-1)
+	prevIdx := syntax.PrevReal(doc.Tokens, opener-1)
 	if prevIdx < 0 {
 		return CtxAnnotationKey
 	}
@@ -334,7 +334,7 @@ func insideParenKind(doc *syntax.Document, opener int) ContextKind {
 // isThrowsGroup reports whether the group opened at opener is a throws
 // clause (which contains fields, not annotations).
 func isThrowsGroup(doc *syntax.Document, opener int) bool {
-	prevIdx := prevReal(doc.Tokens, opener-1)
+	prevIdx := syntax.PrevReal(doc.Tokens, opener-1)
 
 	return prevIdx >= 0 && doc.Tokens[prevIdx].Kind == syntax.TokenThrows
 }
@@ -344,7 +344,7 @@ func isThrowsGroup(doc *syntax.Document, opener int) bool {
 // after a field modifier or id colon, a const or typedef keyword, a
 // map/list/set opener, or a service function return.
 func typeSlotAfterIdent(doc *syntax.Document, idx int) bool {
-	prev := prevReal(doc.Tokens, idx-1)
+	prev := syntax.PrevReal(doc.Tokens, idx-1)
 	if prev < 0 {
 		return false
 	}
@@ -590,12 +590,12 @@ func containerKeywordBefore(doc *syntax.Document, brace int) (syntax.TokenKind, 
 	pastParens:
 	}
 
-	j = prevReal(doc.Tokens, j)
+	j = syntax.PrevReal(doc.Tokens, j)
 	if j < 1 || doc.Tokens[j].Kind != syntax.TokenIdentifier {
 		return 0, false
 	}
 
-	k := prevReal(doc.Tokens, j-1)
+	k := syntax.PrevReal(doc.Tokens, j-1)
 	if k < 0 {
 		return 0, false
 	}
@@ -616,26 +616,6 @@ func deepestNode(path []syntax.Node) syntax.Node {
 	}
 
 	return path[len(path)-1]
-}
-
-// prevReal returns the index of the previous non-comment token strictly
-// before idx, or -1. Comments are stream tokens but never participate in
-// the grammar, so every adjacency lookup skips them.
-func prevReal(toks []syntax.Token, idx int) int {
-	for idx >= 0 && syntax.IsComment(toks[idx].Kind) {
-		idx--
-	}
-
-	return idx
-}
-
-// nextReal returns the index of the next non-comment token at or after idx.
-func nextReal(toks []syntax.Token, idx int) int {
-	for idx < len(toks) && syntax.IsComment(toks[idx].Kind) {
-		idx++
-	}
-
-	return idx
 }
 
 // tokenOffset returns the byte offset of the first token of n.

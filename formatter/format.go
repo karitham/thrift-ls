@@ -218,14 +218,12 @@ func (o Options) normalize() Options {
 // Format renders a parsed document. The document must have been parsed
 // without errors; callers check the parse errors before formatting. Format
 // is deterministic and pure: it reads nothing but the document and options.
-// formatArena is the shared node arena for Format and FormatNode. The
-// doc IR dies with the print, so a single pooled arena is safe: regions
-// are reused across calls and the garbage the GC would scan shrinks to
-// the region overflows.
-var (
-	formatArena doc.Arena
-	formatMu    sync.Mutex
-)
+// arenaPool pools the node arenas for Format and FormatNode. The doc IR
+// dies with the print, so an arena is free for reuse the moment the call
+// returns: regions are reused across calls and the garbage the GC would
+// scan shrinks to the region overflows. The pool hands out one arena per
+// goroutine, so concurrent formats do not serialize.
+var arenaPool = sync.Pool{New: func() any { return new(doc.Arena) }}
 
 // Format renders the whole document. The arena is pooled: the returned
 // string is the only thing that outlives the call.
@@ -236,19 +234,19 @@ func Format(d *syntax.Document, o Options) (string, error) {
 
 	o = o.normalize()
 
-	formatMu.Lock()
-	defer formatMu.Unlock()
+	a := arenaPool.Get().(*doc.Arena)
+	defer arenaPool.Put(a)
 
-	formatArena.Reset()
+	a.Reset()
 
 	f := &formatter{
-		Arena: &formatArena,
+		Arena: a,
 		doc:   d,
 		toks:  d.Tokens,
 		opts:  o,
 	}
 
-	return formatArena.Print(f.document(), printOptions(o))
+	return a.Print(f.document(), printOptions(o))
 }
 
 // printOptions maps formatter options to printer options.
@@ -290,19 +288,19 @@ func FormatNode(d *syntax.Document, n syntax.Node, o Options) (string, error) {
 
 	o = o.normalize()
 
-	formatMu.Lock()
-	defer formatMu.Unlock()
+	a := arenaPool.Get().(*doc.Arena)
+	defer arenaPool.Put(a)
 
-	formatArena.Reset()
+	a.Reset()
 
 	f := &formatter{
-		Arena: &formatArena,
+		Arena: a,
 		doc:   d,
 		toks:  d.Tokens,
 		opts:  o,
 	}
 
-	return formatArena.Print(f.node(n), printOptions(o))
+	return a.Print(f.node(n), printOptions(o))
 }
 
 type formatter struct {
@@ -359,21 +357,13 @@ func padAt(pads []padEntry, idx int) string {
 // prevReal returns the index of the previous real (non-comment) token
 // strictly before idx, or -1.
 func (f *formatter) prevReal(idx int) int {
-	for idx >= 0 && isComment(f.token(idx).Kind) {
-		idx--
-	}
-
-	return idx
+	return syntax.PrevReal(f.toks, idx)
 }
 
 // nextReal returns the index of the next real (non-comment) token at or
 // after idx.
 func (f *formatter) nextReal(idx int) int {
-	for idx < len(f.toks) && isComment(f.token(idx).Kind) {
-		idx++
-	}
-
-	return idx
+	return syntax.NextReal(f.toks, idx)
 }
 
 // emitTokens renders the tokens in [start, end] with the comments

@@ -86,8 +86,17 @@ var textChars = []rune{'a', 'b', ' ', 'x', '日', '本', '😀', '\u0301', '\t',
 // buildDoc builds a document from the bytecode program, returning the doc
 // and whether the program was fully consumed.
 func buildDoc(program []byte, depth int) (Doc, bool) {
+	var a Arena
+
+	return buildDocArena(&a, program, depth)
+}
+
+// buildDocArena is buildDoc against an arena: it exists so fuzz seeds and
+// regression corpus entries (which predate the arena-only API) keep
+// building docs by value where convenient.
+func buildDocArena(a *Arena, program []byte, depth int) (Doc, bool) {
 	if depth > maxDepth || len(program) == 0 {
-		return Concat{}, false
+		return a.Concat(), false
 	}
 
 	switch op := program[0]; op {
@@ -99,7 +108,7 @@ func buildDoc(program []byte, depth int) (Doc, bool) {
 			text = append(text, textChars[int(program[(2+i)%len(program)])%len(textChars)])
 		}
 
-		return Text(string(text)), true
+		return a.Text(string(text)), true
 
 	case opLine, opSoftLine, opHardLine:
 		switch op {
@@ -112,16 +121,16 @@ func buildDoc(program []byte, depth int) (Doc, bool) {
 		}
 
 	case opGroup, opGroupBreak:
-		inner, ok := buildDoc(program[1:], depth+1)
+		inner, ok := buildDocArena(a, program[1:], depth+1)
 		if !ok {
-			return Concat{}, false
+			return a.Concat(), false
 		}
 
 		if op == opGroupBreak {
-			return GroupBreak(inner), true
+			return a.GroupBreak(inner), true
 		}
 
-		return Group(inner), true
+		return a.Group(inner), true
 
 	case opConcat:
 		n := int(program[1%len(program)]) % 5
@@ -130,66 +139,66 @@ func buildDoc(program []byte, depth int) (Doc, bool) {
 		offset := 2
 		for range n {
 			if offset >= len(program) {
-				return Concat(parts), true
+				return a.Concat(parts...), true
 			}
 
-			part, ok := buildDoc(program[offset:], depth+1)
+			part, ok := buildDocArena(a, program[offset:], depth+1)
 			if !ok {
-				return Concat(parts), true
+				return a.Concat(parts...), true
 			}
 
 			parts = append(parts, part)
 			offset++
 		}
 
-		return Concat(parts), true
+		return a.Concat(parts...), true
 
 	case opIndent:
-		inner, ok := buildDoc(program[1:], depth+1)
+		inner, ok := buildDocArena(a, program[1:], depth+1)
 		if !ok {
-			return Concat{}, false
+			return a.Concat(), false
 		}
 
-		return Indent(inner), true
+		return a.Indent(inner), true
 
 	case opAlign:
-		inner, ok := buildDoc(program[1:], depth+1)
+		inner, ok := buildDocArena(a, program[1:], depth+1)
 		if !ok {
-			return Concat{}, false
+			return a.Concat(), false
 		}
 
-		return Align(int(program[1%len(program)])%5, inner), true
+		return a.Align(int(program[1%len(program)])%5, inner), true
 
 	case opIfBreak:
-		brk, ok1 := buildDoc(program[1:], depth+1)
+		brk, ok1 := buildDocArena(a, program[1:], depth+1)
 
-		flat, ok2 := buildDoc(program[2%len(program):], depth+1)
+		flat, ok2 := buildDocArena(a, program[2%len(program):], depth+1)
 		if !ok1 || !ok2 {
-			return Concat{}, false
+			return a.Concat(), false
 		}
 
-		return IfBreak(brk, flat), true
+		return a.IfBreak(brk, flat), true
 
 	case opLineSuffix:
-		inner, ok := buildDoc(program[1:], depth+1)
+		inner, ok := buildDocArena(a, program[1:], depth+1)
 		if !ok {
-			return Concat{}, false
+			return a.Concat(), false
 		}
 
-		return LineSuffix(inner), true
+		return a.LineSuffix(inner), true
 
 	case opConditional:
-		first, ok := buildDoc(program[1:], depth+1)
+		first, ok := buildDocArena(a, program[1:], depth+1)
 		if !ok {
-			return Concat{}, false
+			return a.Concat(), false
 		}
 
-		second, ok := buildDoc(program[2%len(program):], depth+1)
+		second, ok := buildDocArena(a, program[2%len(program):], depth+1)
 		if !ok {
-			return Concat{}, false
+			return a.Concat(), false
 		}
 
-		return ConditionalGroup(0, first, second, GroupBreak(first)), true
+		return a.ConditionalGroup(0, first, second, a.GroupBreak(first)), true
 
 	case opTrim:
 		return TrimDoc, true
@@ -201,6 +210,6 @@ func buildDoc(program []byte, depth int) (Doc, bool) {
 		return LineSuffixBoundary, true
 
 	default:
-		return Concat{}, false
+		return a.Concat(), false
 	}
 }
