@@ -2,7 +2,7 @@
   "name": "thrift-ls",
   "displayName": "Thrift Language Server",
   "description": "Language server and formatter for Apache Thrift IDL files",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "publisher": "karitham",
   "license": "MIT",
   "engines": {
