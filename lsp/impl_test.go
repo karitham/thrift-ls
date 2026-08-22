@@ -160,21 +160,15 @@ struct Test {
 			assert.NoError(t, err)
 
 			completionParams := &protocol.CompletionParams{
-				TextDocumentPositionParams: protocol.TextDocumentPositionParams{
-					TextDocument: protocol.TextDocumentIdentifier{
-						URI: fileURI,
-					},
-					Position: protocol.Position{
-						Line:      tt.line,
-						Character: tt.character,
-					},
+				TextDocument: protocol.TextDocumentIdentifier{
+					URI: fileURI,
 				},
-				WorkDoneProgressParams: protocol.WorkDoneProgressParams{
-					WorkDoneToken: protocol.String(""),
+				Position: protocol.Position{
+					Line:      tt.line,
+					Character: tt.character,
 				},
-				PartialResultParams: protocol.PartialResultParams{
-					PartialResultToken: protocol.String(""),
-				},
+				WorkDoneToken:      protocol.String(""),
+				PartialResultToken: protocol.String(""),
 				Context: protocol.CompletionContext{
 					TriggerKind: protocol.CompletionTriggerKindInvoked,
 				},
@@ -259,21 +253,15 @@ struct Test {
 			assert.NoError(t, err)
 
 			completionParams := &protocol.CompletionParams{
-				TextDocumentPositionParams: protocol.TextDocumentPositionParams{
-					TextDocument: protocol.TextDocumentIdentifier{
-						URI: testURI,
-					},
-					Position: protocol.Position{
-						Line:      5,
-						Character: 28,
-					},
+				TextDocument: protocol.TextDocumentIdentifier{
+					URI: testURI,
 				},
-				WorkDoneProgressParams: protocol.WorkDoneProgressParams{
-					WorkDoneToken: protocol.String(""),
+				Position: protocol.Position{
+					Line:      5,
+					Character: 28,
 				},
-				PartialResultParams: protocol.PartialResultParams{
-					PartialResultToken: protocol.String(""),
-				},
+				WorkDoneToken:      protocol.String(""),
+				PartialResultToken: protocol.String(""),
 				Context: protocol.CompletionContext{
 					TriggerKind: protocol.CompletionTriggerKindInvoked,
 				},
@@ -367,21 +355,15 @@ struct Other {
 			assert.NoError(t, err)
 
 			completionParams := &protocol.CompletionParams{
-				TextDocumentPositionParams: protocol.TextDocumentPositionParams{
-					TextDocument: protocol.TextDocumentIdentifier{
-						URI: completionURI,
-					},
-					Position: protocol.Position{
-						Line:      5,
-						Character: 28,
-					},
+				TextDocument: protocol.TextDocumentIdentifier{
+					URI: completionURI,
 				},
-				WorkDoneProgressParams: protocol.WorkDoneProgressParams{
-					WorkDoneToken: protocol.String(""),
+				Position: protocol.Position{
+					Line:      5,
+					Character: 28,
 				},
-				PartialResultParams: protocol.PartialResultParams{
-					PartialResultToken: protocol.String(""),
-				},
+				WorkDoneToken:      protocol.String(""),
+				PartialResultToken: protocol.String(""),
 				Context: protocol.CompletionContext{
 					TriggerKind: protocol.CompletionTriggerKindInvoked,
 				},
@@ -482,9 +464,7 @@ func Test_InitializeDefersTheWorkspaceWalk(t *testing.T) {
 		srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
 
 		_, err := srv.Initialize(t.Context(), &protocol.InitializeParams{
-			WorkspaceFoldersInitializeParams: protocol.WorkspaceFoldersInitializeParams{
-				WorkspaceFolders: protocol.NewNullable([]protocol.WorkspaceFolder{{URI: uri.File(dir)}}),
-			},
+			WorkspaceFolders: protocol.NewNullable([]protocol.WorkspaceFolder{{URI: uri.File(dir)}}),
 		})
 		require.NoError(t, err)
 
@@ -558,11 +538,9 @@ struct StrikeRouge {
 
 	completion := func(line, character uint32) []string {
 		result, err := srv.Completion(ctx, &protocol.CompletionParams{
-			TextDocumentPositionParams: protocol.TextDocumentPositionParams{
-				TextDocument: protocol.TextDocumentIdentifier{URI: testURI},
-				Position:     protocol.Position{Line: line, Character: character},
-			},
-			Context: protocol.CompletionContext{TriggerKind: protocol.CompletionTriggerKindInvoked},
+			TextDocument: protocol.TextDocumentIdentifier{URI: testURI},
+			Position:     protocol.Position{Line: line, Character: character},
+			Context:      protocol.CompletionContext{TriggerKind: protocol.CompletionTriggerKindInvoked},
 		})
 		require.NoError(t, err)
 
@@ -618,11 +596,9 @@ struct StrikeRouge {
 		}))
 
 		result, err := srv.Completion(ctx, &protocol.CompletionParams{
-			TextDocumentPositionParams: protocol.TextDocumentPositionParams{
-				TextDocument: protocol.TextDocumentIdentifier{URI: testURI},
-				Position:     protocol.Position{Line: 3, Character: 15},
-			},
-			Context: protocol.CompletionContext{TriggerKind: protocol.CompletionTriggerKindInvoked},
+			TextDocument: protocol.TextDocumentIdentifier{URI: testURI},
+			Position:     protocol.Position{Line: 3, Character: 15},
+			Context:      protocol.CompletionContext{TriggerKind: protocol.CompletionTriggerKindInvoked},
 		})
 		require.NoError(t, err)
 

@@ -172,56 +172,32 @@ func initializeResult() *protocol.InitializeResult {
 				TriggerCharacters: []string{".", "\"", "("},
 			},
 			HoverProvider: &protocol.HoverOptions{
-				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-					WorkDoneProgress: new(true),
-				},
+				WorkDoneProgress: new(true),
 			},
 			SignatureHelpProvider: &protocol.SignatureHelpOptions{
 				TriggerCharacters:   []string{},
 				RetriggerCharacters: []string{},
 			},
 			DeclarationProvider: &protocol.DeclarationRegistrationOptions{
-				DeclarationOptions: protocol.DeclarationOptions{
-					WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-						WorkDoneProgress: new(true),
-					},
-				},
-				TextDocumentRegistrationOptions: protocol.TextDocumentRegistrationOptions{
-					DocumentSelector: thriftSelector,
-				},
-				StaticRegistrationOptions: protocol.StaticRegistrationOptions{
-					ID: new("thrift-ls"),
-				},
+				WorkDoneProgress: new(true),
+				DocumentSelector: thriftSelector,
+				ID:               new("thrift-ls"),
 			},
 			DefinitionProvider: &protocol.DefinitionOptions{
-				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-					WorkDoneProgress: new(true),
-				},
+				WorkDoneProgress: new(true),
 			},
 			TypeDefinitionProvider: &protocol.TypeDefinitionRegistrationOptions{
-				TextDocumentRegistrationOptions: protocol.TextDocumentRegistrationOptions{
-					DocumentSelector: thriftSelector,
-				},
-				TypeDefinitionOptions: protocol.TypeDefinitionOptions{
-					WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-						WorkDoneProgress: new(true),
-					},
-				},
-				StaticRegistrationOptions: protocol.StaticRegistrationOptions{
-					ID: new("thrift-ls"),
-				},
+				DocumentSelector: thriftSelector,
+				WorkDoneProgress: new(true),
+				ID:               new("thrift-ls"),
 			},
 			ReferencesProvider: &protocol.ReferenceOptions{
-				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-					WorkDoneProgress: new(true),
-				},
+				WorkDoneProgress: new(true),
 			},
 			DocumentHighlightProvider: protocol.Boolean(true),
 			DocumentSymbolProvider: &protocol.DocumentSymbolOptions{
-				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-					WorkDoneProgress: new(true),
-				},
-				Label: new("thrift-ls"),
+				WorkDoneProgress: new(true),
+				Label:            new("thrift-ls"),
 			},
 			CodeActionProvider: &protocol.CodeActionOptions{
 				// Keep in sync with the kinds codeAction returns:
@@ -241,19 +217,13 @@ func initializeResult() *protocol.InitializeResult {
 			}, ColorProvider: protocol.Boolean(false),
 			FoldingRangeProvider: protocol.Boolean(true),
 			WorkspaceSymbolProvider: &protocol.WorkspaceSymbolOptions{
-				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-					WorkDoneProgress: new(true),
-				},
+				WorkDoneProgress: new(true),
 			},
 			DocumentFormattingProvider: &protocol.DocumentFormattingOptions{
-				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-					WorkDoneProgress: new(true),
-				},
+				WorkDoneProgress: new(true),
 			},
 			DocumentRangeFormattingProvider: &protocol.DocumentRangeFormattingOptions{
-				WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-					WorkDoneProgress: new(true),
-				},
+				WorkDoneProgress: new(true),
 			},
 			DocumentOnTypeFormattingProvider: protocol.DocumentOnTypeFormattingOptions{
 				FirstTriggerCharacter: "}",
@@ -268,25 +238,17 @@ func initializeResult() *protocol.InitializeResult {
 			CallHierarchyProvider:      protocol.Boolean(false),
 			LinkedEditingRangeProvider: protocol.Boolean(false),
 			SemanticTokensProvider: &protocol.SemanticTokensRegistrationOptions{
-				TextDocumentRegistrationOptions: protocol.TextDocumentRegistrationOptions{
-					DocumentSelector: thriftSelector,
+				DocumentSelector: thriftSelector,
+				WorkDoneProgress: new(true),
+				Legend: protocol.SemanticTokensLegend{
+					TokenTypes:     source.Legend(),
+					TokenModifiers: []string{},
 				},
-				SemanticTokensOptions: protocol.SemanticTokensOptions{
-					WorkDoneProgressOptions: protocol.WorkDoneProgressOptions{
-						WorkDoneProgress: new(true),
-					},
-					Legend: protocol.SemanticTokensLegend{
-						TokenTypes:     source.Legend(),
-						TokenModifiers: []string{},
-					},
-					Full: &protocol.SemanticTokensFullDelta{
-						Delta: new(true),
-					},
-					Range: protocol.Boolean(false),
+				Full: &protocol.SemanticTokensFullDelta{
+					Delta: new(true),
 				},
-				StaticRegistrationOptions: protocol.StaticRegistrationOptions{
-					ID: new("thrift-ls"),
-				},
+				Range: protocol.Boolean(false),
+				ID:    new("thrift-ls"),
 			},
 			Workspace: &protocol.WorkspaceOptions{
 				WorkspaceFolders: &protocol.WorkspaceFoldersServerCapabilities{
