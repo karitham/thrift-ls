@@ -89,8 +89,8 @@ func BenchmarkStoreChangeThenReadAll(b *testing.B) {
 
 	for i := 0; b.Loop(); i++ {
 		mid.Version = i
-		mid.Content = []byte(fmt.Sprintf("include \"chain_%d.thrift\"\n\nstruct S%d {\n\t1: required string Name\n}\n",
-			len(files)/2+1, len(files)/2))
+		mid.Content = fmt.Appendf(nil, "include \"chain_%d.thrift\"\n\nstruct S%d {\n\t1: required string Name\n}\n",
+			len(files)/2+1, len(files)/2)
 
 		view.Update(ctx, mid)
 

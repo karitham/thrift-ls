@@ -62,7 +62,7 @@
             packages =
               with pkgs;
               [
-                go
+                go_1_27
                 treefmt
                 golangci-lint
                 nodejs_22

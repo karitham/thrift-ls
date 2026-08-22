@@ -165,7 +165,7 @@ func (d *Document) appendNode(n Node) {
 // --- headers ---------------------------------------------------------------
 
 func (p *parser) parseInclude() Node {
-	n := &Include{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
+	n := &Include{first: p.nextReal(p.pos)}
 	p.advance() // include
 
 	if !p.at(TokenStringLiteral) {
@@ -185,7 +185,7 @@ func (p *parser) parseInclude() Node {
 }
 
 func (p *parser) parseCPPInclude() Node {
-	n := &CPPInclude{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
+	n := &CPPInclude{first: p.nextReal(p.pos)}
 	p.advance() // cpp_include
 
 	if !p.at(TokenStringLiteral) {
@@ -205,7 +205,7 @@ func (p *parser) parseCPPInclude() Node {
 }
 
 func (p *parser) parseNamespace() Node {
-	n := &Namespace{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
+	n := &Namespace{first: p.nextReal(p.pos)}
 	p.advance() // namespace
 
 	if !p.at(TokenIdentifier) && !p.at(TokenStar) {
@@ -233,7 +233,7 @@ func (p *parser) parseNamespace() Node {
 // --- definitions -----------------------------------------------------------
 
 func (p *parser) parseConst() Node {
-	n := &Const{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
+	n := &Const{first: p.nextReal(p.pos)}
 	p.advance() // const
 
 	n.Type = p.parseFieldType()
@@ -271,7 +271,7 @@ func (p *parser) parseConst() Node {
 }
 
 func (p *parser) parseTypedef() Node {
-	n := &Typedef{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
+	n := &Typedef{first: p.nextReal(p.pos)}
 	p.advance() // typedef
 
 	n.Type = p.parseFieldType()
@@ -297,7 +297,7 @@ func (p *parser) parseTypedef() Node {
 }
 
 func (p *parser) parseEnum() Node {
-	n := &Enum{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
+	n := &Enum{first: p.nextReal(p.pos)}
 	p.advance() // enum
 
 	n.Name = p.expectIdentifier("enum name")
@@ -337,7 +337,7 @@ func (p *parser) parseEnumValue() *EnumValue {
 		return nil
 	}
 
-	v := &EnumValue{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
+	v := &EnumValue{first: p.nextReal(p.pos)}
 
 	v.Name = p.identifier()
 	if p.at(TokenEqual) {
@@ -359,7 +359,7 @@ func (p *parser) parseEnumValue() *EnumValue {
 }
 
 func (p *parser) parseStruct() Node {
-	n := &Struct{nodeBase: nodeBase{first: p.nextReal(p.pos)}, Kind: StructKind(p.cur().Kind)}
+	n := &Struct{first: p.nextReal(p.pos), Kind: StructKind(p.cur().Kind)}
 	p.advance() // struct | union | exception
 
 	n.Name = p.expectIdentifier("struct name")
@@ -383,7 +383,7 @@ func (p *parser) parseStruct() Node {
 }
 
 func (p *parser) parseService() Node {
-	n := &Service{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
+	n := &Service{first: p.nextReal(p.pos)}
 	p.advance() // service
 
 	n.Name = p.expectIdentifier("service name")
@@ -430,7 +430,7 @@ func (p *parser) parseService() Node {
 }
 
 func (p *parser) parseFunction() *Function {
-	f := &Function{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
+	f := &Function{first: p.nextReal(p.pos)}
 
 	switch p.cur().Kind {
 	case TokenOneway:
@@ -476,7 +476,7 @@ func (p *parser) parseFunction() *Function {
 			return nil
 		}
 
-		f.Throws = &Throws{nodeBase: nodeBase{first: p.pos - 1}}
+		f.Throws = &Throws{first: p.pos - 1}
 
 		f.Throws.Fields = p.parseFieldList(TokenRParen)
 		p.expect(TokenRParen, "')' to close throws")
@@ -514,7 +514,7 @@ func (p *parser) parseFieldList(term TokenKind) []*Field {
 }
 
 func (p *parser) parseField() (*Field, bool) {
-	f := &Field{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
+	f := &Field{first: p.nextReal(p.pos)}
 
 	if p.at(TokenIntConstant) && p.peekAfter(p.nextReal(p.pos)) == TokenColon {
 		f.FieldID = p.advance()
@@ -576,7 +576,7 @@ func (p *parser) parseField() (*Field, bool) {
 // --- types -----------------------------------------------------------------
 
 func (p *parser) parseFieldType() *FieldType {
-	t := &FieldType{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
+	t := &FieldType{first: p.nextReal(p.pos)}
 
 	switch p.cur().Kind {
 	case TokenMap, TokenList, TokenSet:
@@ -687,7 +687,7 @@ func isBaseType(k TokenKind) bool {
 // --- constant values -------------------------------------------------------
 
 func (p *parser) parseConstValue() *ConstValue {
-	v := &ConstValue{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
+	v := &ConstValue{first: p.nextReal(p.pos)}
 
 	switch p.cur().Kind {
 	case TokenIntConstant, TokenTrue, TokenFalse:
@@ -785,7 +785,7 @@ func (p *parser) parseAnnotationsIfPresent() *Annotations {
 // literal (a bare name means an implicit value of "1"), and each may end
 // with an optional ',' or ';'.
 func (p *parser) parseAnnotations() *Annotations {
-	a := &Annotations{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
+	a := &Annotations{first: p.nextReal(p.pos)}
 	p.advance() // (
 
 	for !p.at(TokenRParen) && !p.at(TokenEOF) {
@@ -796,7 +796,7 @@ func (p *parser) parseAnnotations() *Annotations {
 			continue
 		}
 
-		item := &Annotation{nodeBase: nodeBase{first: p.nextReal(p.pos)}}
+		item := &Annotation{first: p.nextReal(p.pos)}
 
 		item.Name = p.identifier()
 		if p.at(TokenEqual) {
@@ -841,7 +841,7 @@ func (p *parser) identifier() *Identifier {
 	i := p.nextReal(p.pos)
 	t := p.advance()
 
-	return &Identifier{nodeBase: nodeBase{first: i, last: i}, Text: t.Text}
+	return &Identifier{first: i, last: i, Text: t.Text}
 }
 
 // expectIdentifier parses a plain identifier name and reports an error when
