@@ -11,14 +11,14 @@ import (
 )
 
 // buildSnapshot parses src as the file at URI and returns the snapshot.
-func buildLinksSnapshot(t *testing.T, file uri.URI, src string) *cache.Snapshot {
+func buildLinksSnapshot(t *testing.T, file uri.URI, src string) *cache.View {
 	t.Helper()
 
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{URI: file, Version: 0, Content: []byte(src), From: cache.FileChangeTypeDidOpen},
 	})
 
-	return ss
+	return view
 }
 
 func TestLinks(t *testing.T) {
@@ -53,9 +53,9 @@ struct S {}`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ss := buildLinksSnapshot(t, "file:///tmp/main.thrift", tt.src)
+			view := buildLinksSnapshot(t, "file:///tmp/main.thrift", tt.src)
 
-			got := Links(t.Context(), ss, "file:///tmp/main.thrift")
+			got := Links(t.Context(), view, "file:///tmp/main.thrift")
 
 			if tt.want == nil {
 				assert.Empty(t, got)
@@ -76,9 +76,9 @@ struct S {}`,
 
 // TestLinksRange pins the link range to the include string literal.
 func TestLinksRange(t *testing.T) {
-	ss := buildLinksSnapshot(t, "file:///tmp/main.thrift", "include \"base.thrift\"\n")
+	view := buildLinksSnapshot(t, "file:///tmp/main.thrift", "include \"base.thrift\"\n")
 
-	got := Links(t.Context(), ss, "file:///tmp/main.thrift")
+	got := Links(t.Context(), view, "file:///tmp/main.thrift")
 	require.Len(t, got, 1)
 
 	assert.Equal(t, uint32(0), got[0].Range.Start.Line)

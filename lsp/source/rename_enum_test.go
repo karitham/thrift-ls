@@ -76,9 +76,9 @@ func TestRenameEnumQualifiedValues(t *testing.T) {
 				})
 			}
 
-			ss := cache.BuildSnapshotForTest(changes)
+			view := cache.BuildViewForTest(changes)
 
-			edit, err := Rename(t.Context(), ss, tt.cursor, tt.pos, tt.newName)
+			edit, err := Rename(t.Context(), view, tt.cursor, tt.pos, tt.newName)
 			require.NoError(t, err)
 
 			for file, wantNewTexts := range tt.want {

@@ -25,13 +25,13 @@ struct StrikeRouge {
 	1: required string Name
 }`
 
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte(gundamFile), From: cache.FileChangeTypeDidOpen},
 		{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(mainFile), From: cache.FileChangeTypeDidOpen},
 	})
 
 	// Cursor on "Gundam" (the definition name) in federation.gundam.thrift.
-	locations, err := Reference(t.Context(), ss, "file:///tmp/federation.gundam.thrift", protocol.Position{Line: 0, Character: 7})
+	locations, err := Reference(t.Context(), view, "file:///tmp/federation.gundam.thrift", protocol.Position{Line: 0, Character: 7})
 	assert.NoError(t, err)
 
 	var uris []string
@@ -55,12 +55,12 @@ struct StrikeRouge {
 	1: required string Name
 }`
 
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte(gundamFile), From: cache.FileChangeTypeDidOpen},
 		{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(mainFile), From: cache.FileChangeTypeDidOpen},
 	})
 
-	locations, err := Reference(t.Context(), ss, "file:///tmp/federation.gundam.thrift", protocol.Position{Line: 0, Character: 7})
+	locations, err := Reference(t.Context(), view, "file:///tmp/federation.gundam.thrift", protocol.Position{Line: 0, Character: 7})
 	assert.NoError(t, err)
 
 	var uris []string
@@ -92,7 +92,7 @@ struct Gundam {
 	1: required string Model
 }`
 
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{URI: "file:///tmp/mobile_suit.zeon.thrift", Version: 0, Content: []byte(zeonFile), From: cache.FileChangeTypeDidOpen},
 		{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte(federationFile), From: cache.FileChangeTypeDidOpen},
 		{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(mainFile), From: cache.FileChangeTypeDidOpen},
@@ -100,7 +100,7 @@ struct Gundam {
 
 	// Cursor on "Zaku" in main.thrift (line 3, character 13: the type of
 	// "1: optional Zaku ride").
-	locations, err := Definition(t.Context(), ss, "file:///tmp/main.thrift", protocol.Position{Line: 3, Character: 13})
+	locations, err := Definition(t.Context(), view, "file:///tmp/main.thrift", protocol.Position{Line: 3, Character: 13})
 	assert.NoError(t, err)
 
 	assert.Len(t, locations, 1)

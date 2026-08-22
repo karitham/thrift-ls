@@ -12,9 +12,9 @@ import (
 	"github.com/karitham/thrift-ls/options"
 )
 
-// buildSnapshot builds a snapshot from file contents with optional include
+// buildSnapshot builds a view from file contents with optional include
 // paths.
-func buildSnapshot(t *testing.T, includePaths []string, files ...*cache.FileChange) *cache.Snapshot {
+func buildSnapshot(t *testing.T, includePaths []string, files ...*cache.FileChange) *cache.View {
 	t.Helper()
 
 	c := cache.New()
@@ -22,23 +22,27 @@ func buildSnapshot(t *testing.T, includePaths []string, files ...*cache.FileChan
 	_ = fs.Update(t.Context(), files)
 	view := cache.NewView(uri.File("/tmp"), fs, includePaths, options.Patch{})
 
-	return cache.NewSnapshot(view, includePaths)
+	for _, f := range files {
+		_, _ = view.Parse(t.Context(), f.URI)
+	}
+
+	return view
 }
 
 func TestCompletionEndToEnd(t *testing.T) {
 	content := "struct User {\n  1: required i64 id\n}\n\nstruct Profile {\n  1: required Us\n}"
-	ss := buildSnapshot(t, nil,
+	view := buildSnapshot(t, nil,
 		&cache.FileChange{URI: "file:///tmp/test.thrift", Version: 0, Content: []byte(content), From: cache.FileChangeTypeDidOpen},
 	)
 
-	fh, err := ss.ReadFile(t.Context(), "file:///tmp/test.thrift")
+	fh, err := view.ReadFile(t.Context(), "file:///tmp/test.thrift")
 	assert.NoError(t, err)
 
 	cmp := &CompletionRequest{
 		Fh:  fh,
 		Pos: protocol.Position{Line: 5, Character: 16}, // after "Us" in "1: required Us"
 	}
-	items, _, _, err := DefaultTokenCompletion.Completion(t.Context(), ss, cmp)
+	items, _, _, err := DefaultTokenCompletion.Completion(t.Context(), view, cmp)
 	assert.NoError(t, err)
 
 	labels := make([]string, 0, len(items))

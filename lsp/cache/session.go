@@ -18,8 +18,8 @@ type Session struct {
 	views   []*View
 	viewMap map[uri.URI]*View // map of URI->best view
 
-	// session holds overlayFS to manage file content
-	// view, snapshot only holds FileSource to read from overlayFS
+	// The session owns the overlayFS: open-editor content lives here, and
+	// views read through it.
 	*overlayFS
 }
 

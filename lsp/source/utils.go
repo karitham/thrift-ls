@@ -30,10 +30,10 @@ const (
 // unqualified name searches the current file first, then every file
 // transitively included, so a type visible through a multi-hop include
 // chain (A includes B includes C) is found.
-func definitionFiles(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast *syntax.Document, name string) []uri.URI {
+func definitionFiles(ctx context.Context, view *cache.View, file uri.URI, ast *syntax.Document, name string) []uri.URI {
 	include, _ := parseIdent(file, ast.Includes(), name)
 	if include != "" {
-		resolver := ss.Resolver()
+		resolver := view.Resolver()
 
 		path := resolver.GetIncludePath(ast, include)
 		if path == "" {
@@ -46,7 +46,7 @@ func definitionFiles(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast 
 
 	files := []uri.URI{file}
 	seen := map[uri.URI]bool{file: true}
-	resolver := ss.Resolver()
+	resolver := view.Resolver()
 
 	var visit func(f uri.URI)
 
@@ -54,7 +54,7 @@ func definitionFiles(ctx context.Context, ss *cache.Snapshot, file uri.URI, ast 
 		doc := ast
 
 		if f != file {
-			pf, err := ss.Parse(ctx, f)
+			pf, err := view.Parse(ctx, f)
 			if err != nil || pf.AST() == nil {
 				return
 			}

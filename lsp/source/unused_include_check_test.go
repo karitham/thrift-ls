@@ -73,7 +73,7 @@ func Test_UnusedIncludeCheck(t *testing.T) {
 
 			filePath := writeThrift(t, folder, "user.thrift", tt.content)
 
-			ss := buildFolderSnapshotForTest(t, folder, []*cache.FileChange{
+			view := buildFolderSnapshotForTest(t, folder, []*cache.FileChange{
 				{
 					URI:     uri.File(filePath),
 					Version: 0,
@@ -82,7 +82,7 @@ func Test_UnusedIncludeCheck(t *testing.T) {
 				},
 			})
 
-			got, err := (&UnusedIncludeCheck{}).diagnostic(t.Context(), ss, uri.File(filePath))
+			got, err := (&UnusedIncludeCheck{}).diagnostic(t.Context(), view, uri.File(filePath))
 			require.NoError(t, err)
 
 			var msgs []string

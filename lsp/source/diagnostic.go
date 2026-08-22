@@ -28,7 +28,7 @@ func init() {
 }
 
 type Checker interface {
-	Diagnostic(ctx context.Context, ss *cache.Snapshot, changeFiles []uri.URI) (DiagnosticResult, error)
+	Diagnostic(ctx context.Context, view *cache.View, changeFiles []uri.URI) (DiagnosticResult, error)
 	Name() string
 }
 
@@ -38,7 +38,7 @@ func NewDiagnostic() Checker {
 	return &Diagnostic{}
 }
 
-func (d *Diagnostic) Diagnostic(ctx context.Context, ss *cache.Snapshot, changeFiles []uri.URI) (DiagnosticResult, error) {
+func (d *Diagnostic) Diagnostic(ctx context.Context, view *cache.View, changeFiles []uri.URI) (DiagnosticResult, error) {
 	res := make(DiagnosticResult)
 
 	var errs []error
@@ -46,7 +46,7 @@ func (d *Diagnostic) Diagnostic(ctx context.Context, ss *cache.Snapshot, changeF
 	for _, impl := range registry {
 		slog.Debug("diagnostic called", "impl", impl.Name())
 
-		diagRes, err := impl.Diagnostic(ctx, ss, changeFiles)
+		diagRes, err := impl.Diagnostic(ctx, view, changeFiles)
 		if err != nil {
 			errs = append(errs, err)
 		}

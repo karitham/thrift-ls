@@ -15,7 +15,7 @@ import (
 	"github.com/karitham/thrift-ls/options"
 )
 
-func buildSnapshotForTest(t *testing.T, files []*cache.FileChange) *cache.Snapshot {
+func buildSnapshotForTest(t *testing.T, files []*cache.FileChange) *cache.View {
 	t.Helper()
 
 	c := cache.New()
@@ -23,9 +23,12 @@ func buildSnapshotForTest(t *testing.T, files []*cache.FileChange) *cache.Snapsh
 	_ = fs.Update(t.Context(), files)
 
 	view := cache.NewView("file:///tmp", fs, nil, options.Patch{})
-	ss := cache.NewSnapshot(view, nil)
 
-	return ss
+	for _, f := range files {
+		_, _ = view.Parse(t.Context(), f.URI)
+	}
+
+	return view
 }
 
 // cyclePair identifies one reported cycle include: the file containing the
@@ -86,9 +89,9 @@ func runCycleCheck(t *testing.T, files map[string]string, root string) []cyclePa
 		})
 	}
 
-	ss := buildSnapshotForTest(t, changes)
+	view := buildSnapshotForTest(t, changes)
 
-	res, err := (&CycleCheck{}).Diagnostic(t.Context(), ss, []uri.URI{uri.URI("file:///tmp/" + root)})
+	res, err := (&CycleCheck{}).Diagnostic(t.Context(), view, []uri.URI{uri.URI("file:///tmp/" + root)})
 	require.NoError(t, err)
 
 	for file, diags := range res {
@@ -230,7 +233,7 @@ include "./test/address.thrift"`
 	file2 := `include "../user.thrift"`
 	file3 := `include "../user.thrift"`
 
-	ss := buildSnapshotForTest(t, []*cache.FileChange{
+	view := buildSnapshotForTest(t, []*cache.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
@@ -254,7 +257,7 @@ include "./test/address.thrift"`
 	// Expected includes, parsed through the same snapshot so the ParsedFile
 	// pointers match the ones getIncludes stores.
 	pfFor := func(uriStr string) *cache.ParsedFile {
-		pf, err := ss.Parse(t.Context(), uri.URI(uriStr))
+		pf, err := view.Parse(t.Context(), uri.URI(uriStr))
 		require.NoError(t, err)
 
 		return pf
@@ -278,7 +281,7 @@ include "./test/address.thrift"`
 
 	includeMap := make(map[uri.URI][]Include)
 
-	err := getIncludes(t.Context(), ss, "file:///tmp/user.thrift", &includeMap)
+	err := getIncludes(t.Context(), view, "file:///tmp/user.thrift", &includeMap)
 	require.NoError(t, err)
 
 	assert.Equal(t, expectIncludeMap, includeMap)

@@ -63,7 +63,7 @@ struct Xtruct3
 // TestParsedFileDefinitions pins the definition and enum-value indexes:
 // every top-level definition is reachable by name, enum values by name.
 func TestParsedFileDefinitions(t *testing.T) {
-	ss := BuildSnapshotForTest([]*FileChange{
+	ss := BuildViewForTest([]*FileChange{
 		{URI: "file:///tmp/test.thrift", Version: 0, Content: []byte(`struct S {
 	1: required string Name,
 }

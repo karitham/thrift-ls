@@ -26,7 +26,7 @@ func TestDefinitionCrossProjectInclude(t *testing.T) {
 	appFile := uri.File(filepath.Join(appDir, "char.thrift"))
 	appContent := "include \"gundam.thrift\"\n\nstruct Hangar {\n  1: optional list<gundam.MobileSuit> suits,\n}\n\nstruct Garrison {\n  1: optional MobileSuit ace,\n}\n"
 
-	ss := cache.BuildSnapshotForTestWithPaths([]string{includeDir}, []*cache.FileChange{
+	view := cache.BuildViewForTestWithPaths([]string{includeDir}, []*cache.FileChange{
 		{
 			URI:     gundamFile,
 			Version: 0,
@@ -82,7 +82,7 @@ func TestDefinitionCrossProjectInclude(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			locs, err := Definition(t.Context(), ss, appFile, posOf(tt.marker, tt.offset))
+			locs, err := Definition(t.Context(), view, appFile, posOf(tt.marker, tt.offset))
 			assert.NoError(t, err)
 			assert.Len(t, locs, 1, "should find the definition in the included file")
 			assert.Equal(t, gundamFile, locs[0].URI)

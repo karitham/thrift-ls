@@ -22,11 +22,11 @@ type EnumValueCheck struct{}
 // one greater than the preceding member's value otherwise. Their on-wire
 // value therefore follows their position; inserting, removing, or
 // reordering members silently changes serialized data.
-func (c *EnumValueCheck) Diagnostic(ctx context.Context, ss *cache.Snapshot, changeFiles []uri.URI) (DiagnosticResult, error) {
+func (c *EnumValueCheck) Diagnostic(ctx context.Context, view *cache.View, changeFiles []uri.URI) (DiagnosticResult, error) {
 	res := make(DiagnosticResult)
 
 	for _, file := range changeFiles {
-		items, err := c.diagnostic(ctx, ss, file)
+		items, err := c.diagnostic(ctx, view, file)
 		if err != nil {
 			return nil, err
 		}
@@ -41,8 +41,8 @@ func (c *EnumValueCheck) Name() string {
 	return "EnumValueCheck"
 }
 
-func (c *EnumValueCheck) diagnostic(ctx context.Context, ss *cache.Snapshot, file uri.URI) ([]protocol.Diagnostic, error) {
-	pf, err := ss.Parse(ctx, file)
+func (c *EnumValueCheck) diagnostic(ctx context.Context, view *cache.View, file uri.URI) ([]protocol.Diagnostic, error) {
+	pf, err := view.Parse(ctx, file)
 	if err != nil {
 		return nil, err
 	}

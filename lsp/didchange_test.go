@@ -195,12 +195,9 @@ exception BayFull {
 	view, err := srv.session.ViewOf(aURI)
 	assert.NoError(t, err)
 
-	ss, release := view.Snapshot()
-	defer release()
-
-	_, err = ss.Parse(ctx, aURI)
+	_, err = view.Parse(ctx, aURI)
 	assert.NoError(t, err)
-	assert.Equal(t, []uri.URI{aURI}, ss.Dependents(bURI))
+	assert.Equal(t, []uri.URI{aURI}, view.Dependents(bURI))
 }
 
 // Test_DidChangeWatchedFilesRefreshesDiskContent: disk events outside the

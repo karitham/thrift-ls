@@ -14,8 +14,8 @@ import (
 
 // PrepareRename returns the range of the identifier under the cursor when
 // renaming is supported: definition names, const values, and services.
-func PrepareRename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) (res *protocol.Range, err error) {
-	pf, target, err := resolveTarget(ctx, ss, file, pos)
+func PrepareRename(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Position) (res *protocol.Range, err error) {
+	pf, target, err := resolveTarget(ctx, view, file, pos)
 	if err != nil {
 		return res, err
 	}
@@ -44,8 +44,8 @@ func PrepareRename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos pr
 // Rename renames the definition under the cursor and all its references,
 // preserving include qualifiers on qualified references (user.Test becomes
 // user.newtext, not newtext).
-func Rename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position, newName string) (res *protocol.WorkspaceEdit, err error) {
-	pf, target, err := resolveTarget(ctx, ss, file, pos)
+func Rename(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Position, newName string) (res *protocol.WorkspaceEdit, err error) {
+	pf, target, err := resolveTarget(ctx, view, file, pos)
 	if err != nil {
 		return res, err
 	}
@@ -59,13 +59,13 @@ func Rename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.
 			return nil, fmt.Errorf("rename not supported for basic types")
 		}
 
-		refs, err = searchTypeNameRefs(ctx, NewIndex(ss), ss, pf, target)
+		refs, err = searchTypeNameRefs(ctx, NewIndex(view), view, pf, target)
 		if err != nil {
 			return nil, err
 		}
 
 	case TargetConstValue:
-		refs, err = searchConstValueRefs(ctx, NewIndex(ss), ss, pf, target)
+		refs, err = searchConstValueRefs(ctx, NewIndex(view), view, pf, target)
 		if err != nil {
 			return nil, err
 		}
@@ -77,19 +77,19 @@ func Rename(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.
 		} else {
 			include, _ := parseIdent(file, pf.AST().Includes(), svcName)
 
-			resolver := ss.Resolver()
+			resolver := view.Resolver()
 			if path := resolver.GetIncludePath(pf.AST(), include); path != "" {
 				file = resolver.ResolveInclude(file, path)
 			}
 		}
 
-		refs, err = searchServiceRefs(ctx, NewIndex(ss), ss, file, svcName)
+		refs, err = searchServiceRefs(ctx, NewIndex(view), view, file, svcName)
 		if err != nil {
 			return nil, err
 		}
 
 	case TargetDefinition:
-		refs, err = searchDefRefs(ctx, NewIndex(ss), ss, file, pf, target)
+		refs, err = searchDefRefs(ctx, NewIndex(view), view, file, pf, target)
 		if err != nil {
 			return nil, err
 		}

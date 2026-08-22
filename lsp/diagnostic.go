@@ -12,7 +12,7 @@ import (
 	"github.com/karitham/thrift-ls/lsp/source"
 )
 
-func (s *Server) diagnostic(ctx context.Context, ss *cache.Snapshot, file uri.URI) error {
+func (s *Server) diagnostic(ctx context.Context, view *cache.View, file uri.URI) error {
 	if s.client == nil {
 		return nil
 	}
@@ -22,7 +22,7 @@ func (s *Server) diagnostic(ctx context.Context, ss *cache.Snapshot, file uri.UR
 
 	diag := source.NewDiagnostic()
 
-	diagRes, err := diag.Diagnostic(ctx, ss, []uri.URI{file})
+	diagRes, err := diag.Diagnostic(ctx, view, []uri.URI{file})
 	if err != nil {
 		logError("diagnostic failed", err)
 	}

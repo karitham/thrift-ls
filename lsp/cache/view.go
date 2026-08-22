@@ -317,21 +317,20 @@ func (v *View) Generation() uint64 {
 	return v.gen.Load()
 }
 
-// IsCurrent reports whether ss was taken from the latest generation of the
-// view. Used by asynchronous work to drop results that a newer change
-// superseded.
-func (v *View) IsCurrent(ss *Snapshot) bool {
-	return ss.gen == ss.view.Generation()
+// IsCurrent reports whether gen is still the view's latest generation.
+// Used by asynchronous work to drop results that a newer change superseded.
+func (v *View) IsCurrent(gen uint64) bool {
+	return v.Generation() == gen
 }
 
 // FileChange applies changes to the view: it invalidates the changed files'
 // entries, re-parses them so their include edges are fresh before requests
-// observe the change, then runs postFns asynchronously with the affected
-// URIs (changed files plus their transitive dependents). The request thread
-// never blocks on postFns, so diagnostics-heavy work does not stall the
-// editor. A concurrent generation check lets stale postFn results be
-// dropped.
-func (v *View) FileChange(ctx context.Context, changes []*FileChange, postFns ...func(affected []uri.URI)) {
+// observe the change, then runs postFns asynchronously with the generation
+// of this change and the affected URIs (changed files plus their transitive
+// dependents). The request thread never blocks on postFns, so
+// diagnostics-heavy work does not stall the editor. A postFn whose
+// generation is no longer current can drop its results.
+func (v *View) FileChange(ctx context.Context, changes []*FileChange, postFns ...func(gen uint64, affected []uri.URI)) {
 	uris := make([]uri.URI, 0, len(changes))
 	for _, change := range changes {
 		uris = append(uris, change.URI)
@@ -360,11 +359,11 @@ func (v *View) FileChange(ctx context.Context, changes []*FileChange, postFns ..
 
 	affected := v.affected(uris)
 
-	v.gen.Add(1)
+	gen := v.gen.Add(1)
 
 	go func() {
 		for i := range postFns {
-			postFns[i](affected)
+			postFns[i](gen, affected)
 		}
 	}()
 }

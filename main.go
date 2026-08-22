@@ -389,10 +389,7 @@ func checkFiles(ctx context.Context, files []string, folder string, includePaths
 			return nil, err
 		}
 
-		ss, release := v.Snapshot()
-
-		res, err := source.NewDiagnostic().Diagnostic(ctx, ss, uris)
-		release()
+		res, err := source.NewDiagnostic().Diagnostic(ctx, v, uris)
 		if err != nil {
 			return nil, err
 		}

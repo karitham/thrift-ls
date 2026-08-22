@@ -86,7 +86,7 @@ enum B {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ss := buildSnapshotForTest(t, []*cache.FileChange{
+			view := buildSnapshotForTest(t, []*cache.FileChange{
 				{
 					URI:     "file:///tmp/user.thrift",
 					Version: 0,
@@ -95,10 +95,10 @@ enum B {
 				},
 			})
 
-			fh, err := ss.ReadFile(t.Context(), "file:///tmp/user.thrift")
+			fh, err := view.ReadFile(t.Context(), "file:///tmp/user.thrift")
 			require.NoError(t, err)
 
-			act, err := MakeEnumValuesExplicitAction(t.Context(), ss, fh, tt.rng)
+			act, err := MakeEnumValuesExplicitAction(t.Context(), view, fh, tt.rng)
 			require.NoError(t, err)
 
 			if tt.want == "" {

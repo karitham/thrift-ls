@@ -40,8 +40,8 @@ type target struct {
 var errNoAST = errors.New("parse ast failed")
 
 // resolveTarget parses the file and finds what the cursor is on.
-func resolveTarget(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) (*cache.ParsedFile, *target, error) {
-	pf, err := ss.Parse(ctx, file)
+func resolveTarget(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Position) (*cache.ParsedFile, *target, error) {
+	pf, err := view.Parse(ctx, file)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -119,8 +119,8 @@ func jump(file uri.URI, pf *cache.ParsedFile, node syntax.Node) protocol.Locatio
 // file's AST. Use this for nodes resolved from a different file than the
 // one under the cursor: the node's token indices are only meaningful in its
 // own document's token stream.
-func jumpInFile(ctx context.Context, ss *cache.Snapshot, file uri.URI, node syntax.Node) (protocol.Location, error) {
-	pf, err := ss.Parse(ctx, file)
+func jumpInFile(ctx context.Context, view *cache.View, file uri.URI, node syntax.Node) (protocol.Location, error) {
+	pf, err := view.Parse(ctx, file)
 	if err != nil {
 		return protocol.Location{}, err
 	}

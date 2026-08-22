@@ -19,8 +19,8 @@ import (
 // It returns nil when the selection is outside every enum, the enum is
 // already fully explicit, the implicit values cannot be computed (an
 // unparseable explicit constant), or the document has parse errors.
-func MakeEnumValuesExplicitAction(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, rng protocol.Range) (*protocol.CodeAction, error) {
-	pf, err := ss.Parse(ctx, fh.URI())
+func MakeEnumValuesExplicitAction(ctx context.Context, view *cache.View, fh cache.FileHandle, rng protocol.Range) (*protocol.CodeAction, error) {
+	pf, err := view.Parse(ctx, fh.URI())
 	if err != nil {
 		return nil, err
 	}

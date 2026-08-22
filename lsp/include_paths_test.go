@@ -46,16 +46,13 @@ func TestConfigFileIncludePaths(t *testing.T) {
 		view, err := srv.session.ViewOf(app)
 		require.NoError(t, err)
 
-		snapshot, release := view.Snapshot()
-		defer release()
-
 		// The config's include path is absolute, resolved against the
 		// config file's directory, not the process CWD.
-		assert.Equal(t, []string{includeDir}, snapshot.Resolver().IncludePaths())
+		assert.Equal(t, []string{includeDir}, view.Resolver().IncludePaths())
 
 		// Resolving an include that only exists in the configured include
 		// path finds it there.
-		resolved := snapshot.Resolver().ResolveInclude(app, "shared.thrift")
+		resolved := view.Resolver().ResolveInclude(app, "shared.thrift")
 		assert.Equal(t, uri.File(shared), resolved)
 	})
 }

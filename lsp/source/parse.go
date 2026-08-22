@@ -14,13 +14,13 @@ import (
 
 type Parse struct{}
 
-func (p *Parse) Diagnostic(ctx context.Context, ss *cache.Snapshot, changeFiles []uri.URI) (DiagnosticResult, error) {
+func (p *Parse) Diagnostic(ctx context.Context, view *cache.View, changeFiles []uri.URI) (DiagnosticResult, error) {
 	var errs []error
 
 	res := make(DiagnosticResult)
 
 	for _, uri := range changeFiles {
-		parseRes, err := ss.Parse(ctx, uri)
+		parseRes, err := view.Parse(ctx, uri)
 		if err != nil {
 			errs = append(errs, err)
 

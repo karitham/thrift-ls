@@ -71,11 +71,7 @@ func allWorkspaceSymbols(ctx context.Context, session *cache.Session, query stri
 	sort.Slice(views, func(i, j int) bool { return views[i].Folder() < views[j].Folder() })
 
 	for _, view := range views {
-		ss, release := view.Snapshot()
-
-		syms := WorkspaceSymbols(ctx, ss, view.KnownFiles(), query, maxResults-len(res))
-
-		release()
+		syms := WorkspaceSymbols(ctx, view, view.KnownFiles(), query, maxResults-len(res))
 
 		res = append(res, syms...)
 		if maxResults > 0 && len(res) >= maxResults {

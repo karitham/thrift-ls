@@ -46,11 +46,11 @@ func decode(data []uint32) []decodedToken {
 func semanticTokens(t *testing.T, src string) []decodedToken {
 	t.Helper()
 
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(src), From: cache.FileChangeTypeDidOpen},
 	})
 
-	data, err := Tokens(t.Context(), ss, "file:///tmp/main.thrift")
+	data, err := Tokens(t.Context(), view, "file:///tmp/main.thrift")
 	require.NoError(t, err)
 
 	return decode(data)
@@ -147,11 +147,11 @@ enum ZeonForces {
 // TestSemanticTokensEncoding pins the delta encoding: tokens on the same
 // line carry relative characters, tokens on new lines carry absolute ones.
 func TestSemanticTokensEncoding(t *testing.T) {
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte("const i32 A = 1\nconst i32 B = 2"), From: cache.FileChangeTypeDidOpen},
 	})
 
-	data, err := Tokens(t.Context(), ss, "file:///tmp/main.thrift")
+	data, err := Tokens(t.Context(), view, "file:///tmp/main.thrift")
 	require.NoError(t, err)
 
 	// Token 0: line 0, char 0. Token 1 (i32): same line, relative char 6.

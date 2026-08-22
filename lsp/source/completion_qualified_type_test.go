@@ -47,14 +47,14 @@ const i32 TEMPO = 120`
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ss := buildSnapshot(t, nil,
+			view := buildSnapshot(t, nil,
 				&cache.FileChange{URI: "file:///tmp/songs.thrift", Version: 0, Content: []byte(songs), From: cache.FileChangeTypeDidOpen},
 				&cache.FileChange{URI: "file:///tmp/club.thrift", Version: 0, Content: []byte(tt.content), From: cache.FileChangeTypeDidOpen},
 			)
 
 			pos := lspPosOf(t, tt.content, tt.marker)
 
-			labels, rng, _ := completionLabels(t, ss, "file:///tmp/club.thrift", pos)
+			labels, rng, _ := completionLabels(t, view, "file:///tmp/club.thrift", pos)
 
 			assert.Contains(t, labels, "songs.Album", "labels: %v", labels)
 			assert.Contains(t, labels, "songs.Song", "labels: %v", labels)
@@ -72,14 +72,14 @@ const i32 TEMPO = 120`
 func TestCompletionQualifiedTypeFilter(t *testing.T) {
 	content := "include \"songs.thrift\"\nstruct Club {\n\t1: required songs.A\n}"
 
-	ss := buildSnapshot(t, nil,
+	view := buildSnapshot(t, nil,
 		&cache.FileChange{URI: "file:///tmp/songs.thrift", Version: 0, Content: []byte("enum Song {\n\tFUWA_FUWA_TIME = 1\n}\n\nstruct Album {\n\t1: required string title\n}\n"), From: cache.FileChangeTypeDidOpen},
 		&cache.FileChange{URI: "file:///tmp/club.thrift", Version: 0, Content: []byte(content), From: cache.FileChangeTypeDidOpen},
 	)
 
 	pos := lspPosOf(t, content, "songs.A")
 
-	labels, rng, _ := completionLabels(t, ss, "file:///tmp/club.thrift", pos)
+	labels, rng, _ := completionLabels(t, view, "file:///tmp/club.thrift", pos)
 
 	assert.Equal(t, []string{"songs.Album"}, labels, "labels: %v", labels)
 

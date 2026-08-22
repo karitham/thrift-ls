@@ -67,9 +67,9 @@ struct StrikeRouge {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ss := cache.BuildSnapshotForTest(tt.files)
+			view := cache.BuildViewForTest(tt.files)
 
-			highlights, err := Highlight(t.Context(), ss, tt.files[0].URI, tt.pos)
+			highlights, err := Highlight(t.Context(), view, tt.files[0].URI, tt.pos)
 			require.NoError(t, err)
 
 			lines := make([]uint32, len(highlights))
@@ -86,11 +86,11 @@ struct StrikeRouge {
 // TestHighlightUnresolvableType pins the minimal result for an identifier
 // without references: only the cursor word itself is highlighted.
 func TestHighlightUnresolvableType(t *testing.T) {
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte("struct Gundam {\n\t1: required UnknownType pack\n}"), From: cache.FileChangeTypeDidOpen},
 	})
 
-	highlights, err := Highlight(t.Context(), ss, "file:///tmp/main.thrift", protocol.Position{Line: 1, Character: 20})
+	highlights, err := Highlight(t.Context(), view, "file:///tmp/main.thrift", protocol.Position{Line: 1, Character: 20})
 	require.NoError(t, err)
 	require.Len(t, highlights, 1)
 	assert.Equal(t, uint32(1), highlights[0].Range.Start.Line)

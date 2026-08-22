@@ -1,6 +1,6 @@
 // Package semantic computes LSP semantic tokens for a thrift document:
 // keywords, types, definition names, comments, strings, and numbers.
-// Pure over the snapshot: parsing and file I/O happen in the caller.
+// Pure over the view: parsing and file I/O happen in the caller.
 package source
 
 import (
@@ -47,8 +47,8 @@ func Legend() []string {
 
 // Tokens returns the delta-encoded semantic tokens of a file, in source
 // order.
-func Tokens(ctx context.Context, ss *cache.Snapshot, file uri.URI) ([]uint32, error) {
-	pf, err := ss.Parse(ctx, file)
+func Tokens(ctx context.Context, view *cache.View, file uri.URI) ([]uint32, error) {
+	pf, err := view.Parse(ctx, file)
 	if err != nil || pf.AST() == nil {
 		return nil, err
 	}

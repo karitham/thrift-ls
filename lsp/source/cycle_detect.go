@@ -18,19 +18,19 @@ import (
 // length are caught, including self-includes.
 type CycleCheck struct{}
 
-func (c *CycleCheck) Diagnostic(ctx context.Context, ss *cache.Snapshot, changeFiles []uri.URI) (DiagnosticResult, error) {
+func (c *CycleCheck) Diagnostic(ctx context.Context, view *cache.View, changeFiles []uri.URI) (DiagnosticResult, error) {
 	closure := make(map[uri.URI][]Include)
 	for _, file := range changeFiles {
-		_ = getIncludes(ctx, ss, file, &closure)
+		_ = getIncludes(ctx, view, file, &closure)
 	}
 
 	diagnostics := make(DiagnosticResult)
 	for file, includes := range closure {
-		// Reachability comes from the snapshot's include graph: parsing
+		// Reachability comes from the view's include graph: parsing
 		// the closure above registered exactly these edges via Register,
 		// so there is no second graph to keep in sync. Dependents is
 		// cycle-safe, so the walk terminates on the cycles it finds.
-		deps := ss.Dependents(file)
+		deps := view.Dependents(file)
 		for _, inc := range includes {
 			if !slices.Contains(deps, inc.file) {
 				continue
@@ -67,10 +67,10 @@ type Include struct {
 
 // getIncludes collects the include closure of file into includesMap: the
 // include edges of every file reachable from file, parsed through the
-// snapshot so the ParsedFiles (and the graph edges Register records) are
+// view so the ParsedFiles (and the include edges parsing records) are
 // shared with the rest of the analysis.
-func getIncludes(ctx context.Context, ss *cache.Snapshot, file uri.URI, includesMap *map[uri.URI][]Include) error {
-	pf, err := ss.Parse(ctx, file)
+func getIncludes(ctx context.Context, view *cache.View, file uri.URI, includesMap *map[uri.URI][]Include) error {
+	pf, err := view.Parse(ctx, file)
 	if err != nil {
 		return err
 	}
@@ -84,7 +84,7 @@ func getIncludes(ctx context.Context, ss *cache.Snapshot, file uri.URI, includes
 	}
 
 	includes := pf.AST().Includes()
-	resolver := ss.Resolver()
+	resolver := view.Resolver()
 
 	for i := range includes {
 		if includes[i].Path == nil {
@@ -102,7 +102,7 @@ func getIncludes(ctx context.Context, ss *cache.Snapshot, file uri.URI, includes
 			continue
 		}
 
-		_ = getIncludes(ctx, ss, includeURI, includesMap)
+		_ = getIncludes(ctx, view, includeURI, includesMap)
 	}
 
 	return nil

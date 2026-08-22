@@ -350,7 +350,7 @@ enum User {}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ss := buildSnapshotForTest(t, []*cache.FileChange{
+			view := buildSnapshotForTest(t, []*cache.FileChange{
 				{
 					URI:     "file:///tmp/user.thrift",
 					Version: 0,
@@ -359,7 +359,7 @@ enum User {}
 				},
 			})
 
-			got, err := (&DuplicateCheck{}).Diagnostic(t.Context(), ss, []uri.URI{"file:///tmp/user.thrift"})
+			got, err := (&DuplicateCheck{}).Diagnostic(t.Context(), view, []uri.URI{"file:///tmp/user.thrift"})
 			assert.NoError(t, err)
 
 			assert.Equal(t, DiagnosticResult{"file:///tmp/user.thrift": tt.want}, got)

@@ -13,13 +13,13 @@ import (
 
 // Hover returns the formatted definition under the cursor: a type
 // reference, a constant value identifier, or a service reference.
-func Hover(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) (res string, err error) {
-	pf, target, err := resolveTarget(ctx, ss, file, pos)
+func Hover(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Position) (res string, err error) {
+	pf, target, err := resolveTarget(ctx, view, file, pos)
 	if err != nil {
 		return res, err
 	}
 
-	ix := NewIndex(ss)
+	ix := NewIndex(view)
 
 	switch target.kind {
 	case TargetTypeName:

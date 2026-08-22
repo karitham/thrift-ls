@@ -37,10 +37,7 @@ func foldingRanges(t *testing.T, src string) []protocol.FoldingRange {
 		From:    cache.FileChangeTypeInitialize,
 	}})
 
-	ss, release := view.Snapshot()
-	defer release()
-
-	return Ranges(t.Context(), ss, file)
+	return Ranges(t.Context(), view, file)
 }
 
 func TestFoldingRanges(t *testing.T) {

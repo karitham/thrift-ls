@@ -15,12 +15,12 @@ import (
 // URI, symbols in source order. An empty query matches everything; the
 // result is capped at maxResults (0 means unlimited). Matching is
 // case-insensitive substring on the symbol name.
-func WorkspaceSymbols(ctx context.Context, ss *cache.Snapshot, files []uri.URI, query string, maxResults int) []protocol.SymbolInformation {
+func WorkspaceSymbols(ctx context.Context, view *cache.View, files []uri.URI, query string, maxResults int) []protocol.SymbolInformation {
 	res := make([]protocol.SymbolInformation, 0, 64)
 	q := strings.ToLower(query)
 
 	for _, file := range files {
-		for _, sym := range documentSymbolsFlat(ctx, ss, file) {
+		for _, sym := range documentSymbolsFlat(ctx, view, file) {
 			if q != "" && !strings.Contains(strings.ToLower(sym.Name), q) {
 				continue
 			}
@@ -38,10 +38,10 @@ func WorkspaceSymbols(ctx context.Context, ss *cache.Snapshot, files []uri.URI, 
 // documentSymbolsFlat returns the document symbols of a file flattened
 // into workspace symbols: each child carries its parent's name as the
 // container, and the location points at the symbol's name.
-func documentSymbolsFlat(ctx context.Context, ss *cache.Snapshot, file uri.URI) []protocol.SymbolInformation {
+func documentSymbolsFlat(ctx context.Context, view *cache.View, file uri.URI) []protocol.SymbolInformation {
 	syms := make([]protocol.SymbolInformation, 0, 16)
 
-	for _, sym := range DocumentSymbols(ctx, ss, file) {
+	for _, sym := range DocumentSymbols(ctx, view, file) {
 		flattenSymbol(sym, file, "", &syms)
 	}
 

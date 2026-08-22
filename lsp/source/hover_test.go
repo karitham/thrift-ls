@@ -31,7 +31,7 @@ service Svc extends Base {
 }
 
 const Color defaultColor = GREEN`
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{URI: "file:///tmp/user.thrift", Version: 0, Content: []byte(file1), From: cache.FileChangeTypeDidOpen},
 		{URI: "file:///tmp/api.thrift", Version: 0, Content: []byte(file2), From: cache.FileChangeTypeDidOpen},
 	})
@@ -76,7 +76,7 @@ const Color defaultColor = GREEN`
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Hover(t.Context(), ss, uri.URI(tt.file), posOf(tt.content, tt.marker, tt.offset))
+			got, err := Hover(t.Context(), view, uri.URI(tt.file), posOf(tt.content, tt.marker, tt.offset))
 			if err != nil {
 				t.Fatalf("Hover: %v", err)
 			}
@@ -89,11 +89,11 @@ const Color defaultColor = GREEN`
 }
 
 func TestHoverUnresolvable(t *testing.T) {
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{URI: "file:///tmp/test.thrift", Version: 0, Content: []byte("struct S {\n  1: Missing x\n}"), From: cache.FileChangeTypeDidOpen},
 	})
 
-	got, err := Hover(t.Context(), ss, "file:///tmp/test.thrift", protocol.Position{Line: 1, Character: 8})
+	got, err := Hover(t.Context(), view, "file:///tmp/test.thrift", protocol.Position{Line: 1, Character: 8})
 	if err != nil {
 		t.Fatalf("Hover: %v", err)
 	}

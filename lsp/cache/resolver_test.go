@@ -32,11 +32,9 @@ func TestResolver(t *testing.T) {
 	c := New()
 	fs := NewOverlayFS(c)
 
-	view := NewView(uri.File(tmpDir), fs, nil, options.Patch{})
-	includePaths := []string{sharedDir}
-	ss := NewSnapshot(view, includePaths)
+	view := NewView(uri.File(tmpDir), fs, []string{sharedDir}, options.Patch{})
 
-	resolver := ss.Resolver()
+	resolver := view.Resolver()
 
 	for _, tt := range []struct {
 		name string

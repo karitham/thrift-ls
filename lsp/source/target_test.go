@@ -26,7 +26,7 @@ service Svc extends Base {
   User getUser(1: i64 id, 2: string name) throws (NotFound e)
 }
 `
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{
 			URI:     "file:///tmp/test.thrift",
 			Version: 0,
@@ -79,7 +79,7 @@ service Svc extends Base {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, target, err := resolveTarget(t.Context(), ss, "file:///tmp/test.thrift", posOf(tt.marker, tt.offset))
+			_, target, err := resolveTarget(t.Context(), view, "file:///tmp/test.thrift", posOf(tt.marker, tt.offset))
 			if err != nil {
 				t.Fatalf("resolveTarget: %v", err)
 			}
@@ -92,7 +92,7 @@ service Svc extends Base {
 }
 
 func TestResolveTargetNoNode(t *testing.T) {
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{
 			URI:     "file:///tmp/test.thrift",
 			Version: 0,
@@ -102,7 +102,7 @@ func TestResolveTargetNoNode(t *testing.T) {
 	})
 	// Position in the blank line between definitions: resolves to the
 	// document itself with no target kind.
-	_, target, err := resolveTarget(t.Context(), ss, "file:///tmp/test.thrift", protocol.Position{Line: 3, Character: 0})
+	_, target, err := resolveTarget(t.Context(), view, "file:///tmp/test.thrift", protocol.Position{Line: 3, Character: 0})
 	if err != nil {
 		t.Fatalf("resolveTarget: %v", err)
 	}

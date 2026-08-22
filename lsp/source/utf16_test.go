@@ -24,10 +24,10 @@ import (
 )
 
 // utf16Snapshot parses src as htt.thrift.
-func utf16Snapshot(t *testing.T, src string) *cache.Snapshot {
+func utf16Snapshot(t *testing.T, src string) *cache.View {
 	t.Helper()
 
-	return cache.BuildSnapshotForTest([]*cache.FileChange{
+	return cache.BuildViewForTest([]*cache.FileChange{
 		{URI: "file:///tmp/htt.thrift", Version: 0, Content: []byte(src), From: cache.FileChangeTypeDidOpen},
 	})
 }
@@ -39,12 +39,12 @@ func utf16Snapshot(t *testing.T, src string) *cache.Snapshot {
 func TestDefinitionUTF16(t *testing.T) {
 	// htt.thrift declares HTT after an emoji comment; sakuragaoka.thrift
 	// references it. The returned definition range must use UTF-16 columns.
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{URI: "file:///tmp/htt.thrift", Version: 0, Content: []byte("/* 😀 */ struct HTT {}"), From: cache.FileChangeTypeDidOpen},
 		{URI: "file:///tmp/sakuragaoka.thrift", Version: 0, Content: []byte("include \"htt.thrift\"\nstruct LightMusicClub {\n  1: required HTT band\n}"), From: cache.FileChangeTypeDidOpen},
 	})
 
-	locs, err := Definition(t.Context(), ss, "file:///tmp/sakuragaoka.thrift", protocol.Position{
+	locs, err := Definition(t.Context(), view, "file:///tmp/sakuragaoka.thrift", protocol.Position{
 		Line:      2,
 		Character: 14, // 'H' of HTT, in UTF-16 units
 	})
@@ -60,9 +60,9 @@ func TestDefinitionUTF16(t *testing.T) {
 func TestDocumentSymbolsUTF16(t *testing.T) {
 	src := "/* 😀 */ struct HTT {\n  1: required string yui\n}"
 
-	ss := utf16Snapshot(t, src)
+	view := utf16Snapshot(t, src)
 
-	syms := DocumentSymbols(t.Context(), ss, "file:///tmp/htt.thrift")
+	syms := DocumentSymbols(t.Context(), view, "file:///tmp/htt.thrift")
 	require.Len(t, syms, 1)
 
 	assert.Equal(t, uint32(16), syms[0].SelectionRange.Start.Character)
@@ -85,9 +85,9 @@ func TestSemanticTokensUTF16(t *testing.T) {
 func TestParseErrorDiagnosticUTF16(t *testing.T) {
 	src := `/* 😀 */ const string song = "fuwa fuwa time`
 
-	ss := utf16Snapshot(t, src)
+	view := utf16Snapshot(t, src)
 
-	res, err := (&Parse{}).Diagnostic(t.Context(), ss, []uri.URI{"file:///tmp/htt.thrift"})
+	res, err := (&Parse{}).Diagnostic(t.Context(), view, []uri.URI{"file:///tmp/htt.thrift"})
 	require.NoError(t, err)
 
 	diags := res["file:///tmp/htt.thrift"]
@@ -102,9 +102,9 @@ func TestLinksUTF16(t *testing.T) {
 	src := `include /* 😀 */ "htt.thrift"`
 
 	file := "file:///tmp/sakuragaoka.thrift"
-	ss := buildLinksSnapshot(t, uri.URI(file), src)
+	view := buildLinksSnapshot(t, uri.URI(file), src)
 
-	links := Links(t.Context(), ss, uri.URI(file))
+	links := Links(t.Context(), view, uri.URI(file))
 	require.Len(t, links, 1)
 
 	// The path literal starts at UTF-16 column 17: 16 runes before it, one
@@ -125,12 +125,12 @@ func TestFoldingUTF16(t *testing.T) {
 // TestRenameUTF16 exercises the same path as Definition through rename:
 // the workspace edit for the definition file must use UTF-16 columns.
 func TestRenameUTF16(t *testing.T) {
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{URI: "file:///tmp/htt.thrift", Version: 0, Content: []byte("/* 😀 */ struct HTT {}"), From: cache.FileChangeTypeDidOpen},
 		{URI: "file:///tmp/sakuragaoka.thrift", Version: 0, Content: []byte("include \"htt.thrift\"\nstruct LightMusicClub {\n  1: required HTT band\n}"), From: cache.FileChangeTypeDidOpen},
 	})
 
-	edit, err := Rename(t.Context(), ss, "file:///tmp/sakuragaoka.thrift", protocol.Position{
+	edit, err := Rename(t.Context(), view, "file:///tmp/sakuragaoka.thrift", protocol.Position{
 		Line:      2,
 		Character: 14,
 	}, "HoukagoTeaTime")

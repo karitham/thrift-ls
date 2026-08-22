@@ -243,11 +243,11 @@ func (h *clientHarness) waitForMethod(t *testing.T, method string) rpcFrame {
 func TestServeStream(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 
-	ss := NewStreamServer(&Options{})
+	view := NewStreamServer(&Options{})
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- ss.ServeStream(context.Background(), jsonrpc2.NewConn(jsonrpc2.NewStream(serverConn)))
+		errCh <- view.ServeStream(context.Background(), jsonrpc2.NewConn(jsonrpc2.NewStream(serverConn)))
 	}()
 
 	client := newClientHarness(clientConn)

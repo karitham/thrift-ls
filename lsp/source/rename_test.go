@@ -52,7 +52,7 @@ const user.UserType usermale = "male"
 const UserKind kind = "1"
 `
 
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
@@ -69,7 +69,7 @@ const UserKind kind = "1"
 
 	type args struct {
 		ctx  context.Context
-		ss   *cache.Snapshot
+		view *cache.View
 		file uri.URI
 		pos  protocol.Position
 	}
@@ -84,7 +84,7 @@ const UserKind kind = "1"
 			name: "case struct",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      0,
@@ -107,7 +107,7 @@ const UserKind kind = "1"
 			name: "case union",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      7,
@@ -130,7 +130,7 @@ const UserKind kind = "1"
 			name: "case enum",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      14,
@@ -153,7 +153,7 @@ const UserKind kind = "1"
 			name: "case exception",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      19,
@@ -176,7 +176,7 @@ const UserKind kind = "1"
 			name: "case type reference",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      2,
@@ -199,7 +199,7 @@ const UserKind kind = "1"
 			name: "case basic type reference",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      3,
@@ -212,7 +212,7 @@ const UserKind kind = "1"
 			name: "typedef",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      26,
@@ -235,7 +235,7 @@ const UserKind kind = "1"
 			name: "const",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      27,
@@ -257,7 +257,7 @@ const UserKind kind = "1"
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotRes, err := PrepareRename(tt.args.ctx, tt.args.ss, tt.args.file, tt.args.pos)
+			gotRes, err := PrepareRename(tt.args.ctx, tt.args.view, tt.args.file, tt.args.pos)
 			tt.assertion(t, err)
 			assert.Equal(t, tt.wantRes, gotRes)
 		})
@@ -305,7 +305,7 @@ const user.UserType usermale = "male"
 const UserKind kind = "1"
 `
 
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
@@ -322,7 +322,7 @@ const UserKind kind = "1"
 
 	type args struct {
 		ctx     context.Context
-		ss      *cache.Snapshot
+		view    *cache.View
 		file    uri.URI
 		pos     protocol.Position
 		newText string
@@ -338,7 +338,7 @@ const UserKind kind = "1"
 			name: "case struct",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      0,
@@ -386,7 +386,7 @@ const UserKind kind = "1"
 			name: "case union",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      7,
@@ -434,7 +434,7 @@ const UserKind kind = "1"
 			name: "case enum",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      14,
@@ -510,7 +510,7 @@ const UserKind kind = "1"
 			name: "case exception",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      19,
@@ -558,7 +558,7 @@ const UserKind kind = "1"
 			name: "typedef",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      26,
@@ -632,7 +632,7 @@ const UserKind kind = "1"
 			name: "const",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      27,
@@ -679,7 +679,7 @@ const UserKind kind = "1"
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotRes, err := Rename(tt.args.ctx, tt.args.ss, tt.args.file, tt.args.pos, tt.args.newText)
+			gotRes, err := Rename(tt.args.ctx, tt.args.view, tt.args.file, tt.args.pos, tt.args.newText)
 			tt.assertion(t, err)
 			assert.Equal(t, tt.wantRes, gotRes)
 		})

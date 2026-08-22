@@ -11,10 +11,10 @@ import (
 )
 
 // DocumentSymbols returns the document symbols of a file, in source order.
-func DocumentSymbols(ctx context.Context, ss *cache.Snapshot, file uri.URI) []*protocol.DocumentSymbol {
+func DocumentSymbols(ctx context.Context, view *cache.View, file uri.URI) []*protocol.DocumentSymbol {
 	res := make([]*protocol.DocumentSymbol, 0)
 
-	pf, err := ss.Parse(ctx, file)
+	pf, err := view.Parse(ctx, file)
 	if err != nil {
 		return res
 	}

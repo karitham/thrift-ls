@@ -12,21 +12,21 @@ import (
 
 // Definition returns the locations of the definition under the cursor:
 // a type reference, a constant value identifier, or a service reference.
-func Definition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) (res []protocol.Location, err error) {
+func Definition(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Position) (res []protocol.Location, err error) {
 	res = make([]protocol.Location, 0)
 
-	pf, target, err := resolveTarget(ctx, ss, file, pos)
+	pf, target, err := resolveTarget(ctx, view, file, pos)
 	if err != nil {
 		return res, err
 	}
 
 	switch target.kind {
 	case TargetTypeName:
-		return typeNameDefinition(ctx, NewIndex(ss), pf, target)
+		return typeNameDefinition(ctx, NewIndex(view), pf, target)
 	case TargetConstValue:
-		return constValueDefinition(ctx, NewIndex(ss), pf, target)
+		return constValueDefinition(ctx, NewIndex(view), pf, target)
 	case TargetService:
-		return serviceDefinition(ctx, NewIndex(ss), pf, target)
+		return serviceDefinition(ctx, NewIndex(view), pf, target)
 	}
 
 	return res, err
@@ -40,7 +40,7 @@ func typeNameDefinition(ctx context.Context, ix *Index, pf *cache.ParsedFile, ta
 		return nil, err
 	}
 
-	loc, err := jumpInFile(ctx, ix.ss, def.File, def.Name)
+	loc, err := jumpInFile(ctx, ix.view, def.File, def.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +54,7 @@ func constValueDefinition(ctx context.Context, ix *Index, pf *cache.ParsedFile, 
 		return nil, err
 	}
 
-	loc, err := jumpInFile(ctx, ix.ss, def.File, def.Name)
+	loc, err := jumpInFile(ctx, ix.view, def.File, def.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func serviceDefinition(ctx context.Context, ix *Index, pf *cache.ParsedFile, tar
 		return nil, err
 	}
 
-	loc, err := jumpInFile(ctx, ix.ss, def.File, def.Name)
+	loc, err := jumpInFile(ctx, ix.view, def.File, def.Name)
 	if err != nil {
 		return nil, err
 	}

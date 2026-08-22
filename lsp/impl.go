@@ -159,37 +159,34 @@ func (s *Server) watchedFileChange(ctx context.Context, event protocol.FileEvent
 }
 
 // postDiagnostics returns a FileChange postFn that publishes diagnostics for
-// every affected file (changed files plus their transitive dependents) on the
-// view's current snapshot. Diagnostics run in the background (FileChange
-// invokes postFns asynchronously); if a newer change lands while the analysis
-// runs, the results are dropped — the newer change publishes its own.
-func (s *Server) postDiagnostics(ctx context.Context, view *cache.View) func([]uri.URI) {
+// every affected file (changed files plus their transitive dependents).
+// Diagnostics run in the background (FileChange invokes postFns
+// asynchronously); if a newer change lands while the analysis runs, the
+// generation check drops the results — the newer change publishes its own.
+func (s *Server) postDiagnostics(ctx context.Context, view *cache.View) func(uint64, []uri.URI) {
 	// The request context dies when the LSP request returns; the
 	// diagnostics goroutine outlives it.
 	ctx = context.WithoutCancel(ctx)
 
-	return func(affected []uri.URI) {
-		ss, release := view.Snapshot()
-		defer release()
-
-		if !view.IsCurrent(ss) {
+	return func(gen uint64, affected []uri.URI) {
+		if !view.IsCurrent(gen) {
 			return
 		}
 
-		s.diagnose(ctx, ss, affected)
+		s.diagnose(ctx, view, affected)
 	}
 }
 
 // diagnose publishes diagnostics for every affected file, in parallel: a
-// change to a shared include re-diagnoses all its dependents, and the
-// snapshot (and the client connection) are safe for concurrent reads and
+// change to a shared include re-diagnoses all its dependents, and the view
+// (and the client connection) are safe for concurrent reads and
 // notifications.
-func (s *Server) diagnose(ctx context.Context, ss *cache.Snapshot, affected []uri.URI) {
+func (s *Server) diagnose(ctx context.Context, view *cache.View, affected []uri.URI) {
 	var wg sync.WaitGroup
 
 	for _, file := range affected {
 		wg.Go(func() {
-			if err := s.diagnostic(ctx, ss, file); err != nil {
+			if err := s.diagnostic(ctx, view, file); err != nil {
 				logError("diagnostic error", err)
 			}
 		})
@@ -199,8 +196,8 @@ func (s *Server) diagnose(ctx context.Context, ss *cache.Snapshot, affected []ur
 }
 
 func (s *Server) completion(ctx context.Context, params *protocol.CompletionParams) (*protocol.CompletionList, error) {
-	return withFile(ctx, s.session, params.TextDocument.URI, func(ss *cache.Snapshot, fh cache.FileHandle) (*protocol.CompletionList, error) {
-		items, rng, truncated, err := source.DefaultTokenCompletion.Completion(ctx, ss, &source.CompletionRequest{
+	return withFile(ctx, s.session, params.TextDocument.URI, func(view *cache.View, fh cache.FileHandle) (*protocol.CompletionList, error) {
+		items, rng, truncated, err := source.DefaultTokenCompletion.Completion(ctx, view, &source.CompletionRequest{
 			Pos: protocol.Position{
 				Line:      params.Position.Line,
 				Character: params.Position.Character,
