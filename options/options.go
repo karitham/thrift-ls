@@ -16,22 +16,19 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/karitham/thrift-ls/formatter"
 )
 
 // ConfigFileName is the JSON config file name.
 const ConfigFileName = "thrift-ls.json"
 
 // Separators configures trailing separators per construct. A nil value is
-// unset. It is an alias of the formatter's per-construct container, so
-// adding a construct adds the config key, CLI flags, and validation in one
-// place.
-type Separators = formatter.PerConstruct[*string]
+// unset. It is an alias of the per-construct container, so adding a
+// construct adds the config key, CLI flags, and validation in one place.
+type Separators = PerConstruct[*string]
 
 // Break configures layouts that are forced multiline per construct. A nil
 // value is unset.
-type Break = formatter.PerConstruct[*bool]
+type Break = PerConstruct[*bool]
 
 // Patch is a partial set of options; nil fields are unset.
 type Patch struct {
@@ -81,16 +78,16 @@ func (p Patch) Apply(base Patch) Patch {
 
 // overlayPerConstruct copies the set fields of src onto dst, creating dst
 // when it is nil.
-func overlayPerConstruct[T *E, E any](dst, src *formatter.PerConstruct[T]) *formatter.PerConstruct[T] {
+func overlayPerConstruct[T *E, E any](dst, src *PerConstruct[T]) *PerConstruct[T] {
 	if src == nil {
 		return dst
 	}
 
 	if dst == nil {
-		dst = &formatter.PerConstruct[T]{}
+		dst = &PerConstruct[T]{}
 	}
 
-	for _, c := range formatter.AllConstructs {
+	for _, c := range AllConstructs {
 		if v := src.Get(c); v != nil {
 			dst.Set(c, v)
 		}
@@ -134,15 +131,15 @@ func (p Patch) Validate() error {
 	}
 
 	if p.Align != nil {
-		if _, ok := alignMode(*p.Align); !ok {
+		if !validAlign(*p.Align) {
 			return fmt.Errorf("align must be one of \"field\", \"assign\", \"disable\", got %q", *p.Align)
 		}
 	}
 
 	if p.Separators != nil {
-		for _, c := range formatter.AllConstructs {
+		for _, c := range AllConstructs {
 			if v := p.Separators.Get(c); v != nil {
-				if _, ok := separatorMode(*v); !ok {
+				if !validSeparator(*v) {
 					return fmt.Errorf("separators.%s must be one of \"comma\", \"semicolon\", \"none\", \"preserve\" (keep as written), got %q", c, *v)
 				}
 			}
@@ -156,83 +153,24 @@ func (p Patch) Validate() error {
 	return nil
 }
 
-// Formatter converts the patch to formatter options, validating first.
-func (p Patch) Formatter() (formatter.Options, error) {
-	if err := p.Validate(); err != nil {
-		return formatter.Options{}, err
+// validAlign reports whether s is a known align config value.
+func validAlign(s string) bool {
+	switch s {
+	case "field", "assign", "disable":
+		return true
 	}
 
-	o := formatter.DefaultOptions()
-	if p.PrintWidth != nil {
-		o.PrintWidth = *p.PrintWidth
-	}
-
-	if p.Indent != nil {
-		o.Indent = p.Indent.Value
-		o.TabWidth = p.Indent.Width
-	}
-
-	if p.TabWidth != nil {
-		o.TabWidth = *p.TabWidth
-	}
-
-	if p.Align != nil {
-		if mode, ok := alignMode(*p.Align); ok {
-			o.Align = mode
-		}
-	}
-
-	if p.Separators != nil {
-		for _, c := range formatter.AllConstructs {
-			if v := p.Separators.Get(c); v != nil {
-				if mode, ok := separatorMode(*v); ok {
-					o.Separator.Set(c, mode)
-				}
-			}
-		}
-	}
-
-	if p.Break != nil {
-		for _, c := range formatter.AllConstructs {
-			if v := p.Break.Get(c); v != nil {
-				o.Break.Set(c, *v)
-			}
-		}
-	}
-
-	return o, nil
+	return false
 }
 
-// alignMode maps a config value to a formatter align mode. The second
-// result reports whether the value is a known align mode.
-func alignMode(s string) (formatter.AlignMode, bool) {
+// validSeparator reports whether s is a known separator config value.
+func validSeparator(s string) bool {
 	switch s {
-	case "field":
-		return formatter.AlignField, true
-	case "assign":
-		return formatter.AlignAssign, true
-	case "disable":
-		return formatter.AlignDisable, true
-	default:
-		return 0, false
+	case "comma", "semicolon", "none", "preserve":
+		return true
 	}
-}
 
-// separatorMode maps a config value to a formatter separator mode. The
-// second result reports whether the value is a known separator mode.
-func separatorMode(s string) (formatter.SeparatorMode, bool) {
-	switch s {
-	case "comma":
-		return formatter.SeparatorComma, true
-	case "semicolon":
-		return formatter.SeparatorSemicolon, true
-	case "none":
-		return formatter.SeparatorNone, true
-	case "preserve":
-		return formatter.SeparatorPreserve, true
-	default:
-		return 0, false
-	}
+	return false
 }
 
 // Indent is a resolved indentation: the string emitted for one level and

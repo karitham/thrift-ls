@@ -72,7 +72,7 @@ func NewServer(c *cache.Cache, client protocol.Client, opts Options) *Server {
 // setWorkspaceSettings stores the workspace settings overlay; invalid
 // settings are rejected and the previous document stays in effect.
 func (s *Server) setWorkspaceSettings(overlay options.Patch) {
-	if _, err := overlay.Formatter(); err != nil {
+	if err := overlay.Validate(); err != nil {
 		logError("workspace settings rejected", err)
 
 		return
@@ -157,13 +157,13 @@ func (s *Server) formatOptions(view *cache.View) formatter.Options {
 	overlay := s.workspaceOverlay
 	s.optsMu.RUnlock()
 
-	fopts, err := overlay.Apply(view.Config()).Formatter()
+	fopts, err := formatter.FromConfig(overlay.Apply(view.Config()))
 	if err != nil {
 		// Both layers were validated when stored; this is unreachable
 		// unless a view config was corrupted.
 		logError("formatter options rejected", err)
 
-		fopts, _ = view.Config().Formatter()
+		fopts, _ = formatter.FromConfig(view.Config())
 	}
 
 	return fopts

@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/karitham/thrift-ls/formatter"
 )
 
 func TestParseIndentValue(t *testing.T) {
@@ -114,37 +112,6 @@ func TestPatchValidate(t *testing.T) {
 				t.Errorf("unexpected error: %v", err)
 			}
 		})
-	}
-}
-
-func TestPatchFormatter(t *testing.T) {
-	indent := Indent{Value: "  ", Width: 2}
-	p := Patch{Indent: &indent, PrintWidth: new(100)}
-
-	o, err := p.Formatter()
-	if err != nil {
-		t.Fatalf("Formatter: %v", err)
-	}
-
-	if o.PrintWidth != 100 || o.Indent != "  " || o.TabWidth != 2 {
-		t.Errorf("got %+v", o)
-	}
-
-	if o.Align != formatter.AlignField || o.Separator.Get(formatter.ConstructStruct) != formatter.SeparatorPreserve {
-		t.Errorf("defaults wrong: %+v", o)
-	}
-
-	comma := "comma"
-	align := "assign"
-	p = Patch{Separators: &Separators{Structs: &comma}, Align: &align}
-
-	o, err = p.Formatter()
-	if err != nil {
-		t.Fatalf("Formatter: %v", err)
-	}
-
-	if o.Separator.Get(formatter.ConstructStruct) != formatter.SeparatorComma || o.Align != formatter.AlignAssign {
-		t.Errorf("got %+v", o)
 	}
 }
 
@@ -259,15 +226,12 @@ func TestLoadRejectsUnknownOverrideKeys(t *testing.T) {
 // TestPatchSeparatorModes maps every config value to the formatter modes.
 func TestPatchSeparatorModes(t *testing.T) {
 	tests := []struct {
-		value    string
-		field    formatter.SeparatorMode
-		function formatter.SeparatorMode
+		value string
 	}{
-		{"comma", formatter.SeparatorComma, formatter.SeparatorComma},
-		{"none", formatter.SeparatorNone, formatter.SeparatorNone},
-		{"semicolon", formatter.SeparatorSemicolon, formatter.SeparatorSemicolon},
-		{"preserve", formatter.SeparatorPreserve, formatter.SeparatorPreserve},
-		{"preserve", formatter.SeparatorPreserve, formatter.SeparatorPreserve},
+		{"comma"},
+		{"none"},
+		{"semicolon"},
+		{"preserve"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.value, func(t *testing.T) {
@@ -277,57 +241,21 @@ func TestPatchSeparatorModes(t *testing.T) {
 				Lists: &tt.value, Maps: &tt.value, Sets: &tt.value,
 			}}
 
-			o, err := p.Formatter()
-			if err != nil {
-				t.Fatalf("Formatter: %v", err)
-			}
-
-			for _, c := range formatter.AllConstructs {
-				if o.Separator.Get(c) != tt.field {
-					t.Errorf("value %q: construct %s = %v, want %v", tt.value, c, o.Separator.Get(c), tt.field)
-				}
+			if err := p.Validate(); err != nil {
+				t.Fatalf("Validate: %v", err)
 			}
 		})
 	}
 
-	// The two options map independently.
-	semicolon, comma := "semicolon", "comma"
-	p := Patch{Separators: &Separators{Structs: &semicolon, Enums: &semicolon, Arguments: &comma, Throws: &comma}}
-
-	o, err := p.Formatter()
-	if err != nil {
-		t.Fatalf("Formatter: %v", err)
+	// Invalid values are rejected.
+	bogus := "bogus"
+	p := Patch{Align: &bogus}
+	if err := p.Validate(); err == nil {
+		t.Fatal("Validate accepted an unknown align value")
 	}
 
-	if o.Separator.Get(formatter.ConstructStruct) != formatter.SeparatorSemicolon || o.Separator.Get(formatter.ConstructArguments) != formatter.SeparatorComma {
-		t.Errorf("independent mapping failed: %+v", o)
-	}
-}
-
-// TestPatchBreak maps the break group to the formatter options.
-func TestPatchBreak(t *testing.T) {
-	trueVal, falseVal := true, false
-
-	p := Patch{Break: &Break{Structs: &trueVal, Enums: &falseVal}}
-
-	o, err := p.Formatter()
-	if err != nil {
-		t.Fatalf("Formatter: %v", err)
-	}
-
-	if !o.Break.Get(formatter.ConstructStruct) || o.Break.Get(formatter.ConstructEnum) {
-		t.Errorf("break mapping wrong: %+v", o)
-	}
-
-	// Zero patch keeps the defaults (no forced breaks).
-	o, err = (Patch{}).Formatter()
-	if err != nil {
-		t.Fatalf("Formatter: %v", err)
-	}
-
-	for _, c := range formatter.AllConstructs {
-		if o.Break.Get(c) {
-			t.Errorf("breaks should default to false for %s: %+v", c, o)
-		}
+	p = Patch{Separators: &Separators{Structs: &bogus}}
+	if err := p.Validate(); err == nil {
+		t.Fatal("Validate accepted an unknown separator value")
 	}
 }

@@ -113,17 +113,17 @@ func lspFlags() []cli.Flag {
 // constructFlags maps the per-construct format flag names to constructs.
 var constructFlags = []struct {
 	name      string
-	construct formatter.Construct
+	construct options.Construct
 }{
-	{"struct", formatter.ConstructStruct},
-	{"union", formatter.ConstructUnion},
-	{"exception", formatter.ConstructException},
-	{"enum", formatter.ConstructEnum},
-	{"argument", formatter.ConstructArguments},
-	{"throws", formatter.ConstructThrows},
-	{"list", formatter.ConstructList},
-	{"map", formatter.ConstructMap},
-	{"set", formatter.ConstructSet},
+	{"struct", options.ConstructStruct},
+	{"union", options.ConstructUnion},
+	{"exception", options.ConstructException},
+	{"enum", options.ConstructEnum},
+	{"argument", options.ConstructArguments},
+	{"throws", options.ConstructThrows},
+	{"list", options.ConstructList},
+	{"map", options.ConstructMap},
+	{"set", options.ConstructSet},
 }
 
 // formatFlags are the flags of the format subcommand.
@@ -195,7 +195,7 @@ func lspAction(ctx context.Context, cmd *cli.Command) error {
 
 	// Validate early: a broken --config or working-directory config must
 	// fail before serving; per-folder configs are re-resolved later.
-	if _, err := patch.Formatter(); err != nil {
+	if err := patch.Validate(); err != nil {
 		return err
 	}
 
@@ -574,7 +574,7 @@ func formatFile(file string, w io.Writer, write, diffOut bool, configPath string
 	patch := options.Effective(cfg)
 	patch = cli.Apply(patch)
 
-	fopts, err := patch.Formatter()
+	fopts, err := formatter.FromConfig(patch)
 	if err != nil {
 		return err
 	}
