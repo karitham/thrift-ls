@@ -2,7 +2,6 @@ package formatter
 
 import (
 	"github.com/karitham/thrift-ls/doc"
-	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -15,18 +14,18 @@ func isListSep(kind syntax.TokenKind) bool {
 // containerConstruct returns the per-construct key of a declared container
 // type. Set values are written with the list literal syntax, so the
 // declared type is the only way to select the sets construct.
-func containerConstruct(t *syntax.FieldType) options.Construct {
+func containerConstruct(t *syntax.FieldType) Construct {
 	if t == nil {
-		return options.ConstructList
+		return ConstructList
 	}
 
 	switch t.Kind {
 	case syntax.TypeSet:
-		return options.ConstructSet
+		return ConstructSet
 	case syntax.TypeMap:
-		return options.ConstructMap
+		return ConstructMap
 	default:
-		return options.ConstructList
+		return ConstructList
 	}
 }
 
@@ -38,7 +37,7 @@ func containerConstruct(t *syntax.FieldType) options.Construct {
 // a token run, so comments inside the value are preserved. isLast reports
 // whether the value ends the enclosing declaration, in which case its
 // trailing trivia belongs to the declaration's trailing comments.
-func (f *formatter) constValue(v *syntax.ConstValue, isLast bool, c options.Construct) doc.Doc {
+func (f *formatter) constValue(v *syntax.ConstValue, isLast bool, c Construct) doc.Doc {
 	if v == nil {
 		return f.Concat()
 	}
@@ -57,10 +56,10 @@ func (f *formatter) constValue(v *syntax.ConstValue, isLast bool, c options.Cons
 
 // constList formats "[ items ]" as a foldable group honoring the c
 // construct's separator and break options.
-func (f *formatter) constList(v *syntax.ConstValue, isLast bool, c options.Construct) doc.Doc {
+func (f *formatter) constList(v *syntax.ConstValue, isLast bool, c Construct) doc.Doc {
 	items := make([]constItem, len(v.List))
 	for i, item := range v.List {
-		items[i] = constItem{start: item.TokStart(), end: item.TokEnd(), doc: f.constValue(item, false, options.ConstructList)}
+		items[i] = constItem{start: item.TokStart(), end: item.TokEnd(), doc: f.constValue(item, false, ConstructList)}
 	}
 
 	return f.constItems(items, v.TokStart(), v.TokEnd(), c, isLast)
@@ -78,7 +77,7 @@ func (f *formatter) constMap(v *syntax.ConstValue, isLast bool) doc.Doc {
 		}
 	}
 
-	return f.constItems(items, v.TokStart(), v.TokEnd(), options.ConstructMap, isLast)
+	return f.constItems(items, v.TokStart(), v.TokEnd(), ConstructMap, isLast)
 }
 
 // constItem is one list/map entry: its formatted doc and the token span of
@@ -94,7 +93,7 @@ type constItem struct {
 // options. The separator between entries and the trailing separator follow
 // the mode; the closing bracket gets exactly one break, so a trailing
 // separator never leaves a blank line before it.
-func (f *formatter) constItems(items []constItem, open, close int, c options.Construct, isLast bool) doc.Doc {
+func (f *formatter) constItems(items []constItem, open, close int, c Construct, isLast bool) doc.Doc {
 	sepMode := f.opts.Separator.Get(c)
 	openOpts := emitOpts{trailing: true}
 

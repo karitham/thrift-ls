@@ -16,7 +16,6 @@ import (
 	"sync"
 
 	"github.com/karitham/thrift-ls/doc"
-	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -62,10 +61,10 @@ type Options struct {
 	Align AlignMode
 	// Separator controls trailing separators per construct (default
 	// SeparatorPreserve).
-	Separator options.PerConstruct[SeparatorMode]
+	Separator PerConstruct[SeparatorMode]
 	// Break forces the multiline layout per construct, even when the body
 	// fits on one line.
-	Break options.PerConstruct[bool]
+	Break PerConstruct[bool]
 	// NoTrailingNewline suppresses the final newline that is otherwise
 	// appended to the formatted output.
 	NoTrailingNewline bool
@@ -78,7 +77,7 @@ func DefaultOptions() Options {
 		Indent:     "    ",
 		TabWidth:   4,
 		Align:      AlignField,
-		Separator: options.PerConstruct[SeparatorMode]{
+		Separator: PerConstruct[SeparatorMode]{
 			Structs:    SeparatorPreserve,
 			Unions:     SeparatorPreserve,
 			Exceptions: SeparatorPreserve,

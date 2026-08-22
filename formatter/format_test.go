@@ -4,7 +4,6 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -56,7 +55,7 @@ func testOpts(width int) Options {
 // commaOpts returns testOpts at width with the given struct separator.
 func commaOpts(width int, mode SeparatorMode) Options {
 	o := testOpts(width)
-	o.Separator.Set(options.ConstructStruct, mode)
+	o.Separator.Set(ConstructStruct, mode)
 
 	return o
 }
@@ -664,9 +663,9 @@ func TestFormatSeparators(t *testing.T) {
 			name: "fields semicolon, functions comma",
 			opts: func() Options {
 				o := testOpts(30)
-				o.Separator.Set(options.ConstructStruct, SeparatorSemicolon)
-				o.Separator.Set(options.ConstructArguments, SeparatorComma)
-				o.Separator.Set(options.ConstructThrows, SeparatorComma)
+				o.Separator.Set(ConstructStruct, SeparatorSemicolon)
+				o.Separator.Set(ConstructArguments, SeparatorComma)
+				o.Separator.Set(ConstructThrows, SeparatorComma)
 
 				return o
 			}(),
@@ -695,8 +694,8 @@ func TestFormatSeparators(t *testing.T) {
 			name: "function comma add forces commas on throws",
 			opts: func() Options {
 				o := testOpts(30)
-				o.Separator.Set(options.ConstructArguments, SeparatorComma)
-				o.Separator.Set(options.ConstructThrows, SeparatorComma)
+				o.Separator.Set(ConstructArguments, SeparatorComma)
+				o.Separator.Set(ConstructThrows, SeparatorComma)
 
 				return o
 			}(),
@@ -707,8 +706,8 @@ func TestFormatSeparators(t *testing.T) {
 			name: "function comma remove drops argument separators",
 			opts: func() Options {
 				o := testOpts(30)
-				o.Separator.Set(options.ConstructArguments, SeparatorNone)
-				o.Separator.Set(options.ConstructThrows, SeparatorNone)
+				o.Separator.Set(ConstructArguments, SeparatorNone)
+				o.Separator.Set(ConstructThrows, SeparatorNone)
 
 				return o
 			}(),
@@ -734,7 +733,7 @@ func TestFormatAlwaysBreak(t *testing.T) {
 			name: "break structs forces multiline",
 			opts: func() Options {
 				o := testOpts(80)
-				o.Break.Set(options.ConstructStruct, true)
+				o.Break.Set(ConstructStruct, true)
 
 				return o
 			}(),
@@ -745,7 +744,7 @@ func TestFormatAlwaysBreak(t *testing.T) {
 			name: "break enums forces multiline",
 			opts: func() Options {
 				o := testOpts(80)
-				o.Break.Set(options.ConstructEnum, true)
+				o.Break.Set(ConstructEnum, true)
 
 				return o
 			}(),
@@ -756,7 +755,7 @@ func TestFormatAlwaysBreak(t *testing.T) {
 			name: "break structs keeps empty bodies flat",
 			opts: func() Options {
 				o := testOpts(80)
-				o.Break.Set(options.ConstructStruct, true)
+				o.Break.Set(ConstructStruct, true)
 
 				return o
 			}(),
@@ -767,7 +766,7 @@ func TestFormatAlwaysBreak(t *testing.T) {
 			name: "break structs does not affect enums",
 			opts: func() Options {
 				o := testOpts(80)
-				o.Break.Set(options.ConstructStruct, true)
+				o.Break.Set(ConstructStruct, true)
 
 				return o
 			}(),
@@ -1262,10 +1261,10 @@ func TestFormatThrowsFoldsWithBrokenArgs(t *testing.T) {
 
 func TestFormatSeparatorsPerConstruct(t *testing.T) {
 	opts := testOpts(80)
-	opts.Separator.Set(options.ConstructStruct, SeparatorSemicolon)
-	opts.Separator.Set(options.ConstructUnion, SeparatorSemicolon)
-	opts.Separator.Set(options.ConstructException, SeparatorSemicolon)
-	opts.Separator.Set(options.ConstructEnum, SeparatorComma)
+	opts.Separator.Set(ConstructStruct, SeparatorSemicolon)
+	opts.Separator.Set(ConstructUnion, SeparatorSemicolon)
+	opts.Separator.Set(ConstructException, SeparatorSemicolon)
+	opts.Separator.Set(ConstructEnum, SeparatorComma)
 
 	src := "struct S {\n  1: i32 a\n  2: i32 b\n}\n\nunion U {\n  1: i32 a\n  2: i32 b\n}\n\nexception X {\n  1: i32 a\n  2: i32 b\n}\n\nenum E {\n  A\n  B\n}"
 	want := "struct S { 1: i32 a; 2: i32 b }\n\nunion U { 1: i32 a; 2: i32 b }\n\nexception X { 1: i32 a; 2: i32 b }\n\nenum E { A, B }\n"
@@ -1336,8 +1335,8 @@ func TestFormatConstsOptions(t *testing.T) {
 			name: "lists forced comma with break",
 			src:  "const list<A> a = [1, 2]",
 			opts: opts(func(o *Options) {
-				o.Separator.Set(options.ConstructList, SeparatorComma)
-				o.Break.Set(options.ConstructList, true)
+				o.Separator.Set(ConstructList, SeparatorComma)
+				o.Break.Set(ConstructList, true)
 			}),
 			want: "const list<A> a = [\n  1,\n  2,\n]\n",
 		},
@@ -1345,7 +1344,7 @@ func TestFormatConstsOptions(t *testing.T) {
 			name: "lists forced semicolon flat",
 			src:  "const list<A> a = [1, 2]",
 			opts: opts(func(o *Options) {
-				o.Separator.Set(options.ConstructList, SeparatorSemicolon)
+				o.Separator.Set(ConstructList, SeparatorSemicolon)
 			}),
 			want: "const list<A> a = [1; 2; ]\n",
 		},
@@ -1353,7 +1352,7 @@ func TestFormatConstsOptions(t *testing.T) {
 			name: "lists none drops separators",
 			src:  "const list<A> a = [1, 2]",
 			opts: opts(func(o *Options) {
-				o.Separator.Set(options.ConstructList, SeparatorNone)
+				o.Separator.Set(ConstructList, SeparatorNone)
 			}),
 			want: "const list<A> a = [1 2]\n",
 		},
@@ -1361,8 +1360,8 @@ func TestFormatConstsOptions(t *testing.T) {
 			name: "maps forced comma with break",
 			src:  "const map<string, A> m = {\"a\": 1, \"b\": 2}",
 			opts: opts(func(o *Options) {
-				o.Separator.Set(options.ConstructMap, SeparatorComma)
-				o.Break.Set(options.ConstructMap, true)
+				o.Separator.Set(ConstructMap, SeparatorComma)
+				o.Break.Set(ConstructMap, true)
 			}),
 			want: "const map<string, A> m = {\n  \"a\": 1,\n  \"b\": 2,\n}\n",
 		},
@@ -1372,8 +1371,8 @@ func TestFormatConstsOptions(t *testing.T) {
 			name: "sets forced comma with break",
 			src:  "const set<i32> s = [1, 2]",
 			opts: opts(func(o *Options) {
-				o.Separator.Set(options.ConstructSet, SeparatorComma)
-				o.Break.Set(options.ConstructSet, true)
+				o.Separator.Set(ConstructSet, SeparatorComma)
+				o.Break.Set(ConstructSet, true)
 			}),
 			want: "const set<i32> s = [\n  1,\n  2,\n]\n",
 		},
@@ -1381,7 +1380,7 @@ func TestFormatConstsOptions(t *testing.T) {
 			name: "sets semicolon separators",
 			src:  "const set<A> s = [1, 2]",
 			opts: opts(func(o *Options) {
-				o.Separator.Set(options.ConstructSet, SeparatorSemicolon)
+				o.Separator.Set(ConstructSet, SeparatorSemicolon)
 			}),
 			want: "const set<A> s = [1; 2; ]\n",
 		},
@@ -1389,8 +1388,8 @@ func TestFormatConstsOptions(t *testing.T) {
 			name: "trailing separator never leaves a blank before the close",
 			src:  "const list<A> a = [\n  1,\n  2,\n]",
 			opts: opts(func(o *Options) {
-				o.Separator.Set(options.ConstructList, SeparatorComma)
-				o.Break.Set(options.ConstructList, true)
+				o.Separator.Set(ConstructList, SeparatorComma)
+				o.Break.Set(ConstructList, true)
 			}),
 			want: "const list<A> a = [\n  1,\n  2,\n]\n",
 		},
@@ -1398,8 +1397,8 @@ func TestFormatConstsOptions(t *testing.T) {
 			name: "line comment after trailing separator owns its line end",
 			src:  "const list<A> a = [1; #0\n]",
 			opts: opts(func(o *Options) {
-				o.Separator.Set(options.ConstructList, SeparatorPreserve)
-				o.Break.Set(options.ConstructList, true)
+				o.Separator.Set(ConstructList, SeparatorPreserve)
+				o.Break.Set(ConstructList, true)
 			}),
 			want: "const list<A> a = [\n  1; #0\n]\n",
 		},
@@ -1407,7 +1406,7 @@ func TestFormatConstsOptions(t *testing.T) {
 			name: "suppressed separator keeps the comment inline",
 			src:  "const list<A> a = [1, // c\n2]",
 			opts: opts(func(o *Options) {
-				o.Separator.Set(options.ConstructList, SeparatorNone)
+				o.Separator.Set(ConstructList, SeparatorNone)
 			}),
 			want: "const list<A> a = [\n  1 // c\n  2\n]\n",
 		},
@@ -1415,7 +1414,7 @@ func TestFormatConstsOptions(t *testing.T) {
 			name: "nested containers stay flat with a comment at the item boundary",
 			src:  "const list<A> a = [[0]#\n]",
 			opts: opts(func(o *Options) {
-				o.Separator.Set(options.ConstructList, SeparatorNone)
+				o.Separator.Set(ConstructList, SeparatorNone)
 			}),
 			want: "const list<A> a = [\n  [0] #\n]\n",
 		},

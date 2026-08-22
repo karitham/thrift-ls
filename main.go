@@ -113,17 +113,17 @@ func lspFlags() []cli.Flag {
 // constructFlags maps the per-construct format flag names to constructs.
 var constructFlags = []struct {
 	name      string
-	construct options.Construct
+	construct formatter.Construct
 }{
-	{"struct", options.ConstructStruct},
-	{"union", options.ConstructUnion},
-	{"exception", options.ConstructException},
-	{"enum", options.ConstructEnum},
-	{"argument", options.ConstructArguments},
-	{"throws", options.ConstructThrows},
-	{"list", options.ConstructList},
-	{"map", options.ConstructMap},
-	{"set", options.ConstructSet},
+	{"struct", formatter.ConstructStruct},
+	{"union", formatter.ConstructUnion},
+	{"exception", formatter.ConstructException},
+	{"enum", formatter.ConstructEnum},
+	{"argument", formatter.ConstructArguments},
+	{"throws", formatter.ConstructThrows},
+	{"list", formatter.ConstructList},
+	{"map", formatter.ConstructMap},
+	{"set", formatter.ConstructSet},
 }
 
 // formatFlags are the flags of the format subcommand.
@@ -482,7 +482,7 @@ func formatPatch(cmd *cli.Command) (options.Patch, error) {
 	}
 
 	if cmd.IsSet("indent") {
-		ind, err := options.ParseIndentValue(cmd.String("indent"))
+		ind, err := formatter.ParseIndentValue(cmd.String("indent"))
 		if err != nil {
 			return options.Patch{}, err
 		}
@@ -500,7 +500,7 @@ func formatPatch(cmd *cli.Command) (options.Patch, error) {
 			v := cmd.String(cf.name + "-separator")
 
 			if p.Separators == nil {
-				p.Separators = &options.Separators{}
+				p.Separators = &formatter.Separators{}
 			}
 
 			p.Separators.Set(cf.construct, &v)
@@ -510,7 +510,7 @@ func formatPatch(cmd *cli.Command) (options.Patch, error) {
 			v := cmd.Bool("break-" + cf.name)
 
 			if p.Break == nil {
-				p.Break = &options.Break{}
+				p.Break = &formatter.Break{}
 			}
 
 			p.Break.Set(cf.construct, &v)
@@ -574,7 +574,7 @@ func formatFile(file string, w io.Writer, write, diffOut bool, configPath string
 	patch := options.Effective(cfg)
 	patch = cli.Apply(patch)
 
-	fopts, err := formatter.FromConfig(patch)
+	fopts, err := patch.FormatPatch.Options()
 	if err != nil {
 		return err
 	}

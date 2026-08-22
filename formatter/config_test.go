@@ -1,47 +1,46 @@
 package formatter
 
 import (
+	"encoding/json"
 	"testing"
-
-	"github.com/karitham/thrift-ls/options"
 )
 
-func TestFromConfig(t *testing.T) {
-	indent := options.Indent{Value: "  ", Width: 2}
+func TestFormatPatchOptions(t *testing.T) {
+	indent := Indent{Value: "  ", Width: 2}
 	printWidth := 100
-	p := options.Patch{Indent: &indent, PrintWidth: &printWidth}
+	p := FormatPatch{Indent: &indent, PrintWidth: &printWidth}
 
-	o, err := FromConfig(p)
+	o, err := p.Options()
 	if err != nil {
-		t.Fatalf("FromConfig: %v", err)
+		t.Fatalf("Options: %v", err)
 	}
 
 	if o.PrintWidth != 100 || o.Indent != "  " || o.TabWidth != 2 {
 		t.Errorf("got %+v", o)
 	}
 
-	if o.Align != AlignField || o.Separator.Get(options.ConstructStruct) != SeparatorPreserve {
+	if o.Align != AlignField || o.Separator.Get(ConstructStruct) != SeparatorPreserve {
 		t.Errorf("defaults wrong: %+v", o)
 	}
 
 	comma := "comma"
 	align := "assign"
-	separators := options.Separators{Structs: &comma}
-	p = options.Patch{Separators: &separators, Align: &align}
+	separators := Separators{Structs: &comma}
+	p = FormatPatch{Separators: &separators, Align: &align}
 
-	o, err = FromConfig(p)
+	o, err = p.Options()
 	if err != nil {
-		t.Fatalf("FromConfig: %v", err)
+		t.Fatalf("Options: %v", err)
 	}
 
-	if o.Separator.Get(options.ConstructStruct) != SeparatorComma || o.Align != AlignAssign {
+	if o.Separator.Get(ConstructStruct) != SeparatorComma || o.Align != AlignAssign {
 		t.Errorf("got %+v", o)
 	}
 }
 
-// TestFromConfigSeparatorModes maps every config value to the separator
+// TestFormatPatchSeparatorModes maps every config value to the separator
 // modes, per construct.
-func TestFromConfigSeparatorModes(t *testing.T) {
+func TestFormatPatchSeparatorModes(t *testing.T) {
 	tests := []struct {
 		value string
 		want  SeparatorMode
@@ -54,18 +53,18 @@ func TestFromConfigSeparatorModes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.value, func(t *testing.T) {
 			value := tt.value
-			p := options.Patch{Separators: &options.Separators{
+			p := FormatPatch{Separators: &Separators{
 				Structs: &value, Unions: &value, Exceptions: &value,
 				Enums: &value, Arguments: &value, Throws: &value,
 				Lists: &value, Maps: &value, Sets: &value,
 			}}
 
-			o, err := FromConfig(p)
+			o, err := p.Options()
 			if err != nil {
-				t.Fatalf("FromConfig: %v", err)
+				t.Fatalf("Options: %v", err)
 			}
 
-			for _, c := range options.AllConstructs {
+			for _, c := range AllConstructs {
 				if o.Separator.Get(c) != tt.want {
 					t.Errorf("value %q: construct %s = %v, want %v", tt.value, c, o.Separator.Get(c), tt.want)
 				}
@@ -75,43 +74,134 @@ func TestFromConfigSeparatorModes(t *testing.T) {
 
 	// The option maps independently per construct.
 	semicolon, comma := "semicolon", "comma"
-	separators := options.Separators{Structs: &semicolon, Enums: &semicolon, Arguments: &comma, Throws: &comma}
-	p := options.Patch{Separators: &separators}
+	separators := Separators{Structs: &semicolon, Enums: &semicolon, Arguments: &comma, Throws: &comma}
+	p := FormatPatch{Separators: &separators}
 
-	o, err := FromConfig(p)
+	o, err := p.Options()
 	if err != nil {
-		t.Fatalf("FromConfig: %v", err)
+		t.Fatalf("Options: %v", err)
 	}
 
-	if o.Separator.Get(options.ConstructStruct) != SeparatorSemicolon || o.Separator.Get(options.ConstructArguments) != SeparatorComma {
+	if o.Separator.Get(ConstructStruct) != SeparatorSemicolon || o.Separator.Get(ConstructArguments) != SeparatorComma {
 		t.Errorf("independent mapping failed: %+v", o)
 	}
 }
 
-// TestFromConfigBreak maps the break group to the formatter options.
-func TestFromConfigBreak(t *testing.T) {
+// TestFormatPatchBreak maps the break group to the formatter options.
+func TestFormatPatchBreak(t *testing.T) {
 	trueVal, falseVal := true, false
 
-	p := options.Patch{Break: &options.Break{Structs: &trueVal, Enums: &falseVal}}
+	p := FormatPatch{Break: &Break{Structs: &trueVal, Enums: &falseVal}}
 
-	o, err := FromConfig(p)
+	o, err := p.Options()
 	if err != nil {
-		t.Fatalf("FromConfig: %v", err)
+		t.Fatalf("Options: %v", err)
 	}
 
-	if !o.Break.Get(options.ConstructStruct) || o.Break.Get(options.ConstructEnum) {
+	if !o.Break.Get(ConstructStruct) || o.Break.Get(ConstructEnum) {
 		t.Errorf("break mapping wrong: %+v", o)
 	}
 
 	// Zero patch keeps the defaults (no forced breaks).
-	o, err = FromConfig(options.Patch{})
+	o, err = (FormatPatch{}).Options()
 	if err != nil {
-		t.Fatalf("FromConfig: %v", err)
+		t.Fatalf("Options: %v", err)
 	}
 
-	for _, c := range options.AllConstructs {
+	for _, c := range AllConstructs {
 		if o.Break.Get(c) {
 			t.Errorf("breaks should default to false for %s: %+v", c, o)
 		}
+	}
+}
+
+func TestFormatPatchValidate(t *testing.T) {
+	intPtr := func(n int) *int { return &n }
+	strPtr := func(s string) *string { return &s }
+
+	tests := []struct {
+		name    string
+		patch   FormatPatch
+		wantErr bool
+	}{
+		{"default is valid", DefaultFormatPatch(), false},
+		{"bad printWidth", FormatPatch{PrintWidth: intPtr(0)}, true},
+		{"bad tabWidth", FormatPatch{TabWidth: intPtr(-1)}, true},
+		{"bad align", FormatPatch{Align: strPtr("sideways")}, true},
+		{"bad separator value", FormatPatch{Separators: &Separators{Structs: strPtr("maybe")}}, true},
+		{"preserve alias", FormatPatch{Separators: &Separators{Structs: strPtr("preserve")}}, false},
+		{"bad indent value", FormatPatch{Indent: &Indent{Value: "x", Width: 1}}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.patch.Validate()
+			if tt.wantErr && err == nil {
+				t.Error("expected error")
+			}
+
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestParseIndentValue(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		want    Indent
+		wantErr bool
+	}{
+		{"empty defaults", "", Indent{"    ", 4}, false},
+		{"literal two spaces", "  ", Indent{"  ", 2}, false},
+		{"literal four spaces", "    ", Indent{"    ", 4}, false},
+		{"literal tab", "\t", Indent{"\t", 4}, false},
+		{"literal two tabs", "\t\t", Indent{"\t\t", 8}, false},
+		{"mixed spaces and tabs", " \t", Indent{}, true},
+		{"garbage", "banana", Indent{}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseIndentValue(tt.in)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got %+v", got)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if got != tt.want {
+				t.Errorf("got %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIndentUnmarshal(t *testing.T) {
+	tests := []struct {
+		name string
+		json string
+		want Indent
+	}{
+		{"string spaces", `"  "`, Indent{"  ", 2}},
+		{"string tab", `"\t"`, Indent{"\t", 4}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var i Indent
+			if err := json.Unmarshal([]byte(tt.json), &i); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+
+			if i != tt.want {
+				t.Errorf("got %+v, want %+v", i, tt.want)
+			}
+		})
 	}
 }

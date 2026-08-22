@@ -155,13 +155,13 @@ func (s *Server) formatOptions(view *cache.View) formatter.Options {
 	overlay := s.workspaceOverlay
 	s.optsMu.RUnlock()
 
-	fopts, err := formatter.FromConfig(overlay.Apply(view.Config()))
+	fopts, err := overlay.Apply(view.Config()).FormatPatch.Options()
 	if err != nil {
 		// Both layers were validated when stored; this is unreachable
 		// unless a view config was corrupted.
 		logError("formatter options rejected", err)
 
-		fopts, _ = formatter.FromConfig(view.Config())
+		fopts, _ = view.Config().FormatPatch.Options()
 	}
 
 	return fopts

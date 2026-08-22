@@ -1,119 +1,11 @@
 package options
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-func TestParseIndentValue(t *testing.T) {
-	tests := []struct {
-		name    string
-		in      string
-		want    Indent
-		wantErr bool
-	}{
-		{"empty defaults", "", Indent{"    ", 4}, false},
-		{"literal two spaces", "  ", Indent{"  ", 2}, false},
-		{"literal four spaces", "    ", Indent{"    ", 4}, false},
-		{"literal tab", "\t", Indent{"\t", 4}, false},
-		{"literal two tabs", "\t\t", Indent{"\t\t", 8}, false},
-		{"mixed spaces and tabs", " \t", Indent{}, true},
-		{"garbage", "banana", Indent{}, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseIndentValue(tt.in)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatalf("expected error, got %+v", got)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if got != tt.want {
-				t.Errorf("got %+v, want %+v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestIndentUnmarshal(t *testing.T) {
-	tests := []struct {
-		name string
-		json string
-		want Indent
-	}{
-		{"string spaces", `"  "`, Indent{"  ", 2}},
-		{"string tab", `"\t"`, Indent{"\t", 4}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var i Indent
-			if err := json.Unmarshal([]byte(tt.json), &i); err != nil {
-				t.Fatalf("unmarshal: %v", err)
-			}
-
-			if i != tt.want {
-				t.Errorf("got %+v, want %+v", i, tt.want)
-			}
-		})
-	}
-}
-
-func TestPatchApply(t *testing.T) {
-	base := Default()
-
-	overlay := Patch{}
-	printWidth := 100
-	overlay.PrintWidth = &printWidth
-
-	got := overlay.Apply(base)
-	if got.PrintWidth == nil || *got.PrintWidth != 100 {
-		t.Errorf("PrintWidth not overridden: %v", got.PrintWidth)
-	}
-
-	if got.Align == nil || *got.Align != "field" {
-		t.Errorf("Align should stay from base: %v", got.Align)
-	}
-}
-
-func TestPatchValidate(t *testing.T) {
-	intPtr := func(n int) *int { return &n }
-	strPtr := func(s string) *string { return &s }
-
-	tests := []struct {
-		name    string
-		patch   Patch
-		wantErr bool
-	}{
-		{"default is valid", Default(), false},
-		{"bad printWidth", Patch{PrintWidth: intPtr(0)}, true},
-		{"bad tabWidth", Patch{TabWidth: intPtr(-1)}, true},
-		{"bad align", Patch{Align: strPtr("sideways")}, true},
-		{"bad comma", Patch{Separators: &Separators{Structs: strPtr("maybe")}}, true},
-		{"preserve alias", Patch{Separators: &Separators{Structs: strPtr("preserve")}}, false},
-		{"bad indent value", Patch{Indent: &Indent{Value: "x", Width: 1}}, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.patch.Validate()
-			if tt.wantErr && err == nil {
-				t.Error("expected error")
-			}
-
-			if !tt.wantErr && err != nil {
-				t.Errorf("unexpected error: %v", err)
-			}
-		})
-	}
-}
 
 func TestFindConfig(t *testing.T) {
 	dir := t.TempDir()
@@ -220,42 +112,5 @@ func TestLoadRejectsUnknownOverrideKeys(t *testing.T) {
 
 	if _, err := Load(cfgPath); err == nil {
 		t.Fatal("Load accepted a config with an overrides key")
-	}
-}
-
-// TestPatchSeparatorModes maps every config value to the formatter modes.
-func TestPatchSeparatorModes(t *testing.T) {
-	tests := []struct {
-		value string
-	}{
-		{"comma"},
-		{"none"},
-		{"semicolon"},
-		{"preserve"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.value, func(t *testing.T) {
-			p := Patch{Separators: &Separators{
-				Structs: &tt.value, Unions: &tt.value, Exceptions: &tt.value,
-				Enums: &tt.value, Arguments: &tt.value, Throws: &tt.value,
-				Lists: &tt.value, Maps: &tt.value, Sets: &tt.value,
-			}}
-
-			if err := p.Validate(); err != nil {
-				t.Fatalf("Validate: %v", err)
-			}
-		})
-	}
-
-	// Invalid values are rejected.
-	bogus := "bogus"
-	p := Patch{Align: &bogus}
-	if err := p.Validate(); err == nil {
-		t.Fatal("Validate accepted an unknown align value")
-	}
-
-	p = Patch{Separators: &Separators{Structs: &bogus}}
-	if err := p.Validate(); err == nil {
-		t.Fatal("Validate accepted an unknown separator value")
 	}
 }
