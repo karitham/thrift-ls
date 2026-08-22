@@ -312,14 +312,24 @@ func (v *View) IsCurrent(gen uint64) bool {
 	return v.Generation() == gen
 }
 
-// FileChange applies changes to the view: it invalidates the changed files'
-// entries, re-parses them so their include edges are fresh before requests
-// observe the change, then runs postFns asynchronously with the generation
-// of this change and the affected URIs (changed files plus their transitive
-// dependents). The request thread never blocks on postFns, so
-// diagnostics-heavy work does not stall the editor. A postFn whose
-// generation is no longer current can drop its results.
-func (v *View) FileChange(ctx context.Context, changes []*FileChange, postFns ...func(gen uint64, affected []uri.URI)) {
+// ChangeResult reports what a batch of changes did: the new generation and
+// the affected URIs (changed files plus their transitive dependents).
+type ChangeResult struct {
+	// Gen is the generation this change produced. Compare it against
+	// View.IsCurrent before publishing derived results.
+	Gen uint64
+
+	// Affected holds the changed URIs first, in order, then their
+	// transitive dependents, deduped. Edges were refreshed from an eager
+	// re-parse of the changed files, so it reflects the change.
+	Affected []uri.URI
+}
+
+// Update applies changes to the view: it invalidates the changed files'
+// entries and re-parses them, so their include edges are fresh before any
+// request observes the change. It returns what changed; publishing derived
+// results (diagnostics) is the caller's policy.
+func (v *View) Update(ctx context.Context, changes ...*FileChange) ChangeResult {
 	uris := make([]uri.URI, 0, len(changes))
 	for _, change := range changes {
 		uris = append(uris, change.URI)
@@ -346,15 +356,10 @@ func (v *View) FileChange(ctx context.Context, changes []*FileChange, postFns ..
 		}
 	}
 
-	affected := v.affected(uris)
-
-	gen := v.gen.Add(1)
-
-	go func() {
-		for i := range postFns {
-			postFns[i](gen, affected)
-		}
-	}()
+	return ChangeResult{
+		Affected: v.affected(uris),
+		Gen:      v.gen.Add(1),
+	}
 }
 
 // affected returns uris plus the transitive dependents of each, deduped,

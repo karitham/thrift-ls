@@ -59,7 +59,7 @@ func (s *Server) openFile(ctx context.Context, change *cache.FileChange) error {
 		view = s.addFolderView(uri.File(path.Dir(filename)))
 	}
 
-	view.FileChange(ctx, []*cache.FileChange{change}, s.postDiagnostics(ctx, view))
+	s.postDiagnostics(ctx, view, view.Update(ctx, change))
 
 	return nil
 }
@@ -78,7 +78,7 @@ func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDo
 		return err
 	}
 
-	view.FileChange(ctx, changes, s.postDiagnostics(ctx, view))
+	s.postDiagnostics(ctx, view, view.Update(ctx, changes...))
 
 	return nil
 }
@@ -97,7 +97,7 @@ func (s *Server) didClose(ctx context.Context, params *protocol.DidCloseTextDocu
 		return err
 	}
 
-	view.FileChange(ctx, []*cache.FileChange{change}, s.postDiagnostics(ctx, view))
+	s.postDiagnostics(ctx, view, view.Update(ctx, change))
 
 	return nil
 }
@@ -126,7 +126,7 @@ func (s *Server) didChangeWatchedFiles(ctx context.Context, params *protocol.Did
 	}
 
 	for view, changes := range byView {
-		view.FileChange(ctx, changes, s.postDiagnostics(ctx, view))
+		s.postDiagnostics(ctx, view, view.Update(ctx, changes...))
 	}
 
 	return nil
@@ -158,23 +158,23 @@ func (s *Server) watchedFileChange(ctx context.Context, event protocol.FileEvent
 	}, nil
 }
 
-// postDiagnostics returns a FileChange postFn that publishes diagnostics for
-// every affected file (changed files plus their transitive dependents).
-// Diagnostics run in the background (FileChange invokes postFns
-// asynchronously); if a newer change lands while the analysis runs, the
-// generation check drops the results — the newer change publishes its own.
-func (s *Server) postDiagnostics(ctx context.Context, view *cache.View) func(uint64, []uri.URI) {
+// postDiagnostics publishes diagnostics for the affected files of a change
+// in a background goroutine, so diagnostics-heavy work never stalls the
+// editor request thread. If a newer change lands while the analysis runs,
+// the generation check drops the results — the newer change publishes its
+// own.
+func (s *Server) postDiagnostics(ctx context.Context, view *cache.View, res cache.ChangeResult) {
 	// The request context dies when the LSP request returns; the
 	// diagnostics goroutine outlives it.
 	ctx = context.WithoutCancel(ctx)
 
-	return func(gen uint64, affected []uri.URI) {
-		if !view.IsCurrent(gen) {
+	go func() {
+		if !view.IsCurrent(res.Gen) {
 			return
 		}
 
-		s.diagnose(ctx, view, affected)
-	}
+		s.diagnose(ctx, view, res.Affected)
+	}()
 }
 
 // diagnose publishes diagnostics for every affected file, in parallel: a
