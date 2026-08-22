@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/options"
@@ -123,8 +124,8 @@ func Test_FileChangeInvalidatesDependents(t *testing.T) {
 		files        []*FileChange
 		change       *FileChange
 		wantAffected []uri.URI
-		wantDropped  []uri.URI
-		wantKept     []uri.URI
+		wantFresh    map[uri.URI]string // changed files parse to this marker
+		wantKept     []uri.URI          // unchanged files keep their original parse
 	}{
 		{
 			name:  "change mid-chain invalidates transitive dependents",
@@ -141,8 +142,8 @@ struct Gundam {
 				From: FileChangeTypeDidChange,
 			},
 			wantAffected: []uri.URI{federation, strikeRouge},
-			wantDropped:  []uri.URI{strikeRouge},
-			wantKept:     []uri.URI{federation, mobileSuit},
+			wantFresh:    map[uri.URI]string{federation: "SerialNumber"},
+			wantKept:     []uri.URI{mobileSuit},
 		},
 		{
 			name:  "change leaf invalidates whole chain",
@@ -159,8 +160,8 @@ struct Gundam {
 				From: FileChangeTypeDidChange,
 			},
 			wantAffected: []uri.URI{mobileSuit, federation, strikeRouge},
-			wantDropped:  []uri.URI{federation, strikeRouge},
-			wantKept:     []uri.URI{mobileSuit},
+			wantFresh:    map[uri.URI]string{mobileSuit: "CHARS_ZAKU"},
+			wantKept:     nil,
 		},
 		{
 			name: "change file with no dependents",
@@ -183,8 +184,8 @@ struct Gundam {
 				From: FileChangeTypeDidChange,
 			},
 			wantAffected: []uri.URI{char},
-			wantDropped:  nil,
-			wantKept:     []uri.URI{char},
+			wantFresh:    map[uri.URI]string{char: "Newtype"},
+			wantKept:     nil,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -193,18 +194,19 @@ struct Gundam {
 			gotAffected := h.change(t, tt.change)
 			assert.Equal(t, tt.wantAffected, gotAffected)
 
-			ss := h.snapshot(t)
-			for _, file := range tt.wantDropped {
-				pf, _ := ss.parsedCache.Get(file)
-				assert.Nil(t, pf, "parse cache for %s should be dropped", file)
-
-				_, ok := ss.files.Get(file)
-				assert.False(t, ok, "file handle for %s should be dropped", file)
+			for _, file := range tt.wantKept {
+				pf := h.view.parsed(file)
+				assert.NotNil(t, pf, "parse of %s should survive", file)
 			}
 
-			for _, file := range tt.wantKept {
-				pf, _ := ss.parsedCache.Get(file)
-				assert.NotNil(t, pf, "parse cache for %s should survive", file)
+			// Changed content is visible through the view's store.
+			ss := h.snapshot(t)
+			for file, marker := range tt.wantFresh {
+				pf, err := ss.Parse(t.Context(), file)
+				require.NoError(t, err)
+
+				assert.Contains(t, pf.Tokens(), marker,
+					"%s should be parsed from fresh content (want token %q)", file, marker)
 			}
 		})
 	}
