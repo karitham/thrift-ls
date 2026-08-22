@@ -411,7 +411,7 @@ service Demo {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &FieldIDCheck{}
-			got, err := c.Diagnostic(tt.args.ctx, tt.args.view, tt.args.changeFiles)
+			got, err := c.Diagnostic(tt.args.ctx, NewBatch(tt.args.view), tt.args.changeFiles)
 
 			for key := range got {
 				sort.SliceStable(got[key], func(i, j int) bool {

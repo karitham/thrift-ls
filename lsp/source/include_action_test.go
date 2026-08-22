@@ -60,7 +60,7 @@ func Test_MakeRemoveUnusedIncludeAction(t *testing.T) {
 	require.NoError(t, err)
 
 	// The diagnostic the check produces, as the server would pass it.
-	diags, err := (&UnusedIncludeCheck{}).diagnostic(t.Context(), view, uri.File(filePath))
+	diags, err := (&UnusedIncludeCheck{}).diagnostic(t.Context(), NewBatch(view), uri.File(filePath))
 	require.NoError(t, err)
 	require.Len(t, diags, 1)
 

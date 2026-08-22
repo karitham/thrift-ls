@@ -359,7 +359,7 @@ enum User {}
 				},
 			})
 
-			got, err := (&DuplicateCheck{}).Diagnostic(t.Context(), view, []uri.URI{"file:///tmp/user.thrift"})
+			got, err := (&DuplicateCheck{}).Diagnostic(t.Context(), NewBatch(view), []uri.URI{"file:///tmp/user.thrift"})
 			assert.NoError(t, err)
 
 			assert.Equal(t, DiagnosticResult{"file:///tmp/user.thrift": tt.want}, got)

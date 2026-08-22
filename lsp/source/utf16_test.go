@@ -87,7 +87,7 @@ func TestParseErrorDiagnosticUTF16(t *testing.T) {
 
 	view := utf16Snapshot(t, src)
 
-	res, err := (&Parse{}).Diagnostic(t.Context(), view, []uri.URI{"file:///tmp/htt.thrift"})
+	res, err := (&Parse{}).Diagnostic(t.Context(), NewBatch(view), []uri.URI{"file:///tmp/htt.thrift"})
 	require.NoError(t, err)
 
 	diags := res["file:///tmp/htt.thrift"]

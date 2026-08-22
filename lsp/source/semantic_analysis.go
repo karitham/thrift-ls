@@ -14,11 +14,12 @@ import (
 
 type SemanticAnalysis struct{}
 
-func (s *SemanticAnalysis) Diagnostic(ctx context.Context, view *cache.View, changeFiles []uri.URI) (DiagnosticResult, error) {
+func (s *SemanticAnalysis) Diagnostic(ctx context.Context, b *Batch, changeFiles []uri.URI) (DiagnosticResult, error) {
+
 	res := make(DiagnosticResult)
 
 	for _, file := range changeFiles {
-		items, err := s.diagnostic(ctx, view, file)
+		items, err := s.diagnostic(ctx, b, file)
 		if err != nil {
 			return nil, err
 		}
@@ -33,8 +34,8 @@ func (s *SemanticAnalysis) Name() string {
 	return "SemanticAnalysis"
 }
 
-func (s *SemanticAnalysis) diagnostic(ctx context.Context, view *cache.View, changeFile uri.URI) ([]protocol.Diagnostic, error) {
-	pf, err := view.Parse(ctx, changeFile)
+func (s *SemanticAnalysis) diagnostic(ctx context.Context, b *Batch, changeFile uri.URI) ([]protocol.Diagnostic, error) {
+	pf, err := b.Tree(ctx, changeFile)
 	if err != nil {
 		return nil, err
 	}
@@ -50,9 +51,9 @@ func (s *SemanticAnalysis) diagnostic(ctx context.Context, view *cache.View, cha
 		slog.Debug("parse failed", "err", err)
 	}
 
-	// One index per file: resolutions are memoized per (file, name), so
-	// repeated references resolve once.
-	res := s.checkDefinitionExist(ctx, view, NewIndex(view), pf)
+	// The run's shared index: resolutions are memoized per (file, name),
+	// across every checker in the batch.
+	res := s.checkDefinitionExist(ctx, b.View(), b.Index(), pf)
 
 	return res, nil
 }

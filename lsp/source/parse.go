@@ -14,7 +14,9 @@ import (
 
 type Parse struct{}
 
-func (p *Parse) Diagnostic(ctx context.Context, view *cache.View, changeFiles []uri.URI) (DiagnosticResult, error) {
+func (p *Parse) Diagnostic(ctx context.Context, b *Batch, changeFiles []uri.URI) (DiagnosticResult, error) {
+	view := b.View()
+
 	var errs []error
 
 	res := make(DiagnosticResult)

@@ -18,7 +18,9 @@ import (
 // length are caught, including self-includes.
 type CycleCheck struct{}
 
-func (c *CycleCheck) Diagnostic(ctx context.Context, view *cache.View, changeFiles []uri.URI) (DiagnosticResult, error) {
+func (c *CycleCheck) Diagnostic(ctx context.Context, b *Batch, changeFiles []uri.URI) (DiagnosticResult, error) {
+	view := b.View()
+
 	closure := make(map[uri.URI][]Include)
 	for _, file := range changeFiles {
 		_ = getIncludes(ctx, view, file, &closure)

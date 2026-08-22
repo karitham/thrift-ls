@@ -28,17 +28,21 @@ func init() {
 }
 
 type Checker interface {
-	Diagnostic(ctx context.Context, view *cache.View, changeFiles []uri.URI) (DiagnosticResult, error)
+	Diagnostic(ctx context.Context, b *Batch, changeFiles []uri.URI) (DiagnosticResult, error)
 	Name() string
 }
 
 type Diagnostic struct{}
 
-func NewDiagnostic() Checker {
+func NewDiagnostic() *Diagnostic {
 	return &Diagnostic{}
 }
 
+// Diagnostic runs every registered checker over changeFiles with a shared
+// Batch, joining their results and errors.
 func (d *Diagnostic) Diagnostic(ctx context.Context, view *cache.View, changeFiles []uri.URI) (DiagnosticResult, error) {
+	batch := NewBatch(view)
+
 	res := make(DiagnosticResult)
 
 	var errs []error
@@ -46,7 +50,7 @@ func (d *Diagnostic) Diagnostic(ctx context.Context, view *cache.View, changeFil
 	for _, impl := range registry {
 		slog.Debug("diagnostic called", "impl", impl.Name())
 
-		diagRes, err := impl.Diagnostic(ctx, view, changeFiles)
+		diagRes, err := impl.Diagnostic(ctx, batch, changeFiles)
 		if err != nil {
 			errs = append(errs, err)
 		}

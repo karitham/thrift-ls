@@ -17,7 +17,9 @@ type FieldIDCheck struct{}
 
 // FieldIDCheck checks struct, union, exception, function parameter, and
 // throws field ids: they must be unique positive integers in [1, 32767].
-func (c *FieldIDCheck) Diagnostic(ctx context.Context, view *cache.View, changeFiles []uri.URI) (DiagnosticResult, error) {
+func (c *FieldIDCheck) Diagnostic(ctx context.Context, b *Batch, changeFiles []uri.URI) (DiagnosticResult, error) {
+	view := b.View()
+
 	res := make(DiagnosticResult)
 
 	for _, file := range changeFiles {

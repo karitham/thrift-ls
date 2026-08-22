@@ -101,7 +101,7 @@ func Test_EnumValueCheck_Diagnostic(t *testing.T) {
 				},
 			})
 
-			got, err := (&EnumValueCheck{}).Diagnostic(t.Context(), view, []uri.URI{"file:///tmp/user.thrift"})
+			got, err := (&EnumValueCheck{}).Diagnostic(t.Context(), NewBatch(view), []uri.URI{"file:///tmp/user.thrift"})
 			assert.NoError(t, err)
 
 			assert.Equal(t, DiagnosticResult{"file:///tmp/user.thrift": tt.want}, got)
