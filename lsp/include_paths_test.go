@@ -31,9 +31,7 @@ func TestConfigFileIncludePaths(t *testing.T) {
 
 		srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
 		_, err := srv.Initialize(ctx, &protocol.InitializeParams{
-			WorkspaceFoldersInitializeParams: protocol.WorkspaceFoldersInitializeParams{
-				WorkspaceFolders: protocol.NewNullable([]protocol.WorkspaceFolder{{URI: uri.File(dir)}}),
-			},
+			WorkspaceFolders: protocol.NewNullable([]protocol.WorkspaceFolder{{URI: uri.File(dir)}}),
 		})
 		require.NoError(t, err)
 		require.NoError(t, srv.Initialized(ctx, &protocol.InitializedParams{}))

@@ -50,10 +50,8 @@ func documentSymbolsFlat(ctx context.Context, view *cache.View, file uri.URI) []
 
 func flattenSymbol(sym *protocol.DocumentSymbol, file uri.URI, container string, out *[]protocol.SymbolInformation) {
 	info := protocol.SymbolInformation{
-		BaseSymbolInformation: protocol.BaseSymbolInformation{
-			Name: sym.Name,
-			Kind: sym.Kind,
-		},
+		Name:     sym.Name,
+		Kind:     sym.Kind,
 		Location: protocol.Location{URI: file, Range: sym.SelectionRange},
 	}
 	if container != "" {
