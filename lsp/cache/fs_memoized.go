@@ -21,6 +21,12 @@ type memoizedFS struct {
 	filesByID map[FileID][]*DiskFile
 }
 
+// NewMemoizedFS returns the production disk file source: reads stat first
+// and memoize by inode+mtime.
+func NewMemoizedFS() FileSource {
+	return &memoizedFS{filesByID: map[FileID][]*DiskFile{}}
+}
+
 // A DiskFile is a file on the filesystem, or a failure to read one.
 // It implements the source.FileHandle interface.
 type DiskFile struct {

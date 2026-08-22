@@ -149,7 +149,7 @@ func BuildViewForTest(files []*FileChange) *View {
 // BuildViewForTestWithPaths is BuildViewForTest with configured include
 // paths, for cross-project include resolution tests.
 func BuildViewForTestWithPaths(includePaths []string, files []*FileChange) *View {
-	c := New()
+	c := NewMemoizedFS()
 	fs := NewOverlayFS(c)
 	_ = fs.Update(context.TODO(), files)
 

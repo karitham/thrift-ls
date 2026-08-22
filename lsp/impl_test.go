@@ -414,7 +414,7 @@ func Test_DidChangeWorkspaceFolders(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dirA, "a.thrift"), []byte("struct FromA {}"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(dirB, "b.thrift"), []byte("struct FromB {}"), 0o644))
 
-	srv := NewServer(cache.New(), nil, Options{})
+	srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
 
 	// Adding folders walks them and registers their thrift files.
 	err := srv.DidChangeWorkspaceFolders(ctx, &protocol.DidChangeWorkspaceFoldersParams{
@@ -479,7 +479,7 @@ func Test_InitializeDefersTheWorkspaceWalk(t *testing.T) {
 		require.NoError(t, os.MkdirAll(filepath.Join(dir, "nested"), 0o755))
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "nested", "b.thrift"), []byte("struct FromB {}"), 0o644))
 
-		srv := NewServer(cache.New(), nil, Options{})
+		srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
 
 		_, err := srv.Initialize(t.Context(), &protocol.InitializeParams{
 			WorkspaceFoldersInitializeParams: protocol.WorkspaceFoldersInitializeParams{

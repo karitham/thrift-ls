@@ -83,7 +83,7 @@ func TestConfigDiscoveryPerWorkspaceFolder(t *testing.T) {
 		writeConfig(t, dirA, `{"printWidth": 30}`)
 		writeConfig(t, dirB, `{"printWidth": 100}`)
 
-		srv := NewServer(cache.New(), nil, Options{})
+		srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
 		initWorkspace(t, srv, []uri.URI{uri.File(dirA), uri.File(dirB)}, nil)
 
 		// One server, two folders: each formats with its own config.
@@ -100,7 +100,7 @@ func TestConfigDiscoverySingleFileMode(t *testing.T) {
 		dir := t.TempDir()
 		writeConfig(t, dir, `{"printWidth": 30}`)
 
-		srv := NewServer(cache.New(), nil, Options{})
+		srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
 		initWorkspace(t, srv, nil, nil)
 
 		assert.Equal(t, probeBroken, openAndFormat(t, srv, filepath.Join(dir, "app.thrift")))
@@ -115,7 +115,7 @@ func TestConfigDiscoveryExplicitPathPins(t *testing.T) {
 		dir := t.TempDir()
 		writeConfig(t, dir, `{"printWidth": 30}`)
 
-		srv := NewServer(cache.New(), nil, Options{
+		srv := NewServer(cache.NewMemoizedFS(), nil, Options{
 			Config:     options.Default(),
 			ConfigPath: "/pinned/thrift-ls.json",
 		})
@@ -137,7 +137,7 @@ func TestConfigDiscoveryDefaultsWhenNoConfig(t *testing.T) {
 		width := 30
 		startup.PrintWidth = &width
 
-		srv := NewServer(cache.New(), nil, Options{Config: startup})
+		srv := NewServer(cache.NewMemoizedFS(), nil, Options{Config: startup})
 		initWorkspace(t, srv, []uri.URI{uri.File(dir)}, nil)
 
 		assert.Equal(t, probeOneLine, openAndFormat(t, srv, filepath.Join(dir, "a.thrift")))
@@ -152,7 +152,7 @@ func TestConfigDiscoveryWorkspaceSettingsOverlay(t *testing.T) {
 		dir := t.TempDir()
 		writeConfig(t, dir, `{"printWidth": 30}`)
 
-		srv := NewServer(cache.New(), nil, Options{})
+		srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
 		initWorkspace(t, srv, []uri.URI{uri.File(dir)}, []byte(`{"printWidth": 100}`))
 
 		file := filepath.Join(dir, "a.thrift")
@@ -180,7 +180,7 @@ func TestConfigDiscoveryLogLevel(t *testing.T) {
 		dir := t.TempDir()
 		writeConfig(t, dir, `{"logLevel": 5}`)
 
-		srv := NewServer(cache.New(), nil, Options{})
+		srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
 		initWorkspace(t, srv, nil, nil)
 
 		openAndFormat(t, srv, filepath.Join(dir, "app.thrift"))
@@ -200,7 +200,7 @@ func TestConfigDiscoveryInvalidFileKeepsDefaults(t *testing.T) {
 		dir := t.TempDir()
 		writeConfig(t, dir, `{"printWidth": "wide"}`)
 
-		srv := NewServer(cache.New(), nil, Options{})
+		srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
 		initWorkspace(t, srv, []uri.URI{uri.File(dir)}, nil)
 
 		assert.Equal(t, probeOneLine, openAndFormat(t, srv, filepath.Join(dir, "a.thrift")))
@@ -217,7 +217,7 @@ func TestConfigDiscoveryNestedFolder(t *testing.T) {
 		nested := filepath.Join(root, "packages", "app")
 		require.NoError(t, os.MkdirAll(nested, 0o755))
 
-		srv := NewServer(cache.New(), nil, Options{})
+		srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
 		initWorkspace(t, srv, []uri.URI{uri.File(nested)}, nil)
 
 		assert.Equal(t, probeBroken, openAndFormat(t, srv, filepath.Join(nested, "a.thrift")))

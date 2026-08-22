@@ -31,7 +31,7 @@ func benchChain(b *testing.B, n int) (*View, []*FileChange) {
 		})
 	}
 
-	fs := NewOverlayFS(New())
+	fs := NewOverlayFS(NewMemoizedFS())
 	if err := fs.Update(context.Background(), files); err != nil {
 		b.Fatal(err)
 	}

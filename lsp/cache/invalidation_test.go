@@ -61,7 +61,7 @@ type viewHarness struct {
 func newViewHarness(t *testing.T, files []*FileChange) *viewHarness {
 	t.Helper()
 
-	c := New()
+	c := NewMemoizedFS()
 	fs := NewOverlayFS(c)
 
 	if err := fs.Update(t.Context(), files); err != nil {

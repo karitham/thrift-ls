@@ -60,7 +60,7 @@ func TestSessionViews(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := NewSession(New())
+			s := NewSession(NewMemoizedFS())
 			tt.setup(s)
 
 			views := s.Views()
@@ -76,7 +76,7 @@ func TestSessionViews(t *testing.T) {
 }
 
 func TestSessionAddViewDedups(t *testing.T) {
-	s := NewSession(New())
+	s := NewSession(NewMemoizedFS())
 
 	folder := uri.File("/tmp/a")
 	first := s.AddView(folder, nil, options.Patch{})
@@ -87,7 +87,7 @@ func TestSessionAddViewDedups(t *testing.T) {
 }
 
 func TestSessionRemoveViewForgetsMappings(t *testing.T) {
-	s := NewSession(New())
+	s := NewSession(NewMemoizedFS())
 
 	folder := uri.File("/tmp/a")
 	other := uri.File("/tmp/b")

@@ -29,7 +29,7 @@ func TestResolver(t *testing.T) {
 	err = os.WriteFile(sharedThrift, []byte(""), 0o644)
 	assert.NoError(t, err)
 
-	c := New()
+	c := NewMemoizedFS()
 	fs := NewOverlayFS(c)
 
 	view := NewView(uri.File(tmpDir), fs, []string{sharedDir}, options.Patch{})

@@ -192,7 +192,7 @@ struct C { 1: string x }`,
 		t.Run(tt.name, func(t *testing.T) {
 			dir := writeTree(t, tt.files)
 
-			session := cache.NewSession(cache.New())
+			session := cache.NewSession(cache.NewMemoizedFS())
 
 			if tt.nested {
 				// Each top-level directory is a workspace folder.
@@ -241,7 +241,7 @@ const i32 DEFAULT_HP = 100,
 typedef string PilotName`,
 	})
 
-	session := cache.NewSession(cache.New())
+	session := cache.NewSession(cache.NewMemoizedFS())
 	openTree(t, session, dir, nil)
 
 	file := uri.File(filepath.Join(dir, "shapes.thrift"))
@@ -299,7 +299,7 @@ service Federation {
 }`,
 	})
 
-	session := cache.NewSession(cache.New())
+	session := cache.NewSession(cache.NewMemoizedFS())
 	openTree(t, session, dir, nil)
 
 	tests := []struct {
@@ -353,7 +353,7 @@ exception BayFull {
 }`,
 	})
 
-	session := cache.NewSession(cache.New())
+	session := cache.NewSession(cache.NewMemoizedFS())
 	openTree(t, session, dir, nil)
 
 	syms := allWorkspaceSymbols(t.Context(), session, "", 0)

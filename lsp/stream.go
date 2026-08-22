@@ -11,7 +11,7 @@ import (
 )
 
 type StreamServer struct {
-	cache  *cache.Cache
+	fs     cache.FileSource
 	config *Options
 }
 
@@ -30,7 +30,7 @@ type Options struct {
 
 func NewStreamServer(opts *Options) *StreamServer {
 	return &StreamServer{
-		cache:  cache.New(),
+		fs:     cache.NewMemoizedFS(),
 		config: opts,
 	}
 }
@@ -38,7 +38,7 @@ func NewStreamServer(opts *Options) *StreamServer {
 func (s *StreamServer) ServeStream(ctx context.Context, conn jsonrpc2.Conn) error {
 	client := protocol.ClientDispatcher(conn)
 
-	server := NewServer(s.cache, client, *s.config)
+	server := NewServer(s.fs, client, *s.config)
 	// Clients may or may not send a shutdown message. Make sure the server is
 	// shut down.
 	defer func() {

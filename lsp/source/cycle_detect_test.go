@@ -18,7 +18,7 @@ import (
 func buildSnapshotForTest(t *testing.T, files []*cache.FileChange) *cache.View {
 	t.Helper()
 
-	c := cache.New()
+	c := cache.NewMemoizedFS()
 	fs := cache.NewOverlayFS(c)
 	_ = fs.Update(t.Context(), files)
 
