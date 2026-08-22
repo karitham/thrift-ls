@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io/fs"
-	"log/slog"
 	"strings"
-	"sync"
 	"time"
 
 	"go.lsp.dev/uri"
@@ -16,79 +14,97 @@ import (
 	"github.com/karitham/thrift-ls/syntax"
 )
 
+// Snapshot is a read handle over a view's current state. It exists so
+// request handlers have a stable value to pass around; all reads see the
+// view's live store, so nothing is copied or frozen.
+//
+// The gen field pins the generation the handle was taken at, for IsCurrent
+// staleness checks.
+type Snapshot struct {
+	view         *View
+	includePaths []string
+	gen          uint64
+}
+
+// Snapshot returns a read handle over the view's current state plus a
+// no-op release function.
+func (v *View) Snapshot() (*Snapshot, func()) {
+	ss := &Snapshot{
+		view:         v,
+		includePaths: v.includePaths,
+		gen:          v.Generation(),
+	}
+
+	return ss, func() {}
+}
+
+// NewSnapshot returns a read handle over view, carrying an includePaths
+// override for the handle's resolver.
+func NewSnapshot(view *View, includePaths []string) *Snapshot {
+	return &Snapshot{
+		view:         view,
+		includePaths: includePaths,
+		gen:          view.Generation(),
+	}
+}
+
+func (s *Snapshot) Includes(file uri.URI) []uri.URI {
+	return s.view.Includes(file)
+}
+
+func (s *Snapshot) Includers(file uri.URI) []uri.URI {
+	return s.view.Includers(file)
+}
+
+func (s *Snapshot) Dependents(uri uri.URI) []uri.URI {
+	return s.view.Dependents(uri)
+}
+
+// View returns the view this snapshot serves: the workspace folder the
+// snapshot resolves files under.
+func (s *Snapshot) View() *View {
+	return s.view
+}
+
+// Resolver returns a new Resolver instance for this snapshot.
+// The resolver provides centralized include path resolution.
+func (s *Snapshot) Resolver() *Resolver {
+	return newResolver(s.includePaths, s.view.fs)
+}
+
+func (s *Snapshot) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, error) {
+	return s.view.ReadFile(ctx, uri)
+}
+
+func (s *Snapshot) Parse(ctx context.Context, uri uri.URI) (*ParsedFile, error) {
+	return s.view.Parse(ctx, uri)
+}
+
+// TokensForFile returns the identifier tokens of file and its transitively
+// included files. Each file's token set is computed once per parse and
+// reused, so typing does not re-walk the include closure's ASTs.
+func (s *Snapshot) TokensForFile(file uri.URI) map[string]struct{} {
+	return s.view.TokensForFile(file)
+}
+
 // Resolver provides centralized include path resolution.
-// It wraps the snapshot to provide a clean interface for resolving
-// included files, types, and identifiers.
 type Resolver struct {
-	ss      *Snapshot
-	central *resolver.Resolver
+	includePaths []string
+	central      *resolver.Resolver
 }
 
-// NewResolver creates a resolver for the given snapshot
-func NewResolver(ss *Snapshot) *Resolver {
+// newResolver builds a Resolver resolving against src: open files by their
+// overlay content, the rest through the memoized disk source.
+func newResolver(includePaths []string, src FileSource) *Resolver {
 	return &Resolver{
-		ss:      ss,
-		central: resolver.NewWithFS(ss.includePaths, &snapshotFS{ss: ss}),
+		includePaths: includePaths,
+		central:      resolver.NewWithFS(includePaths, viewFS{fs: src}),
 	}
 }
-
-// snapshotFS is an fs.FS for include resolution: files open in the snapshot
-// (editor overlays) exist first, everything else falls through to the disk.
-// This lets includes resolve for files that are open but not yet saved.
-type snapshotFS struct {
-	ss   *Snapshot
-	disk fs.FS
-}
-
-func (s *snapshotFS) Stat(name string) (fs.FileInfo, error) {
-	if _, ok := s.ss.files.Get(uri.File(name)); ok {
-		return snapshotFileInfo{}, nil
-	}
-
-	if s.disk == nil {
-		s.disk = resolver.FS()
-	}
-
-	return fs.Stat(s.disk, name)
-}
-
-func (s *snapshotFS) Open(name string) (fs.File, error) {
-	if fh, ok := s.ss.files.Get(uri.File(name)); ok {
-		content, err := fh.Content()
-		if err != nil {
-			return nil, err
-		}
-
-		return &snapshotFile{Reader: bytes.NewReader(content), info: snapshotFileInfo{}}, nil
-	}
-
-	if s.disk == nil {
-		s.disk = resolver.FS()
-	}
-
-	return s.disk.Open(name)
-}
-
-type snapshotFileInfo struct{}
-
-func (snapshotFileInfo) Name() string       { return "" }
-func (snapshotFileInfo) Size() int64        { return 0 }
-func (snapshotFileInfo) Mode() fs.FileMode  { return 0 }
-func (snapshotFileInfo) ModTime() time.Time { return time.Time{} }
-func (snapshotFileInfo) IsDir() bool        { return false }
-func (snapshotFileInfo) Sys() any           { return nil }
-
-type snapshotFile struct {
-	*bytes.Reader
-	info fs.FileInfo
-}
-
-func (f *snapshotFile) Stat() (fs.FileInfo, error) { return f.info, nil }
-func (f *snapshotFile) Close() error               { return nil }
 
 // IncludePaths returns the include paths configured for this snapshot
 func (r *Resolver) IncludePaths() []string {
-	return r.ss.includePaths
+	return r.includePaths
 }
 
 // ResolveInclude resolves an include path to a file URI.
@@ -140,170 +156,64 @@ func getIncludeNameFromPath(path string) string {
 	return strings.TrimSuffix(name, ".thrift")
 }
 
-type Snapshot struct {
-	view *View
-
-	refCount sync.WaitGroup
-
-	files *FilesMap
-
-	context     *IncludeDeps
-	parsedCache *ParseCaches
-
-	includePaths []string
+// viewFS adapts a FileSource to fs.FS for include resolution: files open in
+// the editor resolve by their overlay content, everything else falls
+// through to the memoized disk source. This lets includes resolve for files
+// that are open but not yet saved.
+type viewFS struct {
+	fs FileSource
 }
 
-func NewSnapshot(view *View, includePaths []string) *Snapshot {
-	snapshot := &Snapshot{
-		view: view,
-
-		refCount:     sync.WaitGroup{},
-		context:      NewIncludeDeps(),
-		parsedCache:  NewParseCaches(),
-		files:        NewFilesMap(),
-		includePaths: includePaths,
-	}
-
-	return snapshot
-}
-
-func (s *Snapshot) Acquire() func() {
-	s.refCount.Add(1)
-
-	return s.refCount.Done
-}
-
-// Includes returns the files file includes directly, in include order.
-func (s *Snapshot) Includes(file uri.URI) []uri.URI {
-	return s.context.Includes(file)
-}
-
-// Includers returns the files that include file directly, in graph order.
-func (s *Snapshot) Includers(file uri.URI) []uri.URI {
-	return s.context.Includers(file)
-}
-
-// Dependents returns the transitive dependents of uri: every file that
-// directly or transitively includes it, in this snapshot.
-func (s *Snapshot) Dependents(uri uri.URI) []uri.URI {
-	return s.context.Dependents(uri)
-}
-
-// View returns the view this snapshot serves: the workspace folder the
-// snapshot resolves files under.
-func (s *Snapshot) View() *View {
-	return s.view
-}
-
-// Resolver returns a new Resolver instance for this snapshot.
-// The resolver provides centralized include path resolution.
-func (s *Snapshot) Resolver() *Resolver {
-	return NewResolver(s)
-}
-
-func (s *Snapshot) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, error) {
-	slog.Debug("snapshot read file", "uri", uri)
-	s.view.MarkFileKnown(uri)
-
-	if fh, ok := s.files.Get(uri); ok {
-		return fh, nil
-	}
-
-	slog.Debug("snapshot read from fs")
-
-	fh, err := s.view.fs.ReadFile(ctx, uri)
+func (f viewFS) Stat(name string) (fs.FileInfo, error) {
+	content, err := readThrough(name, f.fs)
 	if err != nil {
 		return nil, err
 	}
 
-	s.files.Set(uri, fh)
-
-	return fh, nil
+	return viewFileInfo{name: name, size: int64(len(content))}, nil
 }
 
-// ForgetFile is called when file changed or removed. It removes file's
-// include edges and drops the parse and file caches for file and every
-// transitive dependent of file: their derived data is rebuilt lazily on the
-// next request, while their content survives on disk (or in the overlay).
-func (s *Snapshot) ForgetFile(uri uri.URI) {
-	s.files.Forget(uri)
-	s.parsedCache.Forget(uri)
-
-	for _, dependent := range s.context.Forget(uri) {
-		s.files.Forget(dependent)
-		s.parsedCache.Forget(dependent)
-	}
-}
-
-func (s *Snapshot) Parse(ctx context.Context, uri uri.URI) (*ParsedFile, error) {
-	if parsedFile, ok := s.parsedCache.Get(uri); ok {
-		return parsedFile, nil
-	}
-
-	fh, err := s.ReadFile(ctx, uri)
+func (f viewFS) Open(name string) (fs.File, error) {
+	content, err := readThrough(name, f.fs)
 	if err != nil {
 		return nil, err
 	}
 
-	pf, err := Parse(fh)
-	if err != nil {
-		slog.Debug("snapshot parse failed", "err", err)
+	info := viewFileInfo{name: name, size: int64(len(content))}
 
+	return &viewFile{Reader: bytes.NewReader(content), info: info}, nil
+}
+
+// readThrough reads name as an absolute OS path through src, surfacing
+// read failures (missing files report their error via Content).
+func readThrough(name string, src FileSource) ([]byte, error) {
+	fh, err := src.ReadFile(context.Background(), uri.File(name))
+	if err != nil {
 		return nil, err
 	}
 
-	if pf.AST() != nil {
-		s.context.Register(uri, pf.AST().Includes(), s.Resolver().ResolveInclude)
-	}
-
-	s.parsedCache.Set(uri, pf)
-
-	return pf, nil
+	return fh.Content()
 }
 
-// TokensForFile returns the identifier tokens of file and its transitively
-// included files. Each file's token set is computed once per parse and
-// reused, so typing does not re-walk the include closure's ASTs.
-func (s *Snapshot) TokensForFile(file uri.URI) map[string]struct{} {
-	tokens := make(map[string]struct{})
-	visited := make(map[uri.URI]bool)
-
-	var collect func(f uri.URI)
-
-	collect = func(f uri.URI) {
-		if visited[f] {
-			return
-		}
-
-		visited[f] = true
-
-		if pf, ok := s.parsedCache.Get(f); ok {
-			for token := range pf.Tokens() {
-				tokens[token] = struct{}{}
-			}
-		}
-
-		for _, inc := range s.Includes(f) {
-			collect(inc)
-		}
-	}
-
-	collect(file)
-
-	return tokens
+type viewFileInfo struct {
+	name string
+	size int64
 }
 
-func (s *Snapshot) clone() (*Snapshot, func()) {
-	snap := &Snapshot{
-		view:         s.view,
-		files:        s.files.Clone(),
-		context:      s.context.Clone(),
-		parsedCache:  s.parsedCache.Clone(),
-		includePaths: s.includePaths,
-	}
+func (i viewFileInfo) Name() string       { return i.name }
+func (i viewFileInfo) Size() int64        { return i.size }
+func (i viewFileInfo) Mode() fs.FileMode  { return 0o644 }
+func (i viewFileInfo) ModTime() time.Time { return time.Time{} }
+func (i viewFileInfo) IsDir() bool        { return false }
+func (i viewFileInfo) Sys() any           { return nil }
 
-	return snap, snap.Acquire()
+type viewFile struct {
+	*bytes.Reader
+	info fs.FileInfo
 }
+
+func (f *viewFile) Stat() (fs.FileInfo, error) { return f.info, nil }
+func (f *viewFile) Close() error               { return nil }
 
 func BuildSnapshotForTest(files []*FileChange) *Snapshot {
 	return BuildSnapshotForTestWithPaths(nil, files)
@@ -317,11 +227,12 @@ func BuildSnapshotForTestWithPaths(includePaths []string, files []*FileChange) *
 	_ = fs.Update(context.TODO(), files)
 
 	view := NewView("file:///tmp", fs, includePaths, options.Patch{})
-	ss := NewSnapshot(view, includePaths)
 
 	for _, f := range files {
-		_, _ = ss.Parse(context.TODO(), f.URI)
+		_, _ = view.Parse(context.TODO(), f.URI)
 	}
+
+	ss, _ := view.Snapshot()
 
 	return ss
 }
