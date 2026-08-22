@@ -53,9 +53,7 @@ func initWorkspace(t *testing.T, srv *Server, folders []uri.URI, initializationO
 	t.Helper()
 
 	_, err := srv.Initialize(t.Context(), &protocol.InitializeParams{
-		WorkspaceFoldersInitializeParams: protocol.WorkspaceFoldersInitializeParams{
-			WorkspaceFolders: protocol.NewNullable(foldersFromURIs(folders)),
-		},
+		WorkspaceFolders:      protocol.NewNullable(foldersFromURIs(folders)),
 		InitializationOptions: protocol.LSPAny(initializationOptions),
 	})
 	require.NoError(t, err)

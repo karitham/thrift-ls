@@ -14,7 +14,7 @@
         let
           version = "0.1.6";
         in
-        pkgs.buildGoModule {
+        pkgs.buildGo127Module {
           pname = "thrift-ls";
           inherit version;
           src = nixpkgs.lib.cleanSource ./.;
@@ -62,7 +62,7 @@
             packages =
               with pkgs;
               [
-                go
+                go_1_27
                 treefmt
                 golangci-lint
                 nodejs_22
