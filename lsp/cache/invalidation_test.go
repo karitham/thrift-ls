@@ -6,8 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
-
-	"github.com/karitham/thrift-ls/options"
 )
 
 // The gundam test corpus: strike_rouge includes federation.gundam, which
@@ -68,7 +66,7 @@ func newViewHarness(t *testing.T, files []*FileChange) *viewHarness {
 		t.Fatal(err)
 	}
 
-	view := NewView("file:///tmp", fs, nil, options.Patch{})
+	view := NewView("file:///tmp", fs, nil)
 
 	for _, f := range files {
 		if _, err := view.Parse(t.Context(), f.URI); err != nil {

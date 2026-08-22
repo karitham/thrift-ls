@@ -10,7 +10,6 @@ import (
 
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -23,10 +22,10 @@ type viewEntry struct {
 }
 
 // View is one workspace folder's file store: parsed files, the include
-// graph between them, and the configuration that applies to them.
+// graph between them, and the include configuration that applies to them.
 //
 // Concurrency: entries and edges are guarded by mu; reads share immutable
-// values, writes replace entries wholesale. gen bumps on every FileChange;
+// values, writes replace entries wholesale. gen bumps on every Update;
 // asynchronous work compares its captured generation against View.IsCurrent
 // to drop superseded results.
 type View struct {
@@ -38,10 +37,6 @@ type View struct {
 
 	includePaths []string
 
-	// config is the folder's base configuration, fixed at creation;
-	// workspace settings overlay it per request.
-	config options.Patch
-
 	mu        sync.RWMutex
 	entries   map[uri.URI]*viewEntry
 	includes  map[uri.URI][]uri.URI // sorted direct include edges
@@ -50,12 +45,11 @@ type View struct {
 	gen atomic.Uint64
 }
 
-func NewView(folder uri.URI, fs FileSource, includePaths []string, config options.Patch) *View {
+func NewView(folder uri.URI, fs FileSource, includePaths []string) *View {
 	return &View{
 		folder:       folder,
 		fs:           fs,
 		includePaths: includePaths,
-		config:       config,
 		entries:      make(map[uri.URI]*viewEntry),
 		includes:     make(map[uri.URI][]uri.URI),
 		includers:    make(map[uri.URI][]uri.URI),
@@ -81,12 +75,6 @@ func (v *View) ContainsFile(uri uri.URI) bool {
 // Folder returns the workspace folder the view covers.
 func (v *View) Folder() uri.URI {
 	return v.folder
-}
-
-// Config returns the view's base configuration, without the client's
-// workspace settings overlay.
-func (v *View) Config() options.Patch {
-	return v.config
 }
 
 // WalkFiles enumerates the view's file source under root: the disk in

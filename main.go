@@ -361,7 +361,7 @@ func checkAction(ctx context.Context, cmd *cli.Command) error {
 func checkFiles(ctx context.Context, files []string, folder string, includePaths []string) (map[string][]protocol.Diagnostic, error) {
 	fs := cache.NewMemoizedFS()
 	sess := cache.NewSession(fs)
-	sess.AddView(uri.File(folder), includePaths, options.Patch{})
+	sess.AddView(uri.File(folder), includePaths)
 
 	changes := make([]*cache.FileChange, 0, len(files))
 	uris := make([]uri.URI, 0, len(files))

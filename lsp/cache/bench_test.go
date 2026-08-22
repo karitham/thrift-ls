@@ -6,8 +6,6 @@ import (
 	"testing"
 
 	"go.lsp.dev/uri"
-
-	"github.com/karitham/thrift-ls/options"
 )
 
 // benchChain builds a linear include chain: chain_0 includes chain_1, ...
@@ -36,7 +34,7 @@ func benchChain(b *testing.B, n int) (*View, []*FileChange) {
 		b.Fatal(err)
 	}
 
-	view := NewView("file:///tmp", fs, nil, options.Patch{})
+	view := NewView("file:///tmp", fs, nil)
 
 	for _, f := range files {
 		if _, err := view.Parse(context.Background(), f.URI); err != nil {

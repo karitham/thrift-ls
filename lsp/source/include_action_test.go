@@ -12,7 +12,6 @@ import (
 
 	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/lsp/mapper"
-	"github.com/karitham/thrift-ls/options"
 )
 
 // buildFolderSnapshotForTest builds a snapshot whose view root is folder,
@@ -24,7 +23,7 @@ func buildFolderSnapshotForTest(t *testing.T, folder string, files []*cache.File
 	fs := cache.NewOverlayFS(c)
 	_ = fs.Update(t.Context(), files)
 
-	view := cache.NewView(uri.File(folder), fs, nil, options.Patch{})
+	view := cache.NewView(uri.File(folder), fs, nil)
 
 	for _, f := range files {
 		_, _ = view.Parse(t.Context(), f.URI)
