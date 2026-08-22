@@ -359,8 +359,8 @@ func checkAction(ctx context.Context, cmd *cli.Command) error {
 // semantic analysis, and lints — over files opened in a session rooted at
 // folder, and returns the diagnostics per file, keyed by absolute path.
 func checkFiles(ctx context.Context, files []string, folder string, includePaths []string) (map[string][]protocol.Diagnostic, error) {
-	c := cache.New()
-	sess := cache.NewSession(c)
+	fs := cache.NewMemoizedFS()
+	sess := cache.NewSession(fs)
 	sess.AddView(uri.File(folder), includePaths, options.Patch{})
 
 	changes := make([]*cache.FileChange, 0, len(files))

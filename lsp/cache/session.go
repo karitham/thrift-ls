@@ -11,8 +11,9 @@ import (
 )
 
 type Session struct {
-	// cache is shared global
-	cache *Cache
+	// fs is the underlying file source (disk in production, in-memory in
+	// tests); the embedded overlayFS serves open-editor content over it.
+	fs FileSource
 
 	viewMu  sync.Mutex
 	views   []*View
@@ -23,12 +24,12 @@ type Session struct {
 	*overlayFS
 }
 
-func NewSession(cache *Cache) *Session {
+func NewSession(fs FileSource) *Session {
 	sess := &Session{
-		cache:     cache,
+		fs:        fs,
 		views:     make([]*View, 0),
 		viewMap:   make(map[uri.URI]*View),
-		overlayFS: NewOverlayFS(cache),
+		overlayFS: NewOverlayFS(fs),
 	}
 
 	return sess
@@ -122,4 +123,11 @@ func (s *Session) ViewOf(fileURI uri.URI) (*View, error) {
 
 func (s *Session) UpdateOverlayFS(ctx context.Context, changes []*FileChange) error {
 	return s.Update(ctx, changes)
+}
+
+// WalkFiles enumerates the file source under root. Open overlays are
+// already known to the session via didOpen, so this walks the underlying
+// source (the disk in production).
+func (s *Session) WalkFiles(ctx context.Context, root uri.URI, fn func(uri.URI) error) error {
+	return s.overlayFS.WalkFiles(ctx, root, fn)
 }

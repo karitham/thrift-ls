@@ -53,7 +53,7 @@ func TestLoggerForwardsToClientAfterHandshake(t *testing.T) {
 	defer setLogClient(nil)
 
 	client := &logClient{}
-	srv := NewServer(cache.New(), client, Options{})
+	srv := NewServer(cache.NewMemoizedFS(), client, Options{})
 
 	slog.Info("pre-handshake")
 	assert.Empty(t, client.got())
@@ -96,7 +96,7 @@ func TestLoggerForwardingSurvivesConfigRelevel(t *testing.T) {
 		writeConfig(t, dir, `{"logLevel": 5}`)
 
 		client := &logClient{}
-		srv := NewServer(cache.New(), client, Options{})
+		srv := NewServer(cache.NewMemoizedFS(), client, Options{})
 		initWorkspace(t, srv, []uri.URI{uri.File(dir)}, nil)
 
 		slog.Error("after config re-level")

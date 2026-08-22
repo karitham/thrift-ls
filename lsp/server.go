@@ -17,7 +17,6 @@ import (
 )
 
 type Server struct {
-	cache   *cache.Cache
 	session *cache.Session
 
 	client protocol.Client
@@ -58,10 +57,9 @@ type Server struct {
 // NewServer returns a Server resolving configuration per view. The options
 // are expected to validate; workspace settings overlay each view's config
 // at initialize time and on didChangeConfiguration.
-func NewServer(c *cache.Cache, client protocol.Client, opts Options) *Server {
+func NewServer(fs cache.FileSource, client protocol.Client, opts Options) *Server {
 	return &Server{
-		cache:      c,
-		session:    cache.NewSession(c),
+		session:    cache.NewSession(fs),
 		client:     client,
 		explicit:   opts.Config,
 		configPath: opts.ConfigPath,

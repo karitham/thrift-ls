@@ -17,7 +17,7 @@ import (
 func buildSnapshot(t *testing.T, includePaths []string, files ...*cache.FileChange) *cache.View {
 	t.Helper()
 
-	c := cache.New()
+	c := cache.NewMemoizedFS()
 	fs := cache.NewOverlayFS(c)
 	_ = fs.Update(t.Context(), files)
 	view := cache.NewView(uri.File("/tmp"), fs, includePaths, options.Patch{})

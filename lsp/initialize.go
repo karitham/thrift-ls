@@ -112,10 +112,10 @@ func (s *Server) walkFoldersThriftFile(folder uri.URI) {
 	// resolve to it via ContainsFile; addFolderView resolves its config.
 	s.addFolderView(folder)
 
-	// Walk the folder through the cache's file source: the disk in
+	// Walk the folder through the session's file source: the disk in
 	// production, an in-memory tree in tests. WalkDir walks with lexical
 	// order; the fs implementations handle their own entry errors.
-	_ = s.cache.WalkFiles(context.TODO(), folder, func(fileURI uri.URI) error {
+	_ = s.session.WalkFiles(context.TODO(), folder, func(fileURI uri.URI) error {
 		if !strings.HasSuffix(fileURI.Path(), ".thrift") {
 			return nil
 		}

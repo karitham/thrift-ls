@@ -20,7 +20,7 @@ import (
 func buildFolderSnapshotForTest(t *testing.T, folder string, files []*cache.FileChange) *cache.View {
 	t.Helper()
 
-	c := cache.New()
+	c := cache.NewMemoizedFS()
 	fs := cache.NewOverlayFS(c)
 	_ = fs.Update(t.Context(), files)
 

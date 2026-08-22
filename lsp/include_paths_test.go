@@ -29,7 +29,7 @@ func TestConfigFileIncludePaths(t *testing.T) {
 		require.NoError(t, os.WriteFile(shared, []byte("struct Shared {}"), 0o644))
 		writeConfig(t, dir, `{"includePaths": ["base"]}`)
 
-		srv := NewServer(cache.New(), nil, Options{})
+		srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
 		_, err := srv.Initialize(ctx, &protocol.InitializeParams{
 			WorkspaceFoldersInitializeParams: protocol.WorkspaceFoldersInitializeParams{
 				WorkspaceFolders: protocol.NewNullable([]protocol.WorkspaceFolder{{URI: uri.File(dir)}}),
