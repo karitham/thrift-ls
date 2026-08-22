@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/karitham/thrift-ls/doc"
-	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -70,11 +69,11 @@ func (f *formatter) enumValueList(values []*syntax.EnumValue, bodyID int) doc.Do
 
 	for i, value := range values {
 		if i > 0 {
-			parts = append(parts, f.fieldSep(values[i-1].Sep, f.opts.Separator.Get(options.ConstructEnum)))
+			parts = append(parts, f.fieldSep(values[i-1].Sep, f.opts.Separator.Get(ConstructEnum)))
 		}
 
 		parts = append(parts, f.blankLines(value, doc.HardLine)...)
-		parts = append(parts, f.enumValue(value, f.alignmentForEnum(values, i, f.opts.Separator.Get(options.ConstructEnum)), bodyID))
+		parts = append(parts, f.enumValue(value, f.alignmentForEnum(values, i, f.opts.Separator.Get(ConstructEnum)), bodyID))
 	}
 
 	return f.Concat(parts...)
@@ -449,7 +448,7 @@ func (f *formatter) fieldPads(v *syntax.Field, a *columnAlign) ([]padEntry, stri
 // enumValue assembles an enum value with comments, aligning '=' signs when
 // the body breaks.
 func (f *formatter) enumValue(v *syntax.EnumValue, align *columnAlign, bodyID int) doc.Doc {
-	sepMode := f.opts.Separator.Get(options.ConstructEnum)
+	sepMode := f.opts.Separator.Get(ConstructEnum)
 
 	broken := f.Concat(
 		f.enumValueContent(v, align, true, sepMode),

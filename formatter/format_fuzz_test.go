@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -69,7 +68,7 @@ func FuzzFormat(f *testing.F) {
 		// In preserve mode every field and enum separator survives.
 		allPreserve := true
 
-		for _, c := range options.AllConstructs {
+		for _, c := range AllConstructs {
 			if opts.Separator.Get(c) != SeparatorPreserve {
 				allPreserve = false
 			}
@@ -137,7 +136,7 @@ func fuzzOpts(src string) Options {
 		o.Align = AlignDisable
 	}
 
-	for i, c := range options.AllConstructs {
+	for i, c := range AllConstructs {
 		o.Separator.Set(c, SeparatorMode((h[i%4]+i)%4))
 		o.Break.Set(c, h[(i+1)%4]%2 == 0)
 	}

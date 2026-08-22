@@ -2,7 +2,6 @@ package formatter
 
 import (
 	"github.com/karitham/thrift-ls/doc"
-	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -26,7 +25,7 @@ func (f *formatter) structLike(v *syntax.Struct) doc.Doc {
 // bracedBody formats struct, union, and exception declarations. The header
 // renders as a token run up to and including the open brace; the brace
 // text itself is emitted by bracedGroup.
-func (f *formatter) bracedBody(fields []*syntax.Field, open, close int, closeTrailing bool, c options.Construct) doc.Doc {
+func (f *formatter) bracedBody(fields []*syntax.Field, open, close int, closeTrailing bool, c Construct) doc.Doc {
 	bodyID := f.id()
 	sepMode := f.opts.Separator.Get(c)
 	forced := f.opts.Break.Get(c) || sepForcesBreak(sepsOfFields(fields), sepMode)
@@ -62,15 +61,15 @@ func (f *formatter) scanKind(start, end int, kind syntax.TokenKind) int {
 }
 
 // constructOf returns the construct for the struct-like kind.
-func (f *formatter) constructOf(kind syntax.StructKind) options.Construct {
+func (f *formatter) constructOf(kind syntax.StructKind) Construct {
 	switch kind {
 	case syntax.TokenUnion:
-		return options.ConstructUnion
+		return ConstructUnion
 	case syntax.TokenException:
-		return options.ConstructException
+		return ConstructException
 	}
 
-	return options.ConstructStruct
+	return ConstructStruct
 }
 
 // bracedGroup assembles "{ body }" from the prebuilt body list: flat as
@@ -113,8 +112,8 @@ func (f *formatter) bracedGroup(body doc.Doc, bodyID, n, open, close int, closeT
 // bracedEnumBody is bracedBody for enum values.
 func (f *formatter) bracedEnumBody(values []*syntax.EnumValue, open, close int, closeTrailing bool) doc.Doc {
 	bodyID := f.id()
-	sepMode := f.opts.Separator.Get(options.ConstructEnum)
-	forced := f.opts.Break.Get(options.ConstructEnum) || sepForcesBreak(sepsOfValues(values), sepMode)
+	sepMode := f.opts.Separator.Get(ConstructEnum)
+	forced := f.opts.Break.Get(ConstructEnum) || sepForcesBreak(sepsOfValues(values), sepMode)
 
 	return f.bracedGroup(f.enumValueList(values, bodyID), bodyID, len(values), open, close, closeTrailing, forced)
 }
@@ -206,8 +205,8 @@ func (f *formatter) functionBody(v *syntax.Function) doc.Doc {
 
 	// Comments or blank lines in the arguments force the multiline layout:
 	// the flat argument group would drop them.
-	argsMode := f.opts.Separator.Get(options.ConstructArguments)
-	if f.fieldsForcedBroken(v.Args) || sepForcesBreak(sepsOfFields(v.Args), argsMode) || f.opts.Break.Get(options.ConstructArguments) {
+	argsMode := f.opts.Separator.Get(ConstructArguments)
+	if f.fieldsForcedBroken(v.Args) || sepForcesBreak(sepsOfFields(v.Args), argsMode) || f.opts.Break.Get(ConstructArguments) {
 		return f.functionBrokenArgs(v, header)
 	}
 
@@ -250,11 +249,11 @@ func (f *formatter) parenGroup(fields []*syntax.Field, open, close int, forced b
 // throwsGroup renders the throws clause with the same folding as the
 // arguments, so it stays flat when it fits even if the arguments broke.
 func (f *formatter) throwsGroup(v *syntax.Function) doc.Doc {
-	forced := f.fieldsForcedBroken(v.Throws.Fields) || sepForcesBreak(sepsOfFields(v.Throws.Fields), f.opts.Separator.Get(options.ConstructThrows)) || f.opts.Break.Get(options.ConstructThrows)
+	forced := f.fieldsForcedBroken(v.Throws.Fields) || sepForcesBreak(sepsOfFields(v.Throws.Fields), f.opts.Separator.Get(ConstructThrows)) || f.opts.Break.Get(ConstructThrows)
 
 	p := f.Parts(2)
 	p = append(p, f.Text(" throws "))
-	p = append(p, f.parenGroup(v.Throws.Fields, v.Throws.TokStart(), v.Throws.TokEnd(), forced, f.opts.Separator.Get(options.ConstructThrows)))
+	p = append(p, f.parenGroup(v.Throws.Fields, v.Throws.TokStart(), v.Throws.TokEnd(), forced, f.opts.Separator.Get(ConstructThrows)))
 
 	return f.Concat(p...)
 }
@@ -336,7 +335,7 @@ func (f *formatter) functionBrokenArgs(v *syntax.Function, header doc.Doc) doc.D
 
 	parts := []doc.Doc{
 		header,
-		f.parenGroup(v.Args, open, f.parenClose(v.Args, open), true, f.opts.Separator.Get(options.ConstructArguments)),
+		f.parenGroup(v.Args, open, f.parenClose(v.Args, open), true, f.opts.Separator.Get(ConstructArguments)),
 	}
 	if v.Throws != nil {
 		parts = append(parts, f.throwsGroup(v))

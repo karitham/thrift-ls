@@ -3,8 +3,6 @@ package formatter
 import (
 	"strings"
 	"testing"
-
-	"github.com/karitham/thrift-ls/options"
 )
 
 // sweepSeparatorSpace asserts the invariant behind the "space before
@@ -224,10 +222,10 @@ func TestNoSpaceBeforeSeparator(t *testing.T) {
 				for _, w := range widths {
 					o := DefaultOptions()
 					o.PrintWidth = w
-					o.Separator.Set(options.ConstructStruct, m.mode)
-					o.Separator.Set(options.ConstructEnum, m.mode)
-					o.Separator.Set(options.ConstructArguments, m.mode)
-					o.Separator.Set(options.ConstructThrows, m.mode)
+					o.Separator.Set(ConstructStruct, m.mode)
+					o.Separator.Set(ConstructEnum, m.mode)
+					o.Separator.Set(ConstructArguments, m.mode)
+					o.Separator.Set(ConstructThrows, m.mode)
 					o.Align = a.align
 
 					label := src.name + "/" + m.name + "/" + a.name
