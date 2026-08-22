@@ -255,7 +255,7 @@ struct TestUUID {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &SemanticAnalysis{}
-			got, err := c.Diagnostic(tt.args.ctx, tt.args.view, tt.args.changeFiles)
+			got, err := c.Diagnostic(tt.args.ctx, NewBatch(tt.args.view), tt.args.changeFiles)
 
 			for key := range got {
 				sort.SliceStable(got[key], func(i, j int) bool {
@@ -332,7 +332,7 @@ func Test_SemanticAnalysis_MapKeyScalar(t *testing.T) {
 				},
 			})
 
-			got, err := (&SemanticAnalysis{}).diagnostic(t.Context(), view, "file:///tmp/user.thrift")
+			got, err := (&SemanticAnalysis{}).diagnostic(t.Context(), NewBatch(view), "file:///tmp/user.thrift")
 			require.NoError(t, err)
 
 			var msgs []string

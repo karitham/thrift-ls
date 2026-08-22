@@ -82,7 +82,7 @@ func Test_UnusedIncludeCheck(t *testing.T) {
 				},
 			})
 
-			got, err := (&UnusedIncludeCheck{}).diagnostic(t.Context(), view, uri.File(filePath))
+			got, err := (&UnusedIncludeCheck{}).diagnostic(t.Context(), NewBatch(view), uri.File(filePath))
 			require.NoError(t, err)
 
 			var msgs []string

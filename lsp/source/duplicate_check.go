@@ -26,7 +26,9 @@ func (c *DuplicateCheck) Name() string {
 	return "DuplicateCheck"
 }
 
-func (c *DuplicateCheck) Diagnostic(ctx context.Context, view *cache.View, changeFiles []uri.URI) (DiagnosticResult, error) {
+func (c *DuplicateCheck) Diagnostic(ctx context.Context, b *Batch, changeFiles []uri.URI) (DiagnosticResult, error) {
+	view := b.View()
+
 	res := make(DiagnosticResult)
 
 	for _, file := range changeFiles {

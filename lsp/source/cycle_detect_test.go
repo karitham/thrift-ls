@@ -91,7 +91,7 @@ func runCycleCheck(t *testing.T, files map[string]string, root string) []cyclePa
 
 	view := buildSnapshotForTest(t, changes)
 
-	res, err := (&CycleCheck{}).Diagnostic(t.Context(), view, []uri.URI{uri.URI("file:///tmp/" + root)})
+	res, err := (&CycleCheck{}).Diagnostic(t.Context(), NewBatch(view), []uri.URI{uri.URI("file:///tmp/" + root)})
 	require.NoError(t, err)
 
 	for file, diags := range res {

@@ -197,7 +197,7 @@ func TestSemanticAnalysisSkipsBrokenFile(t *testing.T) {
 				},
 			})
 
-			got, err := (&SemanticAnalysis{}).Diagnostic(t.Context(), view, []uri.URI{"file:///f.thrift"})
+			got, err := (&SemanticAnalysis{}).Diagnostic(t.Context(), NewBatch(view), []uri.URI{"file:///f.thrift"})
 			require.NoError(t, err, "a broken file must not fail the diagnostics run")
 			assert.NotNil(t, got)
 		})
