@@ -9,7 +9,6 @@ import (
 	"go.lsp.dev/protocol"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/options"
 )
 
 // buildSnapshot builds a view from file contents with optional include
@@ -20,7 +19,7 @@ func buildSnapshot(t *testing.T, includePaths []string, files ...*cache.FileChan
 	c := cache.NewMemoizedFS()
 	fs := cache.NewOverlayFS(c)
 	_ = fs.Update(t.Context(), files)
-	view := cache.NewView(uri.File("/tmp"), fs, includePaths, options.Patch{})
+	view := cache.NewView(uri.File("/tmp"), fs, includePaths)
 
 	for _, f := range files {
 		_, _ = view.Parse(t.Context(), f.URI)

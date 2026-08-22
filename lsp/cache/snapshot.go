@@ -9,7 +9,6 @@ import (
 
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/resolver"
 	"github.com/karitham/thrift-ls/syntax"
 )
@@ -153,7 +152,7 @@ func BuildViewForTestWithPaths(includePaths []string, files []*FileChange) *View
 	fs := NewOverlayFS(c)
 	_ = fs.Update(context.TODO(), files)
 
-	view := NewView("file:///tmp", fs, includePaths, options.Patch{})
+	view := NewView("file:///tmp", fs, includePaths)
 
 	for _, f := range files {
 		_, _ = view.Parse(context.TODO(), f.URI)

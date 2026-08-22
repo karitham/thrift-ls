@@ -13,7 +13,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/options"
 )
 
 // writeTree writes the file contents under dir and returns the directory.
@@ -37,7 +36,7 @@ func openTree(t *testing.T, session *cache.Session, dir string, only map[string]
 	t.Helper()
 
 	folder := uri.File(dir)
-	view := session.AddView(folder, nil, options.Patch{})
+	view := session.AddView(folder, nil)
 
 	require.NoError(t, filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || filepath.Ext(path) != ".thrift" {

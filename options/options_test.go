@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-
 func TestFindConfig(t *testing.T) {
 	dir := t.TempDir()
 

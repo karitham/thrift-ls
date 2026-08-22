@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -101,7 +100,7 @@ func Test_View_Dependents(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			v := NewView("file:///tmp", nil, nil, options.Patch{})
+			v := NewView("file:///tmp", nil, nil)
 			seedEdges(t, v, tt.edges)
 
 			got := v.Dependents(uri.URI(tt.file))
@@ -114,7 +113,7 @@ func Test_View_Dependents(t *testing.T) {
 // edges: after a re-parse removes an include, the former dependency keeps
 // only its remaining dependents.
 func Test_View_ReparseReplacesEdges(t *testing.T) {
-	v := NewView("file:///tmp", nil, nil, options.Patch{})
+	v := NewView("file:///tmp", nil, nil)
 
 	seedEdges(t, v, map[string][]string{
 		strikeRougeURI: {"federation.gundam.thrift", "mobile_suit.zeon.thrift"},
@@ -133,7 +132,7 @@ func Test_View_ReparseReplacesEdges(t *testing.T) {
 }
 
 func Test_View_IncludesAndIncluders(t *testing.T) {
-	v := NewView("file:///tmp", nil, nil, options.Patch{})
+	v := NewView("file:///tmp", nil, nil)
 
 	seedEdges(t, v, map[string][]string{
 		strikeRougeURI: {"char.thrift", "federation.gundam.thrift"},

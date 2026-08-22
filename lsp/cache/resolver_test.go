@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -32,7 +31,7 @@ func TestResolver(t *testing.T) {
 	c := NewMemoizedFS()
 	fs := NewOverlayFS(c)
 
-	view := NewView(uri.File(tmpDir), fs, []string{sharedDir}, options.Patch{})
+	view := NewView(uri.File(tmpDir), fs, []string{sharedDir})
 
 	resolver := view.Resolver()
 

@@ -12,7 +12,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/options"
 )
 
 func buildSnapshotForTest(t *testing.T, files []*cache.FileChange) *cache.View {
@@ -22,7 +21,7 @@ func buildSnapshotForTest(t *testing.T, files []*cache.FileChange) *cache.View {
 	fs := cache.NewOverlayFS(c)
 	_ = fs.Update(t.Context(), files)
 
-	view := cache.NewView("file:///tmp", fs, nil, options.Patch{})
+	view := cache.NewView("file:///tmp", fs, nil)
 
 	for _, f := range files {
 		_, _ = view.Parse(t.Context(), f.URI)

@@ -45,6 +45,12 @@ type Server struct {
 	// handshake never blocks on parsing the workspace.
 	folders []uri.URI
 
+	// configs holds each view folder's resolved configuration. Views only
+	// carry what the store needs (include paths); formatting settings and
+	// log level stay here, where the workspace overlay applies.
+	cfgMu   sync.RWMutex
+	configs map[uri.URI]options.Patch
+
 	// workspaceWalkOnce and dirWalkOnce guard the two independent walks:
 	// the whole workspace on Initialized, and the opened file's directory
 	// on the first didOpen (single-file mode). They must not share a guard
@@ -64,6 +70,7 @@ func NewServer(fs cache.FileSource, client protocol.Client, opts Options) *Serve
 		explicit:   opts.Config,
 		configPath: opts.ConfigPath,
 		cli:        opts.CLI,
+		configs:    make(map[uri.URI]options.Patch),
 	}
 }
 
@@ -84,17 +91,31 @@ func (s *Server) setWorkspaceSettings(overlay options.Patch) {
 }
 
 // addFolderView creates the view for a workspace folder, resolving the
-// folder's config at creation — when the workspace is finally known.
+// folder's config at creation — when the workspace is finally known. The
+// resolved config is kept on the server, keyed by folder; views only carry
+// what the store needs.
 func (s *Server) addFolderView(folder uri.URI) *cache.View {
 	cfg := s.viewConfig(folder)
 	s.applyLogLevel(cfg)
+
+	s.cfgMu.Lock()
+	s.configs[folder] = cfg
+	s.cfgMu.Unlock()
 
 	var includePaths []string
 	if cfg.IncludePaths != nil {
 		includePaths = *cfg.IncludePaths
 	}
 
-	return s.session.AddView(folder, includePaths, cfg)
+	return s.session.AddView(folder, includePaths)
+}
+
+// folderConfig returns the resolved configuration of a view's folder.
+func (s *Server) folderConfig(folder uri.URI) options.Patch {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+
+	return s.configs[folder]
 }
 
 // viewConfig resolves the config for a view rooted at folder: the pinned
@@ -148,20 +169,20 @@ func (s *Server) applyLogLevel(cfg options.Patch) {
 	}
 }
 
-// formatOptions returns the view's config with the workspace settings
+// formatOptions returns the folder's config with the workspace settings
 // overlay applied.
 func (s *Server) formatOptions(view *cache.View) formatter.Options {
 	s.optsMu.RLock()
 	overlay := s.workspaceOverlay
 	s.optsMu.RUnlock()
 
-	fopts, err := overlay.Apply(view.Config()).FormatPatch.Options()
+	fopts, err := overlay.Apply(s.folderConfig(view.Folder())).FormatPatch.Options()
 	if err != nil {
 		// Both layers were validated when stored; this is unreachable
 		// unless a view config was corrupted.
 		logError("formatter options rejected", err)
 
-		fopts, _ = view.Config().FormatPatch.Options()
+		fopts, _ = s.folderConfig(view.Folder()).FormatPatch.Options()
 	}
 
 	return fopts
@@ -298,6 +319,10 @@ func (s *Server) DidChangeWatchedFiles(ctx context.Context, params *protocol.Did
 func (s *Server) DidChangeWorkspaceFolders(ctx context.Context, params *protocol.DidChangeWorkspaceFoldersParams) (err error) {
 	for _, folder := range params.Event.Removed {
 		s.session.RemoveView(folder.URI)
+
+		s.cfgMu.Lock()
+		delete(s.configs, folder.URI)
+		s.cfgMu.Unlock()
 	}
 
 	for _, folder := range params.Event.Added {
