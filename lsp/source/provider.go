@@ -129,52 +129,18 @@ func (annotationKeyProvider) Candidates(ctx context.Context, view *cache.View, f
 	return setCandidates(keys)
 }
 
-// annotationKeys collects the names of every annotation in the document:
-// on definitions, fields, enum values, functions, namespaces, and typedefs.
+// annotationKeys collects the name of every annotation in the document,
+// wherever it appears. Annotation groups decorate nodes rather than
+// forming tree children, so this goes through EachAnnotation instead of
+// Walk.
 func annotationKeys(doc *syntax.Document) map[string]struct{} {
 	keys := make(map[string]struct{})
 
-	add := func(annotations *syntax.Annotations) {
-		if annotations == nil {
-			return
+	doc.EachAnnotation(func(ann *syntax.Annotations) {
+		for _, item := range ann.Items {
+			keys[item.Name.Text] = struct{}{}
 		}
-
-		for _, a := range annotations.Items {
-			keys[a.Name.Text] = struct{}{}
-		}
-	}
-
-	for _, ns := range doc.Namespaces() {
-		add(ns.Annotations)
-	}
-
-	for _, td := range doc.Typedefs() {
-		add(td.Annotations)
-	}
-
-	for _, st := range doc.Structs() {
-		add(st.Annotations)
-
-		for _, f := range st.Fields {
-			add(f.Annotations)
-		}
-	}
-
-	for _, enum := range doc.Enums() {
-		add(enum.Annotations)
-
-		for _, v := range enum.Values {
-			add(v.Annotations)
-		}
-	}
-
-	for _, svc := range doc.Services() {
-		add(svc.Annotations)
-
-		for _, fn := range svc.Functions {
-			add(fn.Annotations)
-		}
-	}
+	})
 
 	return keys
 }

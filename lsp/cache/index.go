@@ -1,6 +1,8 @@
 package cache
 
 import (
+	"fmt"
+
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -155,6 +157,10 @@ func (w *indexWalker) visit(n syntax.Node) {
 		w.typ(v.Type, RefFieldType)
 	case *syntax.Namespace:
 		w.note(v.Annotations)
+	case *syntax.Include, *syntax.CPPInclude:
+		// Headers bind no names and hold no references.
+	default:
+		panic(fmt.Sprintf("cache: indexWalker missing case for %T", n))
 	}
 }
 

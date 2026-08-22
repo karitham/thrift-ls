@@ -58,45 +58,38 @@ func (s *SemanticAnalysis) diagnostic(ctx context.Context, b *Batch, changeFile 
 	return res, nil
 }
 
-// checkDefinitionExist reports field types, const values, and return types
-// that reference undefined definitions.
+// checkDefinitionExist reports undefined references in one document walk:
+// type references that resolve to no definition (fields, signatures,
+// consts, typedefs, nested container elements), constant-value identifiers
+// resolving to no enum value or const at any nesting depth, map keys that
+// are not scalar, and field defaults whose kind mismatches the field type.
 func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, view *cache.View, ix *Index, pf *cache.ParsedFile) []protocol.Diagnostic {
-	ret := make([]protocol.Diagnostic, 0)
+	res := make([]protocol.Diagnostic, 0)
 
-	processFields := func(fields []*syntax.Field) {
-		for _, field := range fields {
-			items := s.checkTypeExist(ctx, view, ix, pf, field.Type)
-			ret = append(ret, items...)
+	syntax.Walk(pf.AST(), func(n syntax.Node) bool {
+		switch v := n.(type) {
+		case *syntax.FieldType:
+			res = append(res, s.checkTypeExist(ctx, view, ix, pf, v)...)
 
-			if field.Value != nil {
-				items := s.checkConstValueExist(ctx, view, ix, pf, field.Value)
-				ret = append(ret, items...)
-
-				dig := s.checkConstValueMatchType(pf, field)
-				if dig != nil {
-					ret = append(ret, *dig)
+			if v.Kind == syntax.TypeMap && v.KeyType != nil {
+				if dig := s.checkMapKeyScalar(ctx, view, ix, pf, v.KeyType); dig != nil {
+					res = append(res, *dig)
 				}
 			}
+		case *syntax.Field:
+			if v.Value != nil {
+				if dig := s.checkConstValueMatchType(pf, v); dig != nil {
+					res = append(res, *dig)
+				}
+			}
+		case *syntax.ConstValue:
+			res = append(res, s.checkConstValueExist(ctx, view, ix, pf, v)...)
 		}
-	}
 
-	pf.AST().WalkFieldLists(func(fields []*syntax.Field, _ syntax.FieldListKind) {
-		processFields(fields)
+		return true
 	})
 
-	for _, cst := range pf.AST().Consts() {
-		items := s.checkConstValueExist(ctx, view, ix, pf, cst.Value)
-		ret = append(ret, items...)
-	}
-
-	for _, svc := range pf.AST().Services() {
-		for _, fn := range svc.Functions {
-			items := s.checkTypeExist(ctx, view, ix, pf, fn.Type)
-			ret = append(ret, items...)
-		}
-	}
-
-	return ret
+	return res
 }
 
 func (s *SemanticAnalysis) checkConstValueExist(ctx context.Context, view *cache.View, ix *Index,
@@ -229,52 +222,28 @@ func typeName(ft *syntax.FieldType) string {
 	return ""
 }
 
+// checkTypeExist reports a single type reference that resolves to no
+// definition. The walk visits every FieldType individually — including
+// container element types — so this needs no recursion.
 func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, view *cache.View, ix *Index,
 	pf *cache.ParsedFile, ft *syntax.FieldType,
 ) (res []protocol.Diagnostic) {
-	if ft == nil {
+	if ft == nil || ft.Kind != syntax.TypeIdent {
 		return res
 	}
 
-	switch ft.Kind {
-	case syntax.TypeMap, syntax.TypeList, syntax.TypeSet:
-		return s.checkContainerTypeExist(ctx, ix, view, pf, ft)
-	case syntax.TypeBase:
-		return nil
-	case syntax.TypeIdent:
-		def, err := ix.ResolveType(ctx, pf, ft)
-		if err != nil || def == nil {
-			res = append(res, protocol.Diagnostic{
-				Range:    nodeRange(pf, ft.Ident),
-				Severity: protocol.DiagnosticSeverityError,
-				Code:     protocol.String(CodeUndefinedType),
-				Source:   protocol.NewOptional("thrift-ls"),
-				Message:  protocol.String("field type doesn't exist"),
-			})
-		}
+	def, err := ix.ResolveType(ctx, pf, ft)
+	if err == nil && def != nil {
+		return res
 	}
 
-	return res
-}
-
-func (s *SemanticAnalysis) checkContainerTypeExist(ctx context.Context, ix *Index,
-	view *cache.View, pf *cache.ParsedFile, ft *syntax.FieldType,
-) (res []protocol.Diagnostic) {
-	if ft.KeyType != nil {
-		res = append(res, s.checkTypeExist(ctx, view, ix, pf, ft.KeyType)...)
-
-		if ft.Kind == syntax.TypeMap {
-			if dig := s.checkMapKeyScalar(ctx, view, ix, pf, ft.KeyType); dig != nil {
-				res = append(res, *dig)
-			}
-		}
-	}
-
-	if ft.ValueType != nil {
-		res = append(res, s.checkTypeExist(ctx, view, ix, pf, ft.ValueType)...)
-	}
-
-	return res
+	return append(res, protocol.Diagnostic{
+		Range:    nodeRange(pf, ft.Ident),
+		Severity: protocol.DiagnosticSeverityError,
+		Code:     protocol.String(CodeUndefinedType),
+		Source:   protocol.NewOptional("thrift-ls"),
+		Message:  protocol.String("field type doesn't exist"),
+	})
 }
 
 // checkMapKeyScalar returns an error when the map key type is not scalar:

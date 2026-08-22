@@ -54,8 +54,7 @@ func Tokens(ctx context.Context, view *cache.View, file uri.URI) ([]uint32, erro
 	}
 
 	doc := pf.AST()
-	names := definitionNames(doc)
-	types := typeReferences(doc)
+	names, types := tokenFacts(doc)
 
 	data := make([]uint32, 0, len(doc.Tokens)*5)
 	prevLine, prevChar := 0, 0
@@ -136,101 +135,54 @@ func classifyToken(i int, tok syntax.Token, names map[int]int, types map[int]boo
 	return 0, false
 }
 
-// definitionNames maps every definition name token to its semantic type:
-// structs, enums, services, consts, typedefs, and their members.
-func definitionNames(doc *syntax.Document) map[int]int {
-	names := map[int]int{}
+// tokenFacts collects the semantic classification facts of a document in
+// one tree walk: names maps every definition-name token index to its
+// semantic type, types marks the first token of every type reference.
+// Field names are properties wherever they legally appear (struct fields,
+// arguments, throws members), and container element types are marked like
+// their parents, so no position needs separate handling.
+func tokenFacts(doc *syntax.Document) (names map[int]int, types map[int]bool) {
+	names = map[int]int{}
+	types = map[int]bool{}
 
-	for _, n := range doc.Nodes {
+	syntax.Walk(doc, func(n syntax.Node) bool {
 		switch v := n.(type) {
 		case *syntax.Struct:
-			switch v.Kind {
-			case syntax.UnionDecl:
-				names[v.Name.TokStart()] = tokUnion
-			case syntax.ExceptionDecl:
-				names[v.Name.TokStart()] = tokException
-			default:
-				names[v.Name.TokStart()] = tokStruct
-			}
-
-			for _, f := range v.Fields {
-				names[f.Name.TokStart()] = tokProperty
-			}
+			names[v.Name.TokStart()] = structToken(v.Kind)
 		case *syntax.Enum:
 			names[v.Name.TokStart()] = tokEnum
-			for _, value := range v.Values {
-				names[value.Name.TokStart()] = tokEnumMember
-			}
 		case *syntax.Service:
 			names[v.Name.TokStart()] = tokInterface
-			for _, fn := range v.Functions {
-				names[fn.Name.TokStart()] = tokFunction
-				for _, arg := range fn.Args {
-					names[arg.Name.TokStart()] = tokProperty
-				}
-
-				if fn.Throws != nil {
-					for _, f := range fn.Throws.Fields {
-						names[f.Name.TokStart()] = tokProperty
-					}
-				}
-			}
 		case *syntax.Const:
 			names[v.Name.TokStart()] = tokVariable
 		case *syntax.Typedef:
 			names[v.Name.TokStart()] = tokType
+		case *syntax.Function:
+			names[v.Name.TokStart()] = tokFunction
+		case *syntax.EnumValue:
+			names[v.Name.TokStart()] = tokEnumMember
+		case *syntax.Field:
+			names[v.Name.TokStart()] = tokProperty
+		case *syntax.FieldType:
+			types[v.TokStart()] = true
 		}
-	}
 
-	return names
+		return true
+	})
+
+	return names, types
 }
 
-// typeReferences maps every type reference's first token to the type
-// semantic type: field types, function return types, argument and throws
-// types, const and typedef types, and the nested container types.
-func typeReferences(doc *syntax.Document) map[int]bool {
-	types := map[int]bool{}
-
-	var add func(t *syntax.FieldType)
-
-	add = func(t *syntax.FieldType) {
-		if t == nil {
-			return
-		}
-
-		types[t.TokStart()] = true
-		add(t.KeyType)
-		add(t.ValueType)
+// structToken maps a struct-kind declaration to its semantic token type.
+func structToken(k syntax.TokenKind) int {
+	switch k {
+	case syntax.UnionDecl:
+		return tokUnion
+	case syntax.ExceptionDecl:
+		return tokException
+	default:
+		return tokStruct
 	}
-
-	for _, n := range doc.Nodes {
-		switch v := n.(type) {
-		case *syntax.Struct:
-			for _, f := range v.Fields {
-				add(f.Type)
-			}
-		case *syntax.Service:
-			for _, fn := range v.Functions {
-				add(fn.Type)
-
-				for _, arg := range fn.Args {
-					add(arg.Type)
-				}
-
-				if fn.Throws != nil {
-					for _, f := range fn.Throws.Fields {
-						add(f.Type)
-					}
-				}
-			}
-		case *syntax.Const:
-			add(v.Type)
-		case *syntax.Typedef:
-			add(v.Type)
-		}
-	}
-
-	return types
 }
 
 // isKeyword reports whether the kind is a reserved word.

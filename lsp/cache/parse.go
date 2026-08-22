@@ -12,11 +12,10 @@ import (
 )
 
 // collectTokens collects every identifier name in the document: definition
-// names, field names, and identifier references.
+// names, field names, identifier references, and the identifier texts of
+// const values (including qualified forms like "Color.RED").
 func collectTokens(ast *syntax.Document, tokens map[string]struct{}) {
-	var walk func(n syntax.Node)
-
-	walk = func(n syntax.Node) {
+	syntax.Walk(ast, func(n syntax.Node) bool {
 		switch v := n.(type) {
 		case *syntax.Identifier:
 			tokens[v.Text] = struct{}{}
@@ -24,82 +23,10 @@ func collectTokens(ast *syntax.Document, tokens map[string]struct{}) {
 			if v.Kind == syntax.ValueIdent {
 				tokens[v.Text] = struct{}{}
 			}
-
-			for _, item := range v.List {
-				walk(item)
-			}
-
-			for _, entry := range v.Map {
-				walk(entry.Key)
-				walk(entry.Value)
-			}
-		case *syntax.Struct:
-			walk(v.Name)
-
-			for _, f := range v.Fields {
-				walk(f)
-			}
-		case *syntax.Service:
-			walk(v.Name)
-
-			for _, fn := range v.Functions {
-				walk(fn)
-			}
-		case *syntax.Enum:
-			walk(v.Name)
-
-			for _, ev := range v.Values {
-				walk(ev)
-			}
-		case *syntax.Field:
-			walk(v.Type)
-			walk(v.Name)
-
-			if v.Value != nil {
-				walk(v.Value)
-			}
-		case *syntax.Function:
-			if v.Type != nil {
-				walk(v.Type)
-			}
-
-			walk(v.Name)
-
-			for _, a := range v.Args {
-				walk(a)
-			}
-
-			if v.Throws != nil {
-				for _, f := range v.Throws.Fields {
-					walk(f)
-				}
-			}
-		case *syntax.FieldType:
-			if v.Ident != nil {
-				walk(v.Ident)
-			}
-
-			if v.KeyType != nil {
-				walk(v.KeyType)
-			}
-
-			if v.ValueType != nil {
-				walk(v.ValueType)
-			}
-		case *syntax.Const:
-			walk(v.Type)
-			walk(v.Name)
-			walk(v.Value)
-		case *syntax.Typedef:
-			walk(v.Type)
-			walk(v.Name)
-		case *syntax.EnumValue:
-			walk(v.Name)
 		}
-	}
-	for _, n := range ast.Nodes {
-		walk(n)
-	}
+
+		return true
+	})
 }
 
 type ParsedFile struct {

@@ -171,3 +171,74 @@ func (d *Document) WalkFieldLists(fn func(fields []*Field, kind FieldListKind)) 
 		}
 	}
 }
+
+// EachAnnotation visits every annotation group attached to any node of
+// the document: namespaces, typedefs, structs, fields, enum values,
+// services, functions, arguments, throws members, and container types.
+//
+// Annotation groups are not tree children — they decorate nodes the way
+// trivia decorates tokens — so a plain tree walk does not reach them;
+// consumers must come here instead.
+func (d *Document) EachAnnotation(fn func(*Annotations)) {
+	visit := func(a *Annotations) {
+		if a != nil {
+			fn(a)
+		}
+	}
+
+	var visitType func(t *FieldType)
+
+	visitType = func(t *FieldType) {
+		if t == nil {
+			return
+		}
+
+		visit(t.Annotations)
+		visitType(t.KeyType)
+		visitType(t.ValueType)
+	}
+
+	for _, n := range d.Nodes {
+		switch v := n.(type) {
+		case *Namespace:
+			visit(v.Annotations)
+		case *Typedef:
+			visit(v.Annotations)
+			visitType(v.Type)
+		case *Const:
+			visitType(v.Type)
+		case *Enum:
+			visit(v.Annotations)
+
+			for _, ev := range v.Values {
+				visit(ev.Annotations)
+			}
+		case *Struct:
+			visit(v.Annotations)
+
+			for _, f := range v.Fields {
+				visit(f.Annotations)
+				visitType(f.Type)
+			}
+		case *Service:
+			visit(v.Annotations)
+
+			for _, fnx := range v.Functions {
+				visit(fnx.Annotations)
+				visitType(fnx.Type)
+
+				for _, a := range fnx.Args {
+					visit(a.Annotations)
+					visitType(a.Type)
+				}
+
+				if fnx.Throws != nil {
+					for _, f := range fnx.Throws.Fields {
+						visit(f.Annotations)
+						visitType(f.Type)
+					}
+				}
+			}
+		}
+	}
+}

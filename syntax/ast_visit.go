@@ -1,5 +1,7 @@
 package syntax
 
+import "fmt"
+
 // SearchNodePathByPosition returns the path of nodes containing pos, from
 // the document root to the innermost node. The LSP uses the deepest node to
 // decide what the cursor is on and its ancestors for context.
@@ -25,6 +27,11 @@ func (d *Document) searchNodePath(root Node, pos Position, path *[]Node) {
 // nodes, so the deepest node on a name is the identifier itself; the parent
 // path element identifies its role (a field name, a type reference, a
 // definition name, and so on).
+//
+// The switch must stay exhaustive over the Node set: position search and
+// Walk route every traversal through here, so an unhandled node type would
+// silently truncate traversals. The default case panics instead, because a
+// missed case is a bug in this package, not bad input.
 func nodeChildren(n Node) []Node {
 	switch v := n.(type) {
 	case *Document:
@@ -119,7 +126,27 @@ func nodeChildren(n Node) []Node {
 		return []Node{v.Name}
 	case *Include, *CPPInclude, *Identifier:
 		return nil
+	case *Annotation, *Annotations:
+		// Annotations stay opaque: their names and values are not part of
+		// any node path.
+		return nil
+	default:
+		panic(fmt.Sprintf("syntax: nodeChildren missing case for %T", n))
+	}
+}
+
+// Walk visits n and its descendants depth-first in source order, preorder:
+// n first, then each child's subtree. visit receives every node and returns
+// whether to descend into that node's children. Use it to collect facts
+// across a document instead of writing another hand-rolled recursion; it
+// inherits nodeChildren's exhaustiveness, so new node kinds cannot be
+// silently skipped.
+func Walk(n Node, visit func(Node) bool) {
+	if !visit(n) {
+		return
 	}
 
-	return nil
+	for _, child := range nodeChildren(n) {
+		Walk(child, visit)
+	}
 }

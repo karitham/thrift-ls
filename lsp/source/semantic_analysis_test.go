@@ -344,3 +344,70 @@ func Test_SemanticAnalysis_MapKeyScalar(t *testing.T) {
 		})
 	}
 }
+
+// Test_SemanticAnalysis_WalkCoverage pins the checks that are driven by the
+// document walk: nested container default values are existence-checked,
+// const types are existence-checked, and diagnostics come out in document
+// order (a function's return type before its arguments).
+func Test_SemanticAnalysis_WalkCoverage(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    []string // expected messages, in document order
+	}{
+		{
+			name:    "nested list idents are checked",
+			content: "struct S {}\nstruct T {\n  1: required list<S> xs = [Nope1, Nope2],\n}\n",
+			want: []string{
+				"default value doesn't exist",
+				"default value doesn't exist",
+			},
+		},
+		{
+			name:    "nested map idents are checked, resolved ones stay quiet",
+			content: "enum E { A }\nstruct T {\n  1: required list<E> good = [E.A],\n  2: required map<string, E> bad = {\"k\": Missing},\n}\n",
+			want: []string{
+				"default value doesn't exist",
+			},
+		},
+		{
+			name:    "undefined const type is reported",
+			content: "const Missing c = 1\n",
+			want: []string{
+				"field type doesn't exist",
+			},
+		},
+		{
+			name:    "return type is diagnosed before its arguments",
+			content: "service S {\n  Undefined ret(1: Undefined a) throws (1: Undefined e),\n}\n",
+			want: []string{
+				"field type doesn't exist",
+				"field type doesn't exist",
+				"field type doesn't exist",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			view := buildSnapshotForTest(t, []*cache.FileChange{
+				{
+					URI:     "file:///tmp/user.thrift",
+					Version: 0,
+					Content: []byte(tt.content),
+					From:    cache.FileChangeTypeDidOpen,
+				},
+			})
+
+			got, err := (&SemanticAnalysis{}).diagnostic(t.Context(), NewBatch(view), "file:///tmp/user.thrift")
+			require.NoError(t, err)
+
+			var msgs []string
+			for _, d := range got {
+				msgs = append(msgs, string(d.Message.(protocol.String)))
+			}
+
+			assert.Equal(t, tt.want, msgs)
+		})
+	}
+}

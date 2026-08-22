@@ -145,12 +145,7 @@ func initializeResult() *protocol.InitializeResult {
 			TextDocumentSync: &protocol.TextDocumentSyncOptions{
 				OpenClose: new(true),
 				// full is easy to implement. consider to use incremental for performance
-				Change:            new(protocol.TextDocumentSyncKindFull),
-				WillSave:          new(true),
-				WillSaveWaitUntil: new(true),
-				Save: &protocol.SaveOptions{
-					IncludeText: new(true),
-				},
+				Change: new(protocol.TextDocumentSyncKindFull),
 			},
 			CompletionProvider: &protocol.CompletionOptions{
 				ResolveProvider: new(false),
@@ -173,10 +168,6 @@ func initializeResult() *protocol.InitializeResult {
 			},
 			HoverProvider: &protocol.HoverOptions{
 				WorkDoneProgress: new(true),
-			},
-			SignatureHelpProvider: &protocol.SignatureHelpOptions{
-				TriggerCharacters:   []string{},
-				RetriggerCharacters: []string{},
 			},
 			DeclarationProvider: &protocol.DeclarationRegistrationOptions{
 				WorkDoneProgress: new(true),
@@ -209,12 +200,10 @@ func initializeResult() *protocol.InitializeResult {
 				},
 				ResolveProvider: new(false),
 			},
-			CodeLensProvider: &protocol.CodeLensOptions{
-				ResolveProvider: new(false),
-			},
 			DocumentLinkProvider: &protocol.DocumentLinkOptions{
 				ResolveProvider: new(false),
-			}, ColorProvider: protocol.Boolean(false),
+			},
+			ColorProvider:        protocol.Boolean(false),
 			FoldingRangeProvider: protocol.Boolean(true),
 			WorkspaceSymbolProvider: &protocol.WorkspaceSymbolOptions{
 				WorkDoneProgress: new(true),
@@ -231,9 +220,6 @@ func initializeResult() *protocol.InitializeResult {
 			},
 			RenameProvider: &protocol.RenameOptions{
 				PrepareProvider: new(true),
-			},
-			ExecuteCommandProvider: protocol.ExecuteCommandOptions{
-				Commands: []string{},
 			},
 			CallHierarchyProvider:      protocol.Boolean(false),
 			LinkedEditingRangeProvider: protocol.Boolean(false),
@@ -254,26 +240,6 @@ func initializeResult() *protocol.InitializeResult {
 				WorkspaceFolders: &protocol.WorkspaceFoldersServerCapabilities{
 					Supported:           new(true),
 					ChangeNotifications: protocol.Boolean(true),
-				},
-				FileOperations: &protocol.FileOperationOptions{
-					DidCreate: protocol.FileOperationRegistrationOptions{
-						Filters: []protocol.FileOperationFilter{},
-					},
-					WillCreate: protocol.FileOperationRegistrationOptions{
-						Filters: []protocol.FileOperationFilter{},
-					},
-					DidRename: protocol.FileOperationRegistrationOptions{
-						Filters: []protocol.FileOperationFilter{},
-					},
-					WillRename: protocol.FileOperationRegistrationOptions{
-						Filters: []protocol.FileOperationFilter{},
-					},
-					DidDelete: protocol.FileOperationRegistrationOptions{
-						Filters: []protocol.FileOperationFilter{},
-					},
-					WillDelete: protocol.FileOperationRegistrationOptions{
-						Filters: []protocol.FileOperationFilter{},
-					},
 				},
 			},
 			MonikerProvider: nil,
