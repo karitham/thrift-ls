@@ -44,8 +44,8 @@ type View struct {
 
 	mu        sync.RWMutex
 	entries   map[uri.URI]*viewEntry
-	includes  map[uri.URI][]uri.URI            // sorted direct include edges
-	includers map[uri.URI]map[uri.URI]struct{} // reverse edges
+	includes  map[uri.URI][]uri.URI // sorted direct include edges
+	includers map[uri.URI][]uri.URI // reverse edges
 
 	gen atomic.Uint64
 }
@@ -58,7 +58,7 @@ func NewView(folder uri.URI, fs FileSource, includePaths []string, config option
 		config:       config,
 		entries:      make(map[uri.URI]*viewEntry),
 		includes:     make(map[uri.URI][]uri.URI),
-		includers:    make(map[uri.URI]map[uri.URI]struct{}),
+		includers:    make(map[uri.URI][]uri.URI),
 	}
 }
 
@@ -165,13 +165,7 @@ func (v *View) setEntry(u uri.URI, e *viewEntry, includes []uri.URI) {
 
 		// A self-include records its own reverse edge, so the file is its
 		// own dependent.
-		set := v.includers[inc]
-		if set == nil {
-			set = make(map[uri.URI]struct{})
-			v.includers[inc] = set
-		}
-
-		set[u] = struct{}{}
+		v.includers[inc] = append(v.includers[inc], u)
 	}
 }
 
@@ -179,13 +173,18 @@ func (v *View) setEntry(u uri.URI, e *viewEntry, includes []uri.URI) {
 // Callers must hold mu.
 func (v *View) removeEdgesLocked(u uri.URI) {
 	for _, inc := range v.includes[u] {
-		set := v.includers[inc]
-		if set == nil {
-			continue
+		includers := v.includers[inc]
+		for i, candidate := range includers {
+			if candidate == u {
+				last := len(includers) - 1
+				includers[i] = includers[last]
+				v.includers[inc] = includers[:last]
+
+				break
+			}
 		}
 
-		delete(set, u)
-		if len(set) == 0 {
+		if len(v.includers[inc]) == 0 {
 			delete(v.includers, inc)
 		}
 	}
@@ -208,16 +207,7 @@ func (v *View) Includers(file uri.URI) []uri.URI {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 
-	set := v.includers[file]
-	if len(set) == 0 {
-		return nil
-	}
-
-	out := make([]uri.URI, 0, len(set))
-	for u := range set {
-		out = append(out, u)
-	}
-
+	out := slices.Clone(v.includers[file])
 	slices.Sort(out)
 
 	return out
@@ -234,11 +224,10 @@ func (v *View) Dependents(file uri.URI) []uri.URI {
 	seen := make(map[uri.URI]struct{})
 	queue := []uri.URI{file}
 
-	for len(queue) > 0 {
-		u := queue[0]
-		queue = queue[1:]
+	for head := 0; head < len(queue); head++ {
+		u := queue[head]
 
-		for dependent := range v.includers[u] {
+		for _, dependent := range v.includers[u] {
 			if _, ok := seen[dependent]; ok {
 				continue
 			}
