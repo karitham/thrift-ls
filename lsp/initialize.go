@@ -136,6 +136,22 @@ func (s *Server) walkFoldersThriftFile(folder uri.URI) {
 	})
 }
 
+// thriftFileOperationFilters is the registration for one file operation:
+// every thrift file, files only.
+func thriftFileOperationFilters() protocol.FileOperationRegistrationOptions {
+	return protocol.FileOperationRegistrationOptions{
+		Filters: []protocol.FileOperationFilter{
+			{
+				Scheme: new("file"),
+				Pattern: protocol.FileOperationPattern{
+					Glob:    "**/*.thrift",
+					Matches: protocol.FileOperationPatternKindFile,
+				},
+			},
+		},
+	}
+}
+
 func initializeResult() *protocol.InitializeResult {
 	thriftSelector := &protocol.DocumentSelector{
 		&protocol.TextDocumentFilterLanguage{Language: "thrift"},
@@ -240,6 +256,13 @@ func initializeResult() *protocol.InitializeResult {
 				WorkspaceFolders: &protocol.WorkspaceFoldersServerCapabilities{
 					Supported:           new(true),
 					ChangeNotifications: protocol.Boolean(true),
+				},
+				// Renaming a thrift file must rewrite the include literals
+				// of its dependents; create and delete need no text edits
+				// and stay unadvertised.
+				FileOperations: &protocol.FileOperationOptions{
+					DidRename:  thriftFileOperationFilters(),
+					WillRename: thriftFileOperationFilters(),
 				},
 			},
 			MonikerProvider: nil,

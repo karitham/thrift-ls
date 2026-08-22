@@ -483,11 +483,11 @@ func (s *Server) DidCreateFiles(ctx context.Context, params *protocol.CreateFile
 }
 
 func (s *Server) WillRenameFiles(ctx context.Context, params *protocol.RenameFilesParams) (result *protocol.WorkspaceEdit, err error) {
-	return nil, nil
+	return s.willRenameFiles(ctx, params)
 }
 
 func (s *Server) DidRenameFiles(ctx context.Context, params *protocol.RenameFilesParams) (err error) {
-	return nil
+	return s.didRenameFiles(ctx, params)
 }
 
 func (s *Server) WillDeleteFiles(ctx context.Context, params *protocol.DeleteFilesParams) (result *protocol.WorkspaceEdit, err error) {
