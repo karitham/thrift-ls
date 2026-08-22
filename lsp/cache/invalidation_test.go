@@ -2,7 +2,6 @@ package cache
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -81,8 +80,7 @@ func newViewHarness(t *testing.T, files []*FileChange) *viewHarness {
 }
 
 // change applies a change like the server's didChange: overlay first, then
-// FileChange, returning the affected URIs passed to the postFn once the
-// asynchronous postFn has run.
+// Update, returning the affected URIs.
 func (h *viewHarness) change(t *testing.T, change *FileChange) []uri.URI {
 	t.Helper()
 
@@ -90,20 +88,9 @@ func (h *viewHarness) change(t *testing.T, change *FileChange) []uri.URI {
 		t.Fatal(err)
 	}
 
-	done := make(chan []uri.URI, 1)
+	res := h.view.Update(t.Context(), change)
 
-	h.view.FileChange(t.Context(), []*FileChange{change}, func(_ uint64, a []uri.URI) {
-		done <- a
-	})
-
-	select {
-	case affected := <-done:
-		return affected
-	case <-time.After(5 * time.Second):
-		t.Fatal("postFn did not run")
-
-		return nil
-	}
+	return res.Affected
 }
 
 func Test_FileChangeInvalidatesDependents(t *testing.T) {

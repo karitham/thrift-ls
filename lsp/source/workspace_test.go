@@ -51,12 +51,12 @@ func openTree(t *testing.T, session *cache.Session, dir string, only map[string]
 		content, err := os.ReadFile(path)
 		require.NoError(t, err)
 
-		view.FileChange(t.Context(), []*cache.FileChange{{
+		view.Update(t.Context(), &cache.FileChange{
 			URI:     uri.File(path),
 			Version: 0,
 			Content: content,
 			From:    cache.FileChangeTypeInitialize,
-		}})
+		})
 
 		return nil
 	}))

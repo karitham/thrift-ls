@@ -75,7 +75,7 @@ func BenchmarkStoreFileChange(b *testing.B) {
 	for i := 0; b.Loop(); i++ {
 		mid.Version = i
 
-		view.FileChange(ctx, []*FileChange{mid})
+		view.Update(ctx, mid)
 	}
 }
 
@@ -94,7 +94,7 @@ func BenchmarkStoreChangeThenReadAll(b *testing.B) {
 		mid.Content = []byte(fmt.Sprintf("include \"chain_%d.thrift\"\n\nstruct S%d {\n\t1: required string Name\n}\n",
 			len(files)/2+1, len(files)/2))
 
-		view.FileChange(ctx, []*FileChange{mid})
+		view.Update(ctx, mid)
 
 		for _, f := range files {
 			if _, err := view.Parse(ctx, f.URI); err != nil {
