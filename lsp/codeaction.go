@@ -15,10 +15,10 @@ import (
 // also offered as a quickfix. Actions are filtered to the kinds the client
 // requested.
 func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionParams) ([]protocol.CommandOrCodeAction, error) {
-	return withFile(ctx, s.session, params.TextDocument.URI, func(ss *cache.Snapshot, fh cache.FileHandle) ([]protocol.CommandOrCodeAction, error) {
+	return withFile(ctx, s.session, params.TextDocument.URI, func(view *cache.View, fh cache.FileHandle) ([]protocol.CommandOrCodeAction, error) {
 		var actions []protocol.CodeAction
 
-		enum, err := source.MakeEnumValuesExplicitAction(ctx, ss, fh, params.Range)
+		enum, err := source.MakeEnumValuesExplicitAction(ctx, view, fh, params.Range)
 		if err != nil {
 			return nil, err
 		}
@@ -33,13 +33,13 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 			actions = append(actions, *enum)
 		}
 
-		fieldActions, err := source.MakeFieldQualifierAction(ctx, ss, fh, params.Range)
+		fieldActions, err := source.MakeFieldQualifierAction(ctx, view, fh, params.Range)
 		if err != nil {
 			return nil, err
 		}
 		actions = append(actions, fieldActions...)
 
-		removeInclude, err := source.MakeRemoveUnusedIncludeAction(ctx, ss, fh, params.Range, params.Context.Diagnostics)
+		removeInclude, err := source.MakeRemoveUnusedIncludeAction(ctx, view, fh, params.Range, params.Context.Diagnostics)
 		if err != nil {
 			return nil, err
 		}
@@ -47,7 +47,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 			actions = append(actions, *removeInclude)
 		}
 
-		addInclude, err := source.MakeAddMissingIncludeAction(ctx, ss, fh, params.Range, params.Context.Diagnostics)
+		addInclude, err := source.MakeAddMissingIncludeAction(ctx, view, fh, params.Range, params.Context.Diagnostics)
 		if err != nil {
 			return nil, err
 		}

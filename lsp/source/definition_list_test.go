@@ -23,7 +23,7 @@ func TestDefinition_EnumValueInConstList(t *testing.T) {
 
 const list<MyEnum> my_list = [MyEnum.Value1, MyEnum.Value2]`
 
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{
 			URI:     "file:///tmp/test.thrift",
 			Version: 0,
@@ -34,7 +34,7 @@ const list<MyEnum> my_list = [MyEnum.Value1, MyEnum.Value2]`
 
 	type args struct {
 		ctx  context.Context
-		ss   *cache.Snapshot
+		view *cache.View
 		file uri.URI
 		pos  protocol.Position
 	}
@@ -49,7 +49,7 @@ const list<MyEnum> my_list = [MyEnum.Value1, MyEnum.Value2]`
 			name: "enum value in const list - first element",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/test.thrift",
 				pos: protocol.Position{
 					Line:      6,  // Line with "const list<MyEnum> my_list = [MyEnum.Value1, MyEnum.Value2]"
@@ -77,7 +77,7 @@ const list<MyEnum> my_list = [MyEnum.Value1, MyEnum.Value2]`
 			name: "enum value in const list - second element",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/test.thrift",
 				pos: protocol.Position{
 					Line:      6,
@@ -105,7 +105,7 @@ const list<MyEnum> my_list = [MyEnum.Value1, MyEnum.Value2]`
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Definition(tt.args.ctx, tt.args.ss, tt.args.file, tt.args.pos)
+			got, err := Definition(tt.args.ctx, tt.args.view, tt.args.file, tt.args.pos)
 			tt.assertion(t, err)
 			assert.Equal(t, tt.want, got)
 		})

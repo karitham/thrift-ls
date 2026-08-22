@@ -1,6 +1,6 @@
 // Package folding computes document folding ranges: braced bodies
 // (structs, enums, services), const list and map values, annotations, and
-// comment blocks. Pure over the snapshot: parsing and file I/O happen in
+// comment blocks. Pure over the view: parsing and file I/O happen in
 // the caller.
 package source
 
@@ -18,8 +18,8 @@ import (
 
 // Ranges returns the folding ranges of a file, in source order. Degenerate
 // single-line ranges are omitted.
-func Ranges(ctx context.Context, ss *cache.Snapshot, file uri.URI) []protocol.FoldingRange {
-	pf, err := ss.Parse(ctx, file)
+func Ranges(ctx context.Context, view *cache.View, file uri.URI) []protocol.FoldingRange {
+	pf, err := view.Parse(ctx, file)
 	if err != nil || pf.AST() == nil {
 		return nil
 	}

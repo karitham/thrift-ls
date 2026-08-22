@@ -18,7 +18,7 @@ import (
 type Provider interface {
 	// Candidates returns unfiltered candidates for the slot. The current
 	// context carries the prefix and the document.
-	Candidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, c Context) []Candidate
+	Candidates(ctx context.Context, view *cache.View, file uri.URI, c Context) []Candidate
 }
 
 // providersFor returns the providers for a slot: the exact slot provider
@@ -53,34 +53,34 @@ func providersFor(kind ContextKind) []Provider {
 
 type includeProvider struct{}
 
-func (includeProvider) Candidates(_ context.Context, ss *cache.Snapshot, file uri.URI, c Context) []Candidate {
-	return ListDirAndFiles(filepath.Dir(file.FsPath()), ss.Resolver().IncludePaths(), c.Prefix)
+func (includeProvider) Candidates(_ context.Context, view *cache.View, file uri.URI, c Context) []Candidate {
+	return ListDirAndFiles(filepath.Dir(file.FsPath()), view.Resolver().IncludePaths(), c.Prefix)
 }
 
 type typeProvider struct{}
 
-func (typeProvider) Candidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, c Context) []Candidate {
-	return typeCandidates(ctx, ss, file, c)
+func (typeProvider) Candidates(ctx context.Context, view *cache.View, file uri.URI, c Context) []Candidate {
+	return typeCandidates(ctx, view, file, c)
 }
 
 type valueProvider struct{}
 
-func (valueProvider) Candidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, c Context) []Candidate {
-	return valueCandidates(ctx, ss, file, c.Doc)
+func (valueProvider) Candidates(ctx context.Context, view *cache.View, file uri.URI, c Context) []Candidate {
+	return valueCandidates(ctx, view, file, c.Doc)
 }
 
 type keywordProvider struct{}
 
 // Candidates returns the keyword snippets and every identifier token known
 // to the file (and its includes).
-func (keywordProvider) Candidates(_ context.Context, ss *cache.Snapshot, file uri.URI, _ Context) []Candidate {
+func (keywordProvider) Candidates(_ context.Context, view *cache.View, file uri.URI, _ Context) []Candidate {
 	res := make([]Candidate, 0, len(keywords)+16)
 
 	for text, format := range keywords {
 		res = append(res, Candidate{showText: text, insertText: text, format: format})
 	}
 
-	for text := range ss.TokensForFile(file) {
+	for text := range view.TokensForFile(file) {
 		res = append(res, Candidate{showText: text, insertText: text, format: protocol.InsertTextFormatPlainText})
 	}
 
@@ -92,13 +92,13 @@ type fieldNameProvider struct{}
 // Candidates returns the field modifiers and every identifier token, so a
 // field name position suggests required/optional and names from the
 // codebase — never value candidates.
-func (fieldNameProvider) Candidates(_ context.Context, ss *cache.Snapshot, file uri.URI, _ Context) []Candidate {
+func (fieldNameProvider) Candidates(_ context.Context, view *cache.View, file uri.URI, _ Context) []Candidate {
 	res := []Candidate{
 		{showText: "required", insertText: "required", format: protocol.InsertTextFormatPlainText},
 		{showText: "optional", insertText: "optional", format: protocol.InsertTextFormatPlainText},
 	}
 
-	for text := range ss.TokensForFile(file) {
+	for text := range view.TokensForFile(file) {
 		res = append(res, Candidate{showText: text, insertText: text, format: protocol.InsertTextFormatPlainText})
 	}
 
@@ -109,7 +109,7 @@ type annotationKeyProvider struct{}
 
 // Candidates collects the annotation names used in the file and its
 // transitively included files.
-func (annotationKeyProvider) Candidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, c Context) []Candidate {
+func (annotationKeyProvider) Candidates(ctx context.Context, view *cache.View, file uri.URI, c Context) []Candidate {
 	keys := make(map[string]struct{})
 
 	collect := func(doc *syntax.Document) {
@@ -120,8 +120,8 @@ func (annotationKeyProvider) Candidates(ctx context.Context, ss *cache.Snapshot,
 
 	collect(c.Doc)
 
-	for _, inc := range includedFiles(ss, file) {
-		if pf, err := ss.Parse(ctx, inc); err == nil && pf.AST() != nil {
+	for _, inc := range includedFiles(view, file) {
+		if pf, err := view.Parse(ctx, inc); err == nil && pf.AST() != nil {
 			collect(pf.AST())
 		}
 	}
@@ -182,7 +182,7 @@ func annotationKeys(doc *syntax.Document) map[string]struct{} {
 type serviceExtendsProvider struct{}
 
 // Candidates returns the service names from the file and its includes.
-func (serviceExtendsProvider) Candidates(ctx context.Context, ss *cache.Snapshot, file uri.URI, c Context) []Candidate {
+func (serviceExtendsProvider) Candidates(ctx context.Context, view *cache.View, file uri.URI, c Context) []Candidate {
 	names := make(map[string]struct{})
 
 	collect := func(doc *syntax.Document) {
@@ -193,8 +193,8 @@ func (serviceExtendsProvider) Candidates(ctx context.Context, ss *cache.Snapshot
 
 	collect(c.Doc)
 
-	for _, inc := range includedFiles(ss, file) {
-		if pf, err := ss.Parse(ctx, inc); err == nil && pf.AST() != nil {
+	for _, inc := range includedFiles(view, file) {
+		if pf, err := view.Parse(ctx, inc); err == nil && pf.AST() != nil {
 			collect(pf.AST())
 		}
 	}

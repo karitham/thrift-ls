@@ -16,7 +16,7 @@ import (
 // identical, unresolved names stay unresolved, and the same name resolved
 // as a type versus a value does not collide.
 func TestIndexResolutionMemo(t *testing.T) {
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{
 			URI:     "file:///base.thrift",
 			Version: 0,
@@ -31,8 +31,8 @@ func TestIndexResolutionMemo(t *testing.T) {
 		},
 	})
 
-	ix := NewIndex(ss)
-	pf := parseOne(t, ss, fu("/app.thrift"))
+	ix := NewIndex(view)
+	pf := parseOne(t, view, fu("/app.thrift"))
 
 	tests := []struct {
 		name     string
@@ -123,7 +123,7 @@ func TestIndexResolutionMemo(t *testing.T) {
 // resolved from different files never collides, and neither do different
 // names from the same file.
 func TestIndexMemoKeyIsolation(t *testing.T) {
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{
 			URI:     "file:///a.thrift",
 			Version: 0,
@@ -144,9 +144,9 @@ func TestIndexMemoKeyIsolation(t *testing.T) {
 		},
 	})
 
-	ix := NewIndex(ss)
-	main := parseOne(t, ss, fu("/main.thrift"))
-	fromB := parseOne(t, ss, fu("/b.thrift"))
+	ix := NewIndex(view)
+	main := parseOne(t, view, fu("/main.thrift"))
+	fromB := parseOne(t, view, fu("/b.thrift"))
 
 	tests := []struct {
 		name     string
@@ -188,7 +188,7 @@ func TestSemanticAnalysisSkipsBrokenFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+			view := cache.BuildViewForTest([]*cache.FileChange{
 				{
 					URI:     "file:///f.thrift",
 					Version: 0,
@@ -197,7 +197,7 @@ func TestSemanticAnalysisSkipsBrokenFile(t *testing.T) {
 				},
 			})
 
-			got, err := (&SemanticAnalysis{}).Diagnostic(t.Context(), ss, []uri.URI{"file:///f.thrift"})
+			got, err := (&SemanticAnalysis{}).Diagnostic(t.Context(), view, []uri.URI{"file:///f.thrift"})
 			require.NoError(t, err, "a broken file must not fail the diagnostics run")
 			assert.NotNil(t, got)
 		})

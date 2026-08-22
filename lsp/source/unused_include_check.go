@@ -22,11 +22,11 @@ func (c *UnusedIncludeCheck) Name() string {
 	return "UnusedIncludeCheck"
 }
 
-func (c *UnusedIncludeCheck) Diagnostic(ctx context.Context, ss *cache.Snapshot, changeFiles []uri.URI) (DiagnosticResult, error) {
+func (c *UnusedIncludeCheck) Diagnostic(ctx context.Context, view *cache.View, changeFiles []uri.URI) (DiagnosticResult, error) {
 	res := make(DiagnosticResult)
 
 	for _, file := range changeFiles {
-		items, err := c.diagnostic(ctx, ss, file)
+		items, err := c.diagnostic(ctx, view, file)
 		if err != nil {
 			return nil, err
 		}
@@ -37,8 +37,8 @@ func (c *UnusedIncludeCheck) Diagnostic(ctx context.Context, ss *cache.Snapshot,
 	return res, nil
 }
 
-func (c *UnusedIncludeCheck) diagnostic(ctx context.Context, ss *cache.Snapshot, file uri.URI) ([]protocol.Diagnostic, error) {
-	pf, err := ss.Parse(ctx, file)
+func (c *UnusedIncludeCheck) diagnostic(ctx context.Context, view *cache.View, file uri.URI) ([]protocol.Diagnostic, error) {
+	pf, err := view.Parse(ctx, file)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +51,7 @@ func (c *UnusedIncludeCheck) diagnostic(ctx context.Context, ss *cache.Snapshot,
 		slog.Debug("parse failed", "err", err)
 	}
 
-	return unusedIncludeDiagnostics(ctx, ss, file, pf), nil
+	return unusedIncludeDiagnostics(ctx, view, file, pf), nil
 }
 
 // unusedIncludeDiagnostics warns on every include whose target file never
@@ -59,13 +59,13 @@ func (c *UnusedIncludeCheck) diagnostic(ctx context.Context, ss *cache.Snapshot,
 // name, a constant value identifier, or a service extends clause, used
 // qualified ("base.Type") or unqualified (resolving through the include
 // chain).
-func unusedIncludeDiagnostics(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile) []protocol.Diagnostic {
+func unusedIncludeDiagnostics(ctx context.Context, view *cache.View, file uri.URI, pf *cache.ParsedFile) []protocol.Diagnostic {
 	includes := pf.AST().Includes()
 	if len(includes) == 0 {
 		return nil
 	}
 
-	used := usedIncludes(ctx, ss, file, pf)
+	used := usedIncludes(ctx, view, file, pf)
 
 	var ret []protocol.Diagnostic
 
@@ -90,8 +90,8 @@ func unusedIncludeDiagnostics(ctx context.Context, ss *cache.Snapshot, file uri.
 // document resolves into. Resolution goes through the per-file reference
 // index, which handles both qualified ("base.Type") and unqualified names
 // that resolve through the include chain.
-func usedIncludes(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile) map[*syntax.Include]bool {
-	resolver := ss.Resolver()
+func usedIncludes(ctx context.Context, view *cache.View, file uri.URI, pf *cache.ParsedFile) map[*syntax.Include]bool {
+	resolver := view.Resolver()
 	includeByFile := make(map[uri.URI]*syntax.Include)
 
 	for _, inc := range pf.AST().Includes() {
@@ -102,7 +102,7 @@ func usedIncludes(ctx context.Context, ss *cache.Snapshot, file uri.URI, pf *cac
 
 	used := make(map[*syntax.Include]bool)
 	seen := make(map[string]bool)
-	ix := NewIndex(ss)
+	ix := NewIndex(view)
 
 	for _, ref := range pf.Index().References() {
 		if seen[ref.Name] {

@@ -49,13 +49,13 @@ func utf16Len(b []byte) int {
 
 // completionLabels runs the completion entry point at an LSP position and
 // returns the item labels, the edit range, and the truncated flag.
-func completionLabels(t *testing.T, ss *cache.Snapshot, file string, pos protocol.Position) ([]string, protocol.Range, bool) {
+func completionLabels(t *testing.T, view *cache.View, file string, pos protocol.Position) ([]string, protocol.Range, bool) {
 	t.Helper()
 
-	fh, err := ss.ReadFile(t.Context(), uri.URI(file))
+	fh, err := view.ReadFile(t.Context(), uri.URI(file))
 	assert.NoError(t, err)
 
-	items, rng, truncated, err := DefaultTokenCompletion.Completion(t.Context(), ss, &CompletionRequest{
+	items, rng, truncated, err := DefaultTokenCompletion.Completion(t.Context(), view, &CompletionRequest{
 		Pos: pos,
 		Fh:  fh,
 	})
@@ -70,13 +70,13 @@ func completionLabels(t *testing.T, ss *cache.Snapshot, file string, pos protoco
 }
 
 // completionItems runs the entry point and returns raw items.
-func completionItems(t *testing.T, ss *cache.Snapshot, file string, pos protocol.Position) ([]*CompletionItem, protocol.Range, bool) {
+func completionItems(t *testing.T, view *cache.View, file string, pos protocol.Position) ([]*CompletionItem, protocol.Range, bool) {
 	t.Helper()
 
-	fh, err := ss.ReadFile(t.Context(), uri.URI(file))
+	fh, err := view.ReadFile(t.Context(), uri.URI(file))
 	assert.NoError(t, err)
 
-	items, rng, truncated, err := DefaultTokenCompletion.Completion(t.Context(), ss, &CompletionRequest{
+	items, rng, truncated, err := DefaultTokenCompletion.Completion(t.Context(), view, &CompletionRequest{
 		Pos: pos,
 		Fh:  fh,
 	})
@@ -88,7 +88,7 @@ func completionItems(t *testing.T, ss *cache.Snapshot, file string, pos protocol
 // gundamSnapshot builds a snapshot with the gundam corpus: a main file with
 // a struct, enum, const, and an included file defining another type. It
 // returns the snapshot and the main file content.
-func gundamSnapshot(t *testing.T, includePaths []string) (*cache.Snapshot, string) {
+func gundamSnapshot(t *testing.T, includePaths []string) (*cache.View, string) {
 	t.Helper()
 
 	mainContent := `include "federation.gundam.thrift"
@@ -112,16 +112,16 @@ exception BayFull {
 	1: string message
 }`
 
-	ss := buildSnapshot(t, includePaths,
+	view := buildSnapshot(t, includePaths,
 		&cache.FileChange{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(mainContent), From: cache.FileChangeTypeDidOpen},
 		&cache.FileChange{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte(incContent), From: cache.FileChangeTypeDidOpen},
 	)
 
-	return ss, mainContent
+	return view, mainContent
 }
 
 func TestCompletionSlots(t *testing.T) {
-	ss, mainContent := gundamSnapshot(t, nil)
+	view, mainContent := gundamSnapshot(t, nil)
 
 	tests := []struct {
 		name    string
@@ -155,7 +155,7 @@ func TestCompletionSlots(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			pos := lspPosOf(t, mainContent, tt.marker)
 
-			labels, _, _ := completionLabels(t, ss, "file:///tmp/main.thrift", pos)
+			labels, _, _ := completionLabels(t, view, "file:///tmp/main.thrift", pos)
 
 			for _, w := range tt.want {
 				assert.Contains(t, labels, w, "labels: %v", labels)
@@ -171,12 +171,12 @@ func TestCompletionSlots(t *testing.T) {
 // TestCompletionNoDuplicates: providers overlap (a type is both a type
 // candidate and an identifier token), so the shared pipeline must dedupe.
 func TestCompletionNoDuplicates(t *testing.T) {
-	ss, mainContent := gundamSnapshot(t, nil)
+	view, mainContent := gundamSnapshot(t, nil)
 
 	for _, marker := range []string{"1: required ", "const i32 LIMIT = "} {
 		pos := lspPosOf(t, mainContent, marker)
 
-		labels, _, _ := completionLabels(t, ss, "file:///tmp/main.thrift", pos)
+		labels, _, _ := completionLabels(t, view, "file:///tmp/main.thrift", pos)
 
 		seen := make(map[string]struct{}, len(labels))
 		for _, label := range labels {
@@ -191,30 +191,30 @@ func TestCompletionNoDuplicates(t *testing.T) {
 // value candidates on field-name positions (regression: the old code
 // suggested values while typing a field name).
 func TestCompletionSlotProviders(t *testing.T) {
-	ss, _ := gundamSnapshot(t, nil)
+	view, _ := gundamSnapshot(t, nil)
 
-	cc := Context{Doc: mustParse(t, ss, "file:///tmp/main.thrift")}
+	cc := Context{Doc: mustParse(t, view, "file:///tmp/main.thrift")}
 
 	ctx := t.Context()
 
-	typeCands := typeProvider{}.Candidates(ctx, ss, "file:///tmp/main.thrift", cc)
+	typeCands := typeProvider{}.Candidates(ctx, view, "file:///tmp/main.thrift", cc)
 	typeLabels := labelsOf(typeCands)
 	assert.Contains(t, typeLabels, "Gundam")
 	assert.Contains(t, typeLabels, "federation.gundam.MobileSuit", "types from included files are include-qualified")
 	assert.NotContains(t, typeLabels, "MobileSuit", "bare imported types do not resolve")
 	assert.Contains(t, typeLabels, "federation.gundam.BayFull", "types from included files are include-qualified")
 
-	fieldCands := fieldNameProvider{}.Candidates(ctx, ss, "file:///tmp/main.thrift", cc)
+	fieldCands := fieldNameProvider{}.Candidates(ctx, view, "file:///tmp/main.thrift", cc)
 	fieldLabels := labelsOf(fieldCands)
 	assert.Contains(t, fieldLabels, "required")
 	assert.Contains(t, fieldLabels, "optional")
 	assert.NotContains(t, fieldLabels, "ZeonForces.ZAKU_I", "field name slot must not suggest qualified values")
 
-	valueCands := valueProvider{}.Candidates(ctx, ss, "file:///tmp/main.thrift", cc)
+	valueCands := valueProvider{}.Candidates(ctx, view, "file:///tmp/main.thrift", cc)
 	valueLabels := labelsOf(valueCands)
 	assert.Contains(t, valueLabels, "ZeonForces.ZAKU_I", "value slot suggests qualified enum values")
 
-	keyCands := annotationKeyProvider{}.Candidates(ctx, ss, "file:///tmp/main.thrift", cc)
+	keyCands := annotationKeyProvider{}.Candidates(ctx, view, "file:///tmp/main.thrift", cc)
 	keyLabels := labelsOf(keyCands)
 	assert.Contains(t, keyLabels, "color")
 }
@@ -228,10 +228,10 @@ func labelsOf(cands []Candidate) []string {
 	return labels
 }
 
-func mustParse(t *testing.T, ss *cache.Snapshot, file string) *syntax.Document {
+func mustParse(t *testing.T, view *cache.View, file string) *syntax.Document {
 	t.Helper()
 
-	pf, err := ss.Parse(t.Context(), uri.URI(file))
+	pf, err := view.Parse(t.Context(), uri.URI(file))
 	assert.NoError(t, err)
 	assert.NotNil(t, pf.AST())
 
@@ -247,14 +247,14 @@ func TestCompletionQualifiedValue(t *testing.T) {
 	content := strings.Replace(mainContent, "const i32 LIMIT = 10", "const i32 LIMIT = ZeonForces.", 1)
 	assert.NotEqual(t, mainContent, content)
 
-	ss := buildSnapshot(t, nil,
+	view := buildSnapshot(t, nil,
 		&cache.FileChange{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(content), From: cache.FileChangeTypeDidOpen},
 		&cache.FileChange{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte("struct MobileSuit {\n\t1: required string ModelName\n}"), From: cache.FileChangeTypeDidOpen},
 	)
 
 	dotPos := lspPosOf(t, content, "const i32 LIMIT = ZeonForces.")
 
-	items, rng, _ := completionItems(t, ss, "file:///tmp/main.thrift", dotPos)
+	items, rng, _ := completionItems(t, view, "file:///tmp/main.thrift", dotPos)
 
 	var labels []string
 	for _, item := range items {
@@ -274,11 +274,11 @@ func TestCompletionQualifiedValue(t *testing.T) {
 }
 
 func TestCompletionKeywordFallback(t *testing.T) {
-	ss := buildSnapshot(t, nil,
+	view := buildSnapshot(t, nil,
 		&cache.FileChange{URI: "file:///tmp/empty.thrift", Version: 0, Content: []byte(""), From: cache.FileChangeTypeDidOpen},
 	)
 
-	labels, _, truncated := completionLabels(t, ss, "file:///tmp/empty.thrift", protocol.Position{Line: 0, Character: 0})
+	labels, _, truncated := completionLabels(t, view, "file:///tmp/empty.thrift", protocol.Position{Line: 0, Character: 0})
 	assert.Contains(t, labels, "include")
 	assert.True(t, truncated, "keyword fallback exceeds the cap")
 }
@@ -286,14 +286,14 @@ func TestCompletionKeywordFallback(t *testing.T) {
 // TestCompletionCapReportsIncomplete: a small result set reports the list as
 // complete (isIncomplete false), the keyword fallback reports truncation.
 func TestCompletionCapReportsIncomplete(t *testing.T) {
-	ss, mainContent := gundamSnapshot(t, nil)
+	view, mainContent := gundamSnapshot(t, nil)
 
 	pos := lspPosOf(t, mainContent, "1: required ")
-	_, _, truncated := completionLabels(t, ss, "file:///tmp/main.thrift", pos)
+	_, _, truncated := completionLabels(t, view, "file:///tmp/main.thrift", pos)
 	assert.True(t, truncated, "type slot exceeds the cap (types + keywords)")
 
 	pos = lspPosOf(t, mainContent, "1: required string Name (c")
-	_, _, truncated = completionLabels(t, ss, "file:///tmp/main.thrift", pos)
+	_, _, truncated = completionLabels(t, view, "file:///tmp/main.thrift", pos)
 	assert.False(t, truncated, "annotation key slot has one candidate")
 }
 
@@ -310,11 +310,11 @@ func TestCompletionIncludePath(t *testing.T) {
 	mainContent := "include \"fed|"
 	pos := lspPosOf(t, mainContent, "include \"fed")
 
-	ss := buildSnapshot(t, []string{filepath.Join(dir, "zeon")},
+	view := buildSnapshot(t, []string{filepath.Join(dir, "zeon")},
 		&cache.FileChange{URI: uri.File(filepath.Join(dir, "main.thrift")), Version: 0, Content: []byte(mainContent), From: cache.FileChangeTypeDidOpen},
 	)
 
-	labels, rng, _ := completionLabels(t, ss, uri.File(filepath.Join(dir, "main.thrift")).String(), pos)
+	labels, rng, _ := completionLabels(t, view, uri.File(filepath.Join(dir, "main.thrift")).String(), pos)
 	assert.Contains(t, labels, "federation.gundam.thrift")
 
 	// The edit range starts after the opening quote: "include \"" is 9
@@ -335,11 +335,11 @@ func TestCompletionIncludePath(t *testing.T) {
 // TestCompletionNoPrefixUnderflow: a line without spaces must not produce a
 // wrapped edit range (the old whole-file prefix fallback bug).
 func TestCompletionNoPrefixUnderflow(t *testing.T) {
-	ss := buildSnapshot(t, nil,
+	view := buildSnapshot(t, nil,
 		&cache.FileChange{URI: "file:///tmp/underflow.thrift", Version: 0, Content: []byte("const X=1"), From: cache.FileChangeTypeDidOpen},
 	)
 
-	_, rng, _ := completionLabels(t, ss, "file:///tmp/underflow.thrift", protocol.Position{Line: 0, Character: 9})
+	_, rng, _ := completionLabels(t, view, "file:///tmp/underflow.thrift", protocol.Position{Line: 0, Character: 9})
 	assert.LessOrEqual(t, rng.Start.Character, uint32(9), "edit range must not wrap")
 }
 
@@ -349,10 +349,10 @@ func TestCompletionNonASCIIPrefix(t *testing.T) {
 	content := "// モビルスーツ\nconst X=1 😀"
 	pos := lspPosOf(t, content, "const X=1 😀")
 
-	ss := buildSnapshot(t, nil,
+	view := buildSnapshot(t, nil,
 		&cache.FileChange{URI: "file:///tmp/emoji.thrift", Version: 0, Content: []byte(content), From: cache.FileChangeTypeDidOpen},
 	)
 
-	_, rng, _ := completionLabels(t, ss, "file:///tmp/emoji.thrift", pos)
+	_, rng, _ := completionLabels(t, view, "file:///tmp/emoji.thrift", pos)
 	assert.Equal(t, pos.Character, rng.Start.Character, "empty prefix: range starts at the cursor")
 }

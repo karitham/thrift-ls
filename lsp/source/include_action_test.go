@@ -17,7 +17,7 @@ import (
 
 // buildFolderSnapshotForTest builds a snapshot whose view root is folder,
 // with the given files opened in the overlay.
-func buildFolderSnapshotForTest(t *testing.T, folder string, files []*cache.FileChange) *cache.Snapshot {
+func buildFolderSnapshotForTest(t *testing.T, folder string, files []*cache.FileChange) *cache.View {
 	t.Helper()
 
 	c := cache.New()
@@ -26,7 +26,11 @@ func buildFolderSnapshotForTest(t *testing.T, folder string, files []*cache.File
 
 	view := cache.NewView(uri.File(folder), fs, nil, options.Patch{})
 
-	return cache.NewSnapshot(view, nil)
+	for _, f := range files {
+		_, _ = view.Parse(t.Context(), f.URI)
+	}
+
+	return view
 }
 
 // writeThrift writes content to a .thrift file under folder.
@@ -43,7 +47,7 @@ func Test_MakeRemoveUnusedIncludeAction(t *testing.T) {
 	folder := t.TempDir()
 	filePath := writeThrift(t, folder, "user.thrift", "include \"shared.thrift\"\nstruct S { 1: i32 a }\n")
 
-	ss := buildFolderSnapshotForTest(t, folder, []*cache.FileChange{
+	view := buildFolderSnapshotForTest(t, folder, []*cache.FileChange{
 		{
 			URI:     uri.File(filePath),
 			Version: 0,
@@ -52,15 +56,15 @@ func Test_MakeRemoveUnusedIncludeAction(t *testing.T) {
 		},
 	})
 
-	fh, err := ss.ReadFile(t.Context(), uri.File(filePath))
+	fh, err := view.ReadFile(t.Context(), uri.File(filePath))
 	require.NoError(t, err)
 
 	// The diagnostic the check produces, as the server would pass it.
-	diags, err := (&UnusedIncludeCheck{}).diagnostic(t.Context(), ss, uri.File(filePath))
+	diags, err := (&UnusedIncludeCheck{}).diagnostic(t.Context(), view, uri.File(filePath))
 	require.NoError(t, err)
 	require.Len(t, diags, 1)
 
-	act, err := MakeRemoveUnusedIncludeAction(t.Context(), ss, fh, diags[0].Range, diags)
+	act, err := MakeRemoveUnusedIncludeAction(t.Context(), view, fh, diags[0].Range, diags)
 	require.NoError(t, err)
 	require.NotNil(t, act)
 	assert.Equal(t, protocol.CodeActionKindQuickFix, *act.Kind)
@@ -75,7 +79,7 @@ func Test_MakeRemoveUnusedIncludeAction_NoDiagnostic(t *testing.T) {
 	folder := t.TempDir()
 	filePath := writeThrift(t, folder, "user.thrift", "include \"shared.thrift\"\nstruct S { 1: shared.User u }\n")
 
-	ss := buildFolderSnapshotForTest(t, folder, []*cache.FileChange{
+	view := buildFolderSnapshotForTest(t, folder, []*cache.FileChange{
 		{
 			URI:     uri.File(filePath),
 			Version: 0,
@@ -84,10 +88,10 @@ func Test_MakeRemoveUnusedIncludeAction_NoDiagnostic(t *testing.T) {
 		},
 	})
 
-	fh, err := ss.ReadFile(t.Context(), uri.File(filePath))
+	fh, err := view.ReadFile(t.Context(), uri.File(filePath))
 	require.NoError(t, err)
 
-	act, err := MakeRemoveUnusedIncludeAction(t.Context(), ss, fh, pointRange(0, 0), nil)
+	act, err := MakeRemoveUnusedIncludeAction(t.Context(), view, fh, pointRange(0, 0), nil)
 	require.NoError(t, err)
 	assert.Nil(t, act)
 }
@@ -97,7 +101,7 @@ func Test_MakeAddMissingIncludeAction(t *testing.T) {
 	_ = writeThrift(t, folder, "shared.thrift", "struct User {\n  1: i32 id,\n}\n")
 	filePath := writeThrift(t, folder, "user.thrift", "struct S {\n  1: User u,\n}\n")
 
-	ss := buildFolderSnapshotForTest(t, folder, []*cache.FileChange{
+	view := buildFolderSnapshotForTest(t, folder, []*cache.FileChange{
 		{
 			URI:     uri.File(filePath),
 			Version: 0,
@@ -106,7 +110,7 @@ func Test_MakeAddMissingIncludeAction(t *testing.T) {
 		},
 	})
 
-	fh, err := ss.ReadFile(t.Context(), uri.File(filePath))
+	fh, err := view.ReadFile(t.Context(), uri.File(filePath))
 	require.NoError(t, err)
 
 	// The semantic diagnostic the server would pass, at the type position.
@@ -116,7 +120,7 @@ func Test_MakeAddMissingIncludeAction(t *testing.T) {
 		Message: protocol.String("field type doesn't exist"),
 	}
 
-	act, err := MakeAddMissingIncludeAction(t.Context(), ss, fh, diag.Range, []protocol.Diagnostic{diag})
+	act, err := MakeAddMissingIncludeAction(t.Context(), view, fh, diag.Range, []protocol.Diagnostic{diag})
 	require.NoError(t, err)
 	require.NotNil(t, act)
 	assert.Equal(t, protocol.CodeActionKindQuickFix, *act.Kind)
@@ -133,7 +137,7 @@ func Test_MakeAddMissingIncludeAction_InsertAfterExistingIncludes(t *testing.T) 
 	_ = writeThrift(t, folder, "shared.thrift", "struct User {\n  1: i32 id,\n}\n")
 	filePath := writeThrift(t, folder, "user.thrift", "include \"base.thrift\"\n\nstruct S {\n  1: User u,\n}\n")
 
-	ss := buildFolderSnapshotForTest(t, folder, []*cache.FileChange{
+	view := buildFolderSnapshotForTest(t, folder, []*cache.FileChange{
 		{
 			URI:     uri.File(filePath),
 			Version: 0,
@@ -142,7 +146,7 @@ func Test_MakeAddMissingIncludeAction_InsertAfterExistingIncludes(t *testing.T) 
 		},
 	})
 
-	fh, err := ss.ReadFile(t.Context(), uri.File(filePath))
+	fh, err := view.ReadFile(t.Context(), uri.File(filePath))
 	require.NoError(t, err)
 
 	diag := protocol.Diagnostic{
@@ -151,7 +155,7 @@ func Test_MakeAddMissingIncludeAction_InsertAfterExistingIncludes(t *testing.T) 
 		Message: protocol.String("field type doesn't exist"),
 	}
 
-	act, err := MakeAddMissingIncludeAction(t.Context(), ss, fh, diag.Range, []protocol.Diagnostic{diag})
+	act, err := MakeAddMissingIncludeAction(t.Context(), view, fh, diag.Range, []protocol.Diagnostic{diag})
 	require.NoError(t, err)
 	require.NotNil(t, act)
 
@@ -165,7 +169,7 @@ func Test_MakeAddMissingIncludeAction_TypeNotFound(t *testing.T) {
 	folder := t.TempDir()
 	filePath := writeThrift(t, folder, "user.thrift", "struct S {\n  1: Ghost u,\n}\n")
 
-	ss := buildFolderSnapshotForTest(t, folder, []*cache.FileChange{
+	view := buildFolderSnapshotForTest(t, folder, []*cache.FileChange{
 		{
 			URI:     uri.File(filePath),
 			Version: 0,
@@ -174,7 +178,7 @@ func Test_MakeAddMissingIncludeAction_TypeNotFound(t *testing.T) {
 		},
 	})
 
-	fh, err := ss.ReadFile(t.Context(), uri.File(filePath))
+	fh, err := view.ReadFile(t.Context(), uri.File(filePath))
 	require.NoError(t, err)
 
 	diag := protocol.Diagnostic{
@@ -183,7 +187,7 @@ func Test_MakeAddMissingIncludeAction_TypeNotFound(t *testing.T) {
 		Message: protocol.String("field type doesn't exist"),
 	}
 
-	act, err := MakeAddMissingIncludeAction(t.Context(), ss, fh, diag.Range, []protocol.Diagnostic{diag})
+	act, err := MakeAddMissingIncludeAction(t.Context(), view, fh, diag.Range, []protocol.Diagnostic{diag})
 	require.NoError(t, err)
 	assert.Nil(t, act)
 }

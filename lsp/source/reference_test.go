@@ -52,7 +52,7 @@ const user.UserType usermale = "male"
 const UserKind kind = "1"
 `
 
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
@@ -69,7 +69,7 @@ const UserKind kind = "1"
 
 	type args struct {
 		ctx  context.Context
-		ss   *cache.Snapshot
+		view *cache.View
 		file uri.URI
 		pos  protocol.Position
 	}
@@ -84,7 +84,7 @@ const UserKind kind = "1"
 			name: "case struct", // user.Test
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      2,
@@ -125,7 +125,7 @@ const UserKind kind = "1"
 			name: "case struct 2", // Test
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      0,
@@ -153,7 +153,7 @@ const UserKind kind = "1"
 			name: "case union", // user.Test2
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      2,
@@ -194,7 +194,7 @@ const UserKind kind = "1"
 			name: "case union 2", // Test2
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      7,
@@ -222,7 +222,7 @@ const UserKind kind = "1"
 			name: "case enum", // user.Test3
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      2,
@@ -276,7 +276,7 @@ const UserKind kind = "1"
 			name: "case enum 2", // Test3
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      14,
@@ -332,7 +332,7 @@ const UserKind kind = "1"
 			name: "case exceptions", // user.Error1
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      2,
@@ -373,7 +373,7 @@ const UserKind kind = "1"
 			name: "case exceptions 2", // Error1
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      19,
@@ -401,7 +401,7 @@ const UserKind kind = "1"
 			name: "case typedef", // user.UserType
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      3,
@@ -468,7 +468,7 @@ const UserKind kind = "1"
 			name: "case typedef 2", // UserType
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      26,
@@ -522,7 +522,7 @@ const UserKind kind = "1"
 			name: "case enumvalue", // user.Test3.TWO
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      3,
@@ -563,7 +563,7 @@ const UserKind kind = "1"
 			name: "case enumvalue 2", // TWO
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      16,
@@ -591,7 +591,7 @@ const UserKind kind = "1"
 			name: "case const", // user.DefaultName
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      3,
@@ -632,7 +632,7 @@ const UserKind kind = "1"
 			name: "case const 2", // DefaultName
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/user.thrift",
 				pos: protocol.Position{
 					Line:      27,
@@ -660,7 +660,7 @@ const UserKind kind = "1"
 			name: "type in same file", // UserKind
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      8,
@@ -700,7 +700,7 @@ const UserKind kind = "1"
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Reference(tt.args.ctx, tt.args.ss, tt.args.file, tt.args.pos)
+			got, err := Reference(tt.args.ctx, tt.args.view, tt.args.file, tt.args.pos)
 			tt.assertion(t, err)
 			assert.Equal(t, tt.want, got)
 		})

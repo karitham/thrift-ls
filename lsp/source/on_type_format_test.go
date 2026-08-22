@@ -18,7 +18,7 @@ func TestOnTypeFormat(t *testing.T) {
 	// The closing brace was just typed at the end of the document.
 	pos := protocol.Position{Line: 0, Character: uint32(len(src) - 1)}
 
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{
 			URI:     "file:///tmp/f.thrift",
 			Version: 0,
@@ -26,10 +26,10 @@ func TestOnTypeFormat(t *testing.T) {
 			From:    cache.FileChangeTypeDidOpen,
 		},
 	})
-	fh, err := ss.ReadFile(t.Context(), "file:///tmp/f.thrift")
+	fh, err := view.ReadFile(t.Context(), "file:///tmp/f.thrift")
 	require.NoError(t, err)
 
-	edits, err := OnTypeFormat(t.Context(), ss, fh, formatter.DefaultOptions(), pos)
+	edits, err := OnTypeFormat(t.Context(), view, fh, formatter.DefaultOptions(), pos)
 	require.NoError(t, err)
 	require.Len(t, edits, 1)
 
@@ -43,7 +43,7 @@ func TestOnTypeFormatSkipsBrokenDocument(t *testing.T) {
 	src := "struct S { 1: "
 	pos := protocol.Position{Line: 0, Character: uint32(len(src))}
 
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{
 			URI:     "file:///tmp/f.thrift",
 			Version: 0,
@@ -51,10 +51,10 @@ func TestOnTypeFormatSkipsBrokenDocument(t *testing.T) {
 			From:    cache.FileChangeTypeDidOpen,
 		},
 	})
-	fh, err := ss.ReadFile(t.Context(), "file:///tmp/f.thrift")
+	fh, err := view.ReadFile(t.Context(), "file:///tmp/f.thrift")
 	require.NoError(t, err)
 
-	edits, err := OnTypeFormat(t.Context(), ss, fh, formatter.DefaultOptions(), pos)
+	edits, err := OnTypeFormat(t.Context(), view, fh, formatter.DefaultOptions(), pos)
 	require.NoError(t, err)
 	assert.Empty(t, edits)
 }
@@ -64,7 +64,7 @@ func TestOnTypeFormatSkipsBrokenDocument(t *testing.T) {
 func TestFormatSkipsBrokenDocument(t *testing.T) {
 	src := "struct S { 1: "
 
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{
 			URI:     "file:///tmp/f.thrift",
 			Version: 0,
@@ -72,10 +72,10 @@ func TestFormatSkipsBrokenDocument(t *testing.T) {
 			From:    cache.FileChangeTypeDidOpen,
 		},
 	})
-	fh, err := ss.ReadFile(t.Context(), "file:///tmp/f.thrift")
+	fh, err := view.ReadFile(t.Context(), "file:///tmp/f.thrift")
 	require.NoError(t, err)
 
-	edit, err := FormatDocument(t.Context(), ss, fh, formatter.DefaultOptions())
+	edit, err := FormatDocument(t.Context(), view, fh, formatter.DefaultOptions())
 	require.NoError(t, err)
 	assert.Nil(t, edit)
 }

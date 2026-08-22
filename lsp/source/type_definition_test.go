@@ -51,7 +51,7 @@ typedef user.UserType UserKind
 const user.UserType usermale = "male"
 `
 
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
@@ -68,7 +68,7 @@ const user.UserType usermale = "male"
 
 	type args struct {
 		ctx  context.Context
-		ss   *cache.Snapshot
+		view *cache.View
 		file uri.URI
 		pos  protocol.Position
 	}
@@ -83,7 +83,7 @@ const user.UserType usermale = "male"
 			name: "case struct", // user.Test
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      2,
@@ -111,7 +111,7 @@ const user.UserType usermale = "male"
 			name: "case struct 2", // Api
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      2,
@@ -139,7 +139,7 @@ const user.UserType usermale = "male"
 			name: "case union", // user.Test2
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      2,
@@ -167,7 +167,7 @@ const user.UserType usermale = "male"
 			name: "case union 2", // arg1
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      2,
@@ -195,7 +195,7 @@ const user.UserType usermale = "male"
 			name: "case enum", // user.Test3
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      2,
@@ -223,7 +223,7 @@ const user.UserType usermale = "male"
 			name: "case enum 2", // arg2
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      2,
@@ -251,7 +251,7 @@ const user.UserType usermale = "male"
 			name: "case exceptions", // user.Error1
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      2,
@@ -279,7 +279,7 @@ const user.UserType usermale = "male"
 			name: "case exceptions 2", // err
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      2,
@@ -307,7 +307,7 @@ const user.UserType usermale = "male"
 			name: "case typedef", // user.UserType
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      3,
@@ -335,7 +335,7 @@ const user.UserType usermale = "male"
 			name: "case enumvalue",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      3,
@@ -363,7 +363,7 @@ const user.UserType usermale = "male"
 			name: "case const",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      3,
@@ -391,7 +391,7 @@ const user.UserType usermale = "male"
 			name: "case typedef 2", // UserKind
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      6,
@@ -419,7 +419,7 @@ const user.UserType usermale = "male"
 			name: "case const 2", // usermale
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      7,
@@ -446,7 +446,7 @@ const user.UserType usermale = "male"
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := TypeDefinition(tt.args.ctx, tt.args.ss, tt.args.file, tt.args.pos)
+			got, err := TypeDefinition(tt.args.ctx, tt.args.view, tt.args.file, tt.args.pos)
 			tt.assertion(t, err)
 			assert.Equal(t, tt.want, got)
 		})

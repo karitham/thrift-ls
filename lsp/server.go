@@ -374,8 +374,8 @@ func (s *Server) Implementation(ctx context.Context, params *protocol.Implementa
 }
 
 func (s *Server) OnTypeFormatting(ctx context.Context, params *protocol.DocumentOnTypeFormattingParams) (result []protocol.TextEdit, err error) {
-	return withFile(ctx, s.session, params.TextDocument.URI, func(ss *cache.Snapshot, fh cache.FileHandle) ([]protocol.TextEdit, error) {
-		return source.OnTypeFormat(ctx, ss, fh, s.formatOptions(ss.View()), params.Position)
+	return withFile(ctx, s.session, params.TextDocument.URI, func(view *cache.View, fh cache.FileHandle) ([]protocol.TextEdit, error) {
+		return source.OnTypeFormat(ctx, view, fh, s.formatOptions(view), params.Position)
 	})
 }
 
@@ -419,11 +419,7 @@ func (s *Server) Symbols(ctx context.Context, params *protocol.WorkspaceSymbolPa
 	var res []protocol.SymbolInformation
 
 	for _, view := range views {
-		ss, release := view.Snapshot()
-
-		syms := source.WorkspaceSymbols(ctx, ss, view.KnownFiles(), params.Query, maxResults-len(res))
-
-		release()
+		syms := source.WorkspaceSymbols(ctx, view, view.KnownFiles(), params.Query, maxResults-len(res))
 
 		res = append(res, syms...)
 		if len(res) >= maxResults {

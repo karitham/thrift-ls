@@ -71,11 +71,8 @@ func newViewHarness(t *testing.T, files []*FileChange) *viewHarness {
 
 	view := NewView("file:///tmp", fs, nil, options.Patch{})
 
-	ss, release := view.Snapshot()
-	defer release()
-
 	for _, f := range files {
-		if _, err := ss.Parse(t.Context(), f.URI); err != nil {
+		if _, err := view.Parse(t.Context(), f.URI); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -95,7 +92,7 @@ func (h *viewHarness) change(t *testing.T, change *FileChange) []uri.URI {
 
 	done := make(chan []uri.URI, 1)
 
-	h.view.FileChange(t.Context(), []*FileChange{change}, func(a []uri.URI) {
+	h.view.FileChange(t.Context(), []*FileChange{change}, func(_ uint64, a []uri.URI) {
 		done <- a
 	})
 
@@ -107,15 +104,6 @@ func (h *viewHarness) change(t *testing.T, change *FileChange) []uri.URI {
 
 		return nil
 	}
-}
-
-func (h *viewHarness) snapshot(t *testing.T) *Snapshot {
-	t.Helper()
-
-	ss, release := h.view.Snapshot()
-	t.Cleanup(release)
-
-	return ss
 }
 
 func Test_FileChangeInvalidatesDependents(t *testing.T) {
@@ -200,9 +188,8 @@ struct Gundam {
 			}
 
 			// Changed content is visible through the view's store.
-			ss := h.snapshot(t)
 			for file, marker := range tt.wantFresh {
-				pf, err := ss.Parse(t.Context(), file)
+				pf, err := h.view.Parse(t.Context(), file)
 				require.NoError(t, err)
 
 				assert.Contains(t, pf.Tokens(), marker,

@@ -25,8 +25,8 @@ type pickedFieldAction struct {
 	code   protocol.CodeAction
 }
 
-func MakeFieldQualifierAction(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, rng protocol.Range) ([]protocol.CodeAction, error) {
-	pf, err := ss.Parse(ctx, fh.URI())
+func MakeFieldQualifierAction(ctx context.Context, view *cache.View, fh cache.FileHandle, rng protocol.Range) ([]protocol.CodeAction, error) {
+	pf, err := view.Parse(ctx, fh.URI())
 	if err != nil {
 		return nil, err
 	}

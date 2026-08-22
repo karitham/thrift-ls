@@ -58,8 +58,8 @@ type Candidate struct {
 // Completion resolves the grammar slot at the cursor and returns the
 // candidates for that slot, the edit range, and whether the list was
 // truncated by the cap.
-func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cmp *CompletionRequest) ([]*CompletionItem, protocol.Range, bool, error) {
-	parsedFile, err := ss.Parse(ctx, cmp.Fh.URI())
+func (c *TokenCompletion) Completion(ctx context.Context, view *cache.View, cmp *CompletionRequest) ([]*CompletionItem, protocol.Range, bool, error) {
+	parsedFile, err := view.Parse(ctx, cmp.Fh.URI())
 	if err != nil {
 		return nil, protocol.Range{}, false, err
 	}
@@ -110,7 +110,7 @@ func (c *TokenCompletion) Completion(ctx context.Context, ss *cache.Snapshot, cm
 
 	var candidates []Candidate
 	for _, p := range providersFor(cc.Kind) {
-		candidates = append(candidates, p.Candidates(ctx, ss, cmp.Fh.URI(), cc)...)
+		candidates = append(candidates, p.Candidates(ctx, view, cmp.Fh.URI(), cc)...)
 	}
 
 	// Shared pipeline: prefix filter, dedupe, sort, cap.

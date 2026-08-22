@@ -14,7 +14,7 @@ import (
 // chain of includes (app → mid → base) is renamed everywhere it is
 // referenced — including in files that include it only transitively.
 func TestRenameTransitiveInclude(t *testing.T) {
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{
 			URI:     "file:///tmp/base.thrift",
 			Version: 0,
@@ -35,7 +35,7 @@ func TestRenameTransitiveInclude(t *testing.T) {
 		},
 	})
 
-	edit, err := Rename(t.Context(), ss, "file:///tmp/base.thrift", protocol.Position{Line: 0, Character: 7}, "Account")
+	edit, err := Rename(t.Context(), view, "file:///tmp/base.thrift", protocol.Position{Line: 0, Character: 7}, "Account")
 	require.NoError(t, err)
 
 	assert.Equal(t, []protocol.TextEdit{{
@@ -53,7 +53,7 @@ func TestRenameTransitiveInclude(t *testing.T) {
 // references to a same-named definition from another file untouched:
 // matches are resolved to their actual definition, not matched by name.
 func TestRenameResolutionMatched(t *testing.T) {
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{
 			URI:     "file:///tmp/base.thrift",
 			Version: 0,
@@ -69,7 +69,7 @@ func TestRenameResolutionMatched(t *testing.T) {
 	})
 
 	// Rename app.thrift's own User (line 1, the definition).
-	edit, err := Rename(t.Context(), ss, "file:///tmp/app.thrift", protocol.Position{Line: 1, Character: 7}, "Member")
+	edit, err := Rename(t.Context(), view, "file:///tmp/app.thrift", protocol.Position{Line: 1, Character: 7}, "Member")
 	require.NoError(t, err)
 
 	// Only the unqualified reference and the definition change; the
@@ -86,7 +86,7 @@ func TestRenameResolutionMatched(t *testing.T) {
 // only touches references that resolve to it: "colors.Palette.RED" must
 // survive a rename of the local enum's RED.
 func TestRenameEnumValueResolutionMatched(t *testing.T) {
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{
 			URI:     "file:///tmp/colors.thrift",
 			Version: 0,
@@ -102,7 +102,7 @@ func TestRenameEnumValueResolutionMatched(t *testing.T) {
 	})
 
 	// Cursor on the local RED definition (line 1, char 13).
-	edit, err := Rename(t.Context(), ss, "file:///tmp/main.thrift", protocol.Position{Line: 1, Character: 13}, "CRIMSON")
+	edit, err := Rename(t.Context(), view, "file:///tmp/main.thrift", protocol.Position{Line: 1, Character: 13}, "CRIMSON")
 	require.NoError(t, err)
 
 	var got []string
@@ -119,7 +119,7 @@ func TestRenameEnumValueResolutionMatched(t *testing.T) {
 // value references qualified with that enum: same-named enums in other
 // files are left alone.
 func TestRenameEnumResolutionMatched(t *testing.T) {
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{
 			URI:     "file:///tmp/colors.thrift",
 			Version: 0,
@@ -135,7 +135,7 @@ func TestRenameEnumResolutionMatched(t *testing.T) {
 	})
 
 	// Cursor on the local Color definition (line 1, char 5).
-	edit, err := Rename(t.Context(), ss, "file:///tmp/main.thrift", protocol.Position{Line: 1, Character: 5}, "Hue")
+	edit, err := Rename(t.Context(), view, "file:///tmp/main.thrift", protocol.Position{Line: 1, Character: 5}, "Hue")
 	require.NoError(t, err)
 
 	var got []string

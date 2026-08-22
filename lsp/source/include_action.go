@@ -16,8 +16,8 @@ import (
 // MakeRemoveUnusedIncludeAction returns the quickfix that deletes the
 // include line for an "unused include" diagnostic on the selection. It
 // returns nil when no such diagnostic overlaps the selection.
-func MakeRemoveUnusedIncludeAction(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, rng protocol.Range, diags []protocol.Diagnostic) (*protocol.CodeAction, error) {
-	pf, err := ss.Parse(ctx, fh.URI())
+func MakeRemoveUnusedIncludeAction(ctx context.Context, view *cache.View, fh cache.FileHandle, rng protocol.Range, diags []protocol.Diagnostic) (*protocol.CodeAction, error) {
+	pf, err := view.Parse(ctx, fh.URI())
 	if err != nil {
 		return nil, err
 	}
@@ -92,8 +92,8 @@ func unusedIncludeAt(pf *cache.ParsedFile, rng protocol.Range, diags []protocol.
 // workspace folder, so the fix works across the whole project. It returns
 // nil when the selection has no such diagnostic, the referenced type is
 // not found anywhere, or the current file cannot be edited (parse errors).
-func MakeAddMissingIncludeAction(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, rng protocol.Range, diags []protocol.Diagnostic) (*protocol.CodeAction, error) {
-	pf, err := ss.Parse(ctx, fh.URI())
+func MakeAddMissingIncludeAction(ctx context.Context, view *cache.View, fh cache.FileHandle, rng protocol.Range, diags []protocol.Diagnostic) (*protocol.CodeAction, error) {
+	pf, err := view.Parse(ctx, fh.URI())
 	if err != nil {
 		return nil, err
 	}
@@ -102,12 +102,12 @@ func MakeAddMissingIncludeAction(ctx context.Context, ss *cache.Snapshot, fh cac
 		return nil, nil
 	}
 
-	name := missingTypeAt(ctx, ss, fh, rng, diags)
+	name := missingTypeAt(ctx, view, fh, rng, diags)
 	if name == "" {
 		return nil, nil
 	}
 
-	def, err := NewIndex(ss).FindInWorkspace(ctx, name)
+	def, err := NewIndex(view).FindInWorkspace(ctx, name)
 	if err != nil || def == nil || def.File == fh.URI() {
 		return nil, nil
 	}
@@ -146,7 +146,7 @@ func MakeAddMissingIncludeAction(ctx context.Context, ss *cache.Snapshot, fh cac
 
 // missingTypeAt returns the type name of a "field type doesn't exist"
 // diagnostic on the selection, or "".
-func missingTypeAt(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, rng protocol.Range, diags []protocol.Diagnostic) string {
+func missingTypeAt(ctx context.Context, view *cache.View, fh cache.FileHandle, rng protocol.Range, diags []protocol.Diagnostic) string {
 	var diagnosticRange protocol.Range
 	found := false
 
@@ -163,7 +163,7 @@ func missingTypeAt(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle,
 		return ""
 	}
 
-	_, target, err := resolveTarget(ctx, ss, fh.URI(), diagnosticRange.Start)
+	_, target, err := resolveTarget(ctx, view, fh.URI(), diagnosticRange.Start)
 	if err != nil {
 		return ""
 	}

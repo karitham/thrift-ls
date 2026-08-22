@@ -14,7 +14,7 @@ import (
 	"github.com/karitham/thrift-ls/syntax"
 )
 
-// Index answers cross-file semantic queries over one snapshot: definition
+// Index answers cross-file semantic queries over one view: definition
 // resolution and reference search. It composes per-file
 // cache.FileIndexes over the include graph.
 //
@@ -22,14 +22,14 @@ import (
 // are memoized per (file, name), so a request resolving the same name in
 // the same file repeatedly (references, diagnostics) resolves it once.
 type Index struct {
-	ss *cache.Snapshot
+	view *cache.View
 
 	resolved map[resolveKey]*Resolved
 }
 
-// NewIndex returns an Index for the snapshot.
-func NewIndex(ss *cache.Snapshot) *Index {
-	return &Index{ss: ss}
+// NewIndex returns an Index over the view's store.
+func NewIndex(view *cache.View) *Index {
+	return &Index{view: view}
 }
 
 // resolveKey identifies one resolution: the referencing file, the name as
@@ -69,8 +69,8 @@ func (x *Index) memoize(file uri.URI, name string, kind resolveKind, def *Resolv
 // parseDefinitionFile parses the definition file, tolerating parse errors
 // in the target file (the definitions may still be found in the partial
 // AST). It returns the parsed file so callers can use its indexes.
-func parseDefinitionFile(ctx context.Context, ss *cache.Snapshot, file uri.URI) (*cache.ParsedFile, error) {
-	pf, err := ss.Parse(ctx, file)
+func parseDefinitionFile(ctx context.Context, view *cache.View, file uri.URI) (*cache.ParsedFile, error) {
+	pf, err := view.Parse(ctx, file)
 	if err != nil {
 		return nil, err
 	}
@@ -129,8 +129,8 @@ func (x *Index) ResolveType(ctx context.Context, from *cache.ParsedFile, ft *syn
 // resolveType resolves a non-basic type name in from, without memoization.
 func (x *Index) resolveType(ctx context.Context, from *cache.ParsedFile, name string) (*Resolved, error) {
 	_, identifier := parseIdent(from.URI(), from.AST().Includes(), name)
-	for _, astFile := range definitionFiles(ctx, x.ss, from.URI(), from.AST(), name) {
-		dst, err := parseDefinitionFile(ctx, x.ss, astFile)
+	for _, astFile := range definitionFiles(ctx, x.view, from.URI(), from.AST(), name) {
+		dst, err := parseDefinitionFile(ctx, x.view, astFile)
 		if err != nil {
 			return nil, err
 		}
@@ -179,8 +179,8 @@ func (x *Index) resolveValue(ctx context.Context, from *cache.ParsedFile, text s
 	_, identifier := parseIdent(from.URI(), from.AST().Includes(), text)
 	identifier = bareName(identifier)
 
-	for _, astFile := range definitionFiles(ctx, x.ss, from.URI(), from.AST(), text) {
-		dst, err := parseDefinitionFile(ctx, x.ss, astFile)
+	for _, astFile := range definitionFiles(ctx, x.view, from.URI(), from.AST(), text) {
+		dst, err := parseDefinitionFile(ctx, x.view, astFile)
 		if err != nil {
 			return nil, err
 		}
@@ -222,8 +222,8 @@ func (x *Index) ResolveService(ctx context.Context, from *cache.ParsedFile, iden
 // memoization.
 func (x *Index) resolveService(ctx context.Context, from *cache.ParsedFile, name string) (*Resolved, error) {
 	_, identifier := parseIdent(from.URI(), from.AST().Includes(), name)
-	for _, astFile := range definitionFiles(ctx, x.ss, from.URI(), from.AST(), name) {
-		dst, err := parseDefinitionFile(ctx, x.ss, astFile)
+	for _, astFile := range definitionFiles(ctx, x.view, from.URI(), from.AST(), name) {
+		dst, err := parseDefinitionFile(ctx, x.view, astFile)
 		if err != nil {
 			return nil, err
 		}
@@ -266,7 +266,7 @@ func (x *Index) References(ctx context.Context, file uri.URI, name string, kinds
 
 		seen[f] = true
 
-		pf, err := x.ss.Parse(ctx, f)
+		pf, err := x.view.Parse(ctx, f)
 		if err != nil || pf.AST() == nil {
 			continue
 		}
@@ -290,7 +290,7 @@ func (x *Index) ReferencesTo(ctx context.Context, def *Resolved, kinds ...cache.
 	var out []Hit
 
 	for _, f := range x.searchFiles(def.File) {
-		pf, err := x.ss.Parse(ctx, f)
+		pf, err := x.view.Parse(ctx, f)
 		if err != nil || pf.AST() == nil {
 			continue
 		}
@@ -353,26 +353,21 @@ func (x *Index) ReferencesTo(ctx context.Context, def *Resolved, kinds ...cache.
 // ReferencingFiles returns every file that directly includes file,
 // in graph order.
 func (x *Index) ReferencingFiles(file uri.URI) []uri.URI {
-	return x.ss.Includers(file)
+	return x.view.Includers(file)
 }
 
 // FindInWorkspace returns the definition of name in any known file of the
 // workspace, falling back to a directory walk when the workspace has not
 // been indexed yet (e.g. a quick-fix on the first didOpen).
 func (x *Index) FindInWorkspace(ctx context.Context, name string) (*Resolved, error) {
-	view := x.ss.View()
-	if view == nil {
-		return nil, nil
-	}
-
 	include, identifier := splitQualifiedName(name)
 
-	for _, f := range view.KnownFiles() {
+	for _, f := range x.view.KnownFiles() {
 		if include != "" && includeNameOf(f) != include {
 			continue
 		}
 
-		pf, err := x.ss.Parse(ctx, f)
+		pf, err := x.view.Parse(ctx, f)
 		if err != nil || pf.AST() == nil {
 			continue
 		}
@@ -385,14 +380,14 @@ func (x *Index) FindInWorkspace(ctx context.Context, name string) (*Resolved, er
 	// Fallback to the directory walk when KnownFiles is empty: the walk
 	// goes through the view's file source (disk, or the in-memory tree in
 	// tests).
-	root := view.Folder()
+	root := x.view.Folder()
 	if root == "" {
 		return nil, nil
 	}
 
 	var files []uri.URI
 
-	err := view.WalkFiles(ctx, root, func(u uri.URI) error {
+	err := x.view.WalkFiles(ctx, root, func(u uri.URI) error {
 		if strings.HasSuffix(u.Path(), ".thrift") {
 			files = append(files, u)
 		}
@@ -410,7 +405,7 @@ func (x *Index) FindInWorkspace(ctx context.Context, name string) (*Resolved, er
 			continue
 		}
 
-		pf, err := x.ss.Parse(ctx, f)
+		pf, err := x.view.Parse(ctx, f)
 		if err != nil || pf.AST() == nil {
 			continue
 		}
@@ -526,7 +521,7 @@ func enumSegmentHit(pf *cache.ParsedFile, node syntax.Node, off int, seg string)
 func (x *Index) searchFiles(file uri.URI) []uri.URI {
 	files := []uri.URI{file}
 
-	for _, dep := range x.ss.Dependents(file) {
+	for _, dep := range x.view.Dependents(file) {
 		if dep != file {
 			files = append(files, dep)
 		}

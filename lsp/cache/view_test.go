@@ -160,8 +160,7 @@ func Test_View_GenerationAndIsCurrent(t *testing.T) {
 	h := newViewHarness(t, gundamFiles())
 
 	before := h.view.Generation()
-	ss := h.snapshot(t)
-	assert.True(t, h.view.IsCurrent(ss))
+	assert.True(t, h.view.IsCurrent(before))
 
 	h.change(t, &FileChange{
 		URI:     uri.URI(federation),
@@ -171,16 +170,14 @@ func Test_View_GenerationAndIsCurrent(t *testing.T) {
 	})
 
 	assert.Greater(t, h.view.Generation(), before, "FileChange bumps the generation")
-	assert.False(t, h.view.IsCurrent(ss), "a handle from an older generation is not current")
-
-	fresh := h.snapshot(t)
-	assert.True(t, h.view.IsCurrent(fresh))
+	assert.False(t, h.view.IsCurrent(before), "a generation older than the latest is not current")
+	assert.True(t, h.view.IsCurrent(h.view.Generation()))
 }
 
-// Test_SnapshotParseIncludeCycles exercises include cycles through the full
+// Test_ViewParseIncludeCycles exercises include cycles through the full
 // parse path: parsing registers edges, and the graph must settle without
 // infinite recursion.
-func Test_SnapshotParseIncludeCycles(t *testing.T) {
+func Test_ViewParseIncludeCycles(t *testing.T) {
 	dir := t.TempDir()
 	char := uri.File(filepath.Join(dir, "char.thrift"))
 	amuro := uri.File(filepath.Join(dir, "amuro.thrift"))
@@ -192,7 +189,7 @@ func Test_SnapshotParseIncludeCycles(t *testing.T) {
 		{URI: self, Content: []byte(`include "side_effect.thrift"`), From: FileChangeTypeDidOpen},
 	}
 
-	ss := BuildSnapshotForTest(files)
+	ss := BuildViewForTest(files)
 
 	// both directions of the mutual cycle are recorded
 	assert.Equal(t, []uri.URI{amuro}, ss.Includes(char))

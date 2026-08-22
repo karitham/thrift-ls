@@ -58,7 +58,7 @@ struct Person {
   2: required user.Test field2,
 }`
 
-	ss := cache.BuildSnapshotForTest([]*cache.FileChange{
+	view := cache.BuildViewForTest([]*cache.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
@@ -87,7 +87,7 @@ struct Person {
 
 	type args struct {
 		ctx  context.Context
-		ss   *cache.Snapshot
+		view *cache.View
 		file uri.URI
 		pos  protocol.Position
 	}
@@ -102,7 +102,7 @@ struct Person {
 			name: "case struct",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      2,
@@ -130,7 +130,7 @@ struct Person {
 			name: "case union",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      2,
@@ -158,7 +158,7 @@ struct Person {
 			name: "case enum",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      2,
@@ -186,7 +186,7 @@ struct Person {
 			name: "case exceptions",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      2,
@@ -214,7 +214,7 @@ struct Person {
 			name: "case typedef",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      3,
@@ -242,7 +242,7 @@ struct Person {
 			name: "case enumvalue",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      3,
@@ -270,7 +270,7 @@ struct Person {
 			name: "case const",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/api.thrift",
 				pos: protocol.Position{
 					Line:      3,
@@ -298,7 +298,7 @@ struct Person {
 			name: "case include 1",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/app.thrift",
 				pos: protocol.Position{
 					Line:      4,
@@ -326,7 +326,7 @@ struct Person {
 			name: "case include 2",
 			args: args{
 				ctx:  t.Context(),
-				ss:   ss,
+				view: view,
 				file: "file:///tmp/app.thrift",
 				pos: protocol.Position{
 					Line:      5,
@@ -353,7 +353,7 @@ struct Person {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Definition(tt.args.ctx, tt.args.ss, tt.args.file, tt.args.pos)
+			got, err := Definition(tt.args.ctx, tt.args.view, tt.args.file, tt.args.pos)
 			tt.assertion(t, err)
 			assert.Equal(t, tt.want, got)
 		})

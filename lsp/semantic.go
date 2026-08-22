@@ -10,8 +10,8 @@ import (
 )
 
 func (s *Server) semanticTokensFull(ctx context.Context, params *protocol.SemanticTokensParams) (*protocol.SemanticTokens, error) {
-	return withSnapshot(s.session, params.TextDocument.URI, func(ss *cache.Snapshot) (*protocol.SemanticTokens, error) {
-		data, err := source.Tokens(ctx, ss, params.TextDocument.URI)
+	return withView(s.session, params.TextDocument.URI, func(view *cache.View) (*protocol.SemanticTokens, error) {
+		data, err := source.Tokens(ctx, view, params.TextDocument.URI)
 		if err != nil {
 			return nil, err
 		}

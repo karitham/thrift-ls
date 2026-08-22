@@ -23,8 +23,8 @@ var highlightKind = map[cache.RefKind]protocol.DocumentHighlightKind{
 
 // Reference returns every usage of the symbol at pos, including usage
 // in files that include the definition.
-func Reference(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) ([]protocol.Location, error) {
-	refs, err := searchReferences(ctx, ss, file, pos)
+func Reference(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Position) ([]protocol.Location, error) {
+	refs, err := searchReferences(ctx, view, file, pos)
 	if err != nil {
 		return nil, err
 	}
@@ -42,13 +42,13 @@ func Reference(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protoc
 }
 
 // Highlight returns the document highlight ranges for the symbol at pos.
-func Highlight(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) ([]protocol.DocumentHighlight, error) {
-	pf, target, err := resolveTarget(ctx, ss, file, pos)
+func Highlight(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Position) ([]protocol.DocumentHighlight, error) {
+	pf, target, err := resolveTarget(ctx, view, file, pos)
 	if err != nil {
 		return nil, err
 	}
 
-	refs, err := searchReferences(ctx, ss, file, pos)
+	refs, err := searchReferences(ctx, view, file, pos)
 	if err != nil {
 		return nil, err
 	}
@@ -93,30 +93,30 @@ func Highlight(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protoc
 }
 
 // searchReferences dispatches to the reference search for the target kind.
-func searchReferences(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) ([]indexHit, error) {
-	pf, target, err := resolveTarget(ctx, ss, file, pos)
+func searchReferences(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Position) ([]indexHit, error) {
+	pf, target, err := resolveTarget(ctx, view, file, pos)
 	if err != nil {
 		return nil, err
 	}
 
-	ix := NewIndex(ss)
+	ix := NewIndex(view)
 
 	switch target.kind {
 	case TargetTypeName:
-		return searchTypeNameRefs(ctx, ix, ss, pf, target)
+		return searchTypeNameRefs(ctx, ix, view, pf, target)
 	case TargetConstValue:
-		return searchConstValueRefs(ctx, ix, ss, pf, target)
+		return searchConstValueRefs(ctx, ix, view, pf, target)
 	case TargetService:
-		return searchServiceRefs(ctx, ix, ss, file, target.identifier().Text)
+		return searchServiceRefs(ctx, ix, view, file, target.identifier().Text)
 	case TargetDefinition:
-		return searchDefRefs(ctx, ix, ss, file, pf, target)
+		return searchDefRefs(ctx, ix, view, file, pf, target)
 	}
 
 	return nil, nil
 }
 
 // searchTypeNameRefs resolves the type reference and finds all usages.
-func searchTypeNameRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
+func searchTypeNameRefs(ctx context.Context, ix *Index, view *cache.View, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
 	ft := target.parent.(*syntax.FieldType)
 	typeName := typeReferenceName(ft)
 	if typeName == "" || IsBasicType(typeName) {
@@ -132,7 +132,7 @@ func searchTypeNameRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, pf *
 		return nil, nil
 	}
 
-	loc, err := jumpInFile(ctx, ss, def.File, def.Name)
+	loc, err := jumpInFile(ctx, view, def.File, def.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +152,7 @@ func searchTypeNameRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, pf *
 }
 
 // searchConstValueRefs resolves a const-value or enum-value reference.
-func searchConstValueRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
+func searchConstValueRefs(ctx context.Context, ix *Index, view *cache.View, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
 	value := target.node.(*syntax.ConstValue)
 
 	def, err := ix.ResolveValue(ctx, pf, value)
@@ -164,7 +164,7 @@ func searchConstValueRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, pf
 		return nil, nil
 	}
 
-	loc, err := jumpInFile(ctx, ss, def.File, def.Name)
+	loc, err := jumpInFile(ctx, view, def.File, def.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -184,8 +184,8 @@ func searchConstValueRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, pf
 }
 
 // searchServiceRefs finds the includes and extends referencing a service.
-func searchServiceRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, file uri.URI, svcName string) ([]indexHit, error) {
-	pf, err := ss.Parse(ctx, file)
+func searchServiceRefs(ctx context.Context, ix *Index, view *cache.View, file uri.URI, svcName string) ([]indexHit, error) {
+	pf, err := view.Parse(ctx, file)
 	if err != nil || pf.AST() == nil {
 		return nil, err
 	}
@@ -210,7 +210,7 @@ func searchServiceRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, file 
 
 // searchDefRefs handles references from a definition name: struct, union,
 // exception, enum, typedef, const, enum value, and service names.
-func searchDefRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, file uri.URI, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
+func searchDefRefs(ctx context.Context, ix *Index, view *cache.View, file uri.URI, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
 	id := target.identifier()
 	if id == nil {
 		return nil, nil
@@ -233,7 +233,7 @@ func searchDefRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, file uri.
 		if strings.Contains(svcName, ".") {
 			include, _ := parseIdent(file, pf.AST().Includes(), svcName)
 
-			resolver := ss.Resolver()
+			resolver := view.Resolver()
 			if path := resolver.GetIncludePath(pf.AST(), include); path != "" {
 				file = resolver.ResolveInclude(file, path)
 			}
@@ -241,7 +241,7 @@ func searchDefRefs(ctx context.Context, ix *Index, ss *cache.Snapshot, file uri.
 			svcName = fmt.Sprintf("%s.%s", includeNameOf(file), svcName)
 		}
 
-		return searchServiceRefs(ctx, ix, ss, file, svcName)
+		return searchServiceRefs(ctx, ix, view, file, svcName)
 	default:
 		kind, ok := definitionKindOf(parent)
 		if !ok {

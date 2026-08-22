@@ -14,79 +14,6 @@ import (
 	"github.com/karitham/thrift-ls/syntax"
 )
 
-// Snapshot is a read handle over a view's current state. It exists so
-// request handlers have a stable value to pass around; all reads see the
-// view's live store, so nothing is copied or frozen.
-//
-// The gen field pins the generation the handle was taken at, for IsCurrent
-// staleness checks.
-type Snapshot struct {
-	view         *View
-	includePaths []string
-	gen          uint64
-}
-
-// Snapshot returns a read handle over the view's current state plus a
-// no-op release function.
-func (v *View) Snapshot() (*Snapshot, func()) {
-	ss := &Snapshot{
-		view:         v,
-		includePaths: v.includePaths,
-		gen:          v.Generation(),
-	}
-
-	return ss, func() {}
-}
-
-// NewSnapshot returns a read handle over view, carrying an includePaths
-// override for the handle's resolver.
-func NewSnapshot(view *View, includePaths []string) *Snapshot {
-	return &Snapshot{
-		view:         view,
-		includePaths: includePaths,
-		gen:          view.Generation(),
-	}
-}
-
-func (s *Snapshot) Includes(file uri.URI) []uri.URI {
-	return s.view.Includes(file)
-}
-
-func (s *Snapshot) Includers(file uri.URI) []uri.URI {
-	return s.view.Includers(file)
-}
-
-func (s *Snapshot) Dependents(uri uri.URI) []uri.URI {
-	return s.view.Dependents(uri)
-}
-
-// View returns the view this snapshot serves: the workspace folder the
-// snapshot resolves files under.
-func (s *Snapshot) View() *View {
-	return s.view
-}
-
-// Resolver returns a new Resolver instance for this snapshot.
-// The resolver provides centralized include path resolution.
-func (s *Snapshot) Resolver() *Resolver {
-	return newResolver(s.includePaths, s.view.fs)
-}
-
-func (s *Snapshot) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, error) {
-	return s.view.ReadFile(ctx, uri)
-}
-
-func (s *Snapshot) Parse(ctx context.Context, uri uri.URI) (*ParsedFile, error) {
-	return s.view.Parse(ctx, uri)
-}
-
-// TokensForFile returns the identifier tokens of file and its transitively
-// included files. Each file's token set is computed once per parse and
-// reused, so typing does not re-walk the include closure's ASTs.
-func (s *Snapshot) TokensForFile(file uri.URI) map[string]struct{} {
-	return s.view.TokensForFile(file)
-}
-
 // Resolver provides centralized include path resolution.
 type Resolver struct {
 	includePaths []string
@@ -102,7 +29,7 @@ func newResolver(includePaths []string, src FileSource) *Resolver {
 	}
 }
 
-// IncludePaths returns the include paths configured for this snapshot
+// IncludePaths returns the include paths configured for this resolver.
 func (r *Resolver) IncludePaths() []string {
 	return r.includePaths
 }
@@ -215,13 +142,13 @@ type viewFile struct {
 func (f *viewFile) Stat() (fs.FileInfo, error) { return f.info, nil }
 func (f *viewFile) Close() error               { return nil }
 
-func BuildSnapshotForTest(files []*FileChange) *Snapshot {
-	return BuildSnapshotForTestWithPaths(nil, files)
+func BuildViewForTest(files []*FileChange) *View {
+	return BuildViewForTestWithPaths(nil, files)
 }
 
-// BuildSnapshotForTestWithPaths is BuildSnapshotForTest with configured
-// include paths, for cross-project include resolution tests.
-func BuildSnapshotForTestWithPaths(includePaths []string, files []*FileChange) *Snapshot {
+// BuildViewForTestWithPaths is BuildViewForTest with configured include
+// paths, for cross-project include resolution tests.
+func BuildViewForTestWithPaths(includePaths []string, files []*FileChange) *View {
 	c := New()
 	fs := NewOverlayFS(c)
 	_ = fs.Update(context.TODO(), files)
@@ -232,7 +159,5 @@ func BuildSnapshotForTestWithPaths(includePaths []string, files []*FileChange) *
 		_, _ = view.Parse(context.TODO(), f.URI)
 	}
 
-	ss, _ := view.Snapshot()
-
-	return ss
+	return view
 }

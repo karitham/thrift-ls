@@ -19,8 +19,8 @@ import (
 var ErrNotParseable = errors.New("document does not parse")
 
 // Format returns the whole-document formatting of fh's content.
-func Format(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, opts formatter.Options) (string, error) {
-	pf, err := ss.Parse(ctx, fh.URI())
+func Format(ctx context.Context, view *cache.View, fh cache.FileHandle, opts formatter.Options) (string, error) {
+	pf, err := view.Parse(ctx, fh.URI())
 	if err != nil {
 		return "", err
 	}
@@ -35,13 +35,13 @@ func Format(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, opts f
 // FormatDocument returns the single text edit replacing the whole document
 // with its formatted content. It returns nil when the document is already
 // formatted.
-func FormatDocument(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, opts formatter.Options) (*protocol.TextEdit, error) {
+func FormatDocument(ctx context.Context, view *cache.View, fh cache.FileHandle, opts formatter.Options) (*protocol.TextEdit, error) {
 	content, err := fh.Content()
 	if err != nil {
 		return nil, err
 	}
 
-	formatted, err := Format(ctx, ss, fh, opts)
+	formatted, err := Format(ctx, view, fh, opts)
 	if errors.Is(err, ErrNotParseable) {
 		return nil, nil // the Parse checker reports the errors
 	}
@@ -76,13 +76,13 @@ func FormatDocument(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle
 // are preserved exactly by the formatter, so the blocks align one-to-one;
 // every edit is bounded by blank lines or file edges, and any subset
 // splices safely. Only the edits overlapping the selection are returned.
-func FormatRange(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, opts formatter.Options, rng protocol.Range) ([]protocol.TextEdit, error) {
+func FormatRange(ctx context.Context, view *cache.View, fh cache.FileHandle, opts formatter.Options, rng protocol.Range) ([]protocol.TextEdit, error) {
 	content, err := fh.Content()
 	if err != nil {
 		return nil, err
 	}
 
-	formatted, err := Format(ctx, ss, fh, opts)
+	formatted, err := Format(ctx, view, fh, opts)
 	if errors.Is(err, ErrNotParseable) {
 		return nil, nil // the Parse checker reports the errors
 	}
@@ -278,8 +278,8 @@ func lineEnd(content []byte, offset int) int {
 // typed: the whole struct/union/exception/enum/service block reflows. A
 // document that does not parse, or a position outside any construct,
 // formats nothing.
-func OnTypeFormat(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, opts formatter.Options, pos protocol.Position) ([]protocol.TextEdit, error) {
-	pf, err := ss.Parse(ctx, fh.URI())
+func OnTypeFormat(ctx context.Context, view *cache.View, fh cache.FileHandle, opts formatter.Options, pos protocol.Position) ([]protocol.TextEdit, error) {
+	pf, err := view.Parse(ctx, fh.URI())
 	if err != nil || pf.AST() == nil {
 		return nil, nil
 	}
@@ -289,7 +289,7 @@ func OnTypeFormat(ctx context.Context, ss *cache.Snapshot, fh cache.FileHandle, 
 		return nil, nil
 	}
 
-	return FormatRange(ctx, ss, fh, opts, *rng)
+	return FormatRange(ctx, view, fh, opts, *rng)
 }
 
 // enclosingConstruct returns the range of the top-level construct

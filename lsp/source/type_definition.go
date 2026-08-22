@@ -14,23 +14,23 @@ import (
 // under the cursor: for a type reference, the type's definition; for a
 // field, function, typedef, or const name, the definition of its declared
 // type.
-func TypeDefinition(ctx context.Context, ss *cache.Snapshot, file uri.URI, pos protocol.Position) (res []protocol.Location, err error) {
+func TypeDefinition(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Position) (res []protocol.Location, err error) {
 	res = make([]protocol.Location, 0)
 
-	pf, target, err := resolveTarget(ctx, ss, file, pos)
+	pf, target, err := resolveTarget(ctx, view, file, pos)
 	if err != nil {
 		return res, err
 	}
 
 	switch target.kind {
 	case TargetTypeName:
-		return typeNameDefinition(ctx, NewIndex(ss), pf, target)
+		return typeNameDefinition(ctx, NewIndex(view), pf, target)
 	case TargetConstValue:
 		// The type definition of a constant value is the value's own
 		// definition: the enum value or const it references.
-		return constValueDefinition(ctx, NewIndex(ss), pf, target)
+		return constValueDefinition(ctx, NewIndex(view), pf, target)
 	case TargetDefinition:
-		return declarationTypeDefinition(ctx, NewIndex(ss), pf, target)
+		return declarationTypeDefinition(ctx, NewIndex(view), pf, target)
 	}
 
 	return res, err
@@ -61,7 +61,7 @@ func declarationTypeDefinition(ctx context.Context, ix *Index, pf *cache.ParsedF
 		return nil, err
 	}
 
-	loc, err := jumpInFile(ctx, ix.ss, def.File, def.Name)
+	loc, err := jumpInFile(ctx, ix.view, def.File, def.Name)
 	if err != nil {
 		return nil, err
 	}

@@ -10,13 +10,13 @@ import (
 )
 
 func (s *Server) prepareRename(ctx context.Context, params *protocol.PrepareRenameParams) (*protocol.Range, error) {
-	return withSnapshot(s.session, params.TextDocument.URI, func(ss *cache.Snapshot) (*protocol.Range, error) {
-		return source.PrepareRename(ctx, ss, params.TextDocument.URI, params.Position)
+	return withView(s.session, params.TextDocument.URI, func(view *cache.View) (*protocol.Range, error) {
+		return source.PrepareRename(ctx, view, params.TextDocument.URI, params.Position)
 	})
 }
 
 func (s *Server) rename(ctx context.Context, params *protocol.RenameParams) (*protocol.WorkspaceEdit, error) {
-	return withSnapshot(s.session, params.TextDocument.URI, func(ss *cache.Snapshot) (*protocol.WorkspaceEdit, error) {
-		return source.Rename(ctx, ss, params.TextDocument.URI, params.Position, params.NewName)
+	return withView(s.session, params.TextDocument.URI, func(view *cache.View) (*protocol.WorkspaceEdit, error) {
+		return source.Rename(ctx, view, params.TextDocument.URI, params.Position, params.NewName)
 	})
 }

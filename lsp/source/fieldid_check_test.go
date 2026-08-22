@@ -40,7 +40,7 @@ service Demo {
 }
 `
 
-	ss := buildSnapshotForTest(t, []*cache.FileChange{
+	view := buildSnapshotForTest(t, []*cache.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
@@ -51,7 +51,7 @@ service Demo {
 
 	type args struct {
 		ctx         context.Context
-		ss          *cache.Snapshot
+		view        *cache.View
 		changeFiles []uri.URI
 	}
 
@@ -66,8 +66,8 @@ service Demo {
 			name: "case1",
 			c:    &FieldIDCheck{},
 			args: args{
-				ctx: t.Context(),
-				ss:  ss,
+				ctx:  t.Context(),
+				view: view,
 				changeFiles: []uri.URI{
 					"file:///tmp/user.thrift",
 				},
@@ -411,7 +411,7 @@ service Demo {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &FieldIDCheck{}
-			got, err := c.Diagnostic(tt.args.ctx, tt.args.ss, tt.args.changeFiles)
+			got, err := c.Diagnostic(tt.args.ctx, tt.args.view, tt.args.changeFiles)
 
 			for key := range got {
 				sort.SliceStable(got[key], func(i, j int) bool {
