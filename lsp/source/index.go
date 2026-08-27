@@ -68,22 +68,22 @@ func (x *Index) memoize(file uri.URI, name string, kind resolveKind, def *Resolv
 
 // parseDefinitionFile parses the definition file, tolerating parse errors
 // in the target file (the definitions may still be found in the partial
-// AST). It returns the parsed file so callers can use its indexes.
-func parseDefinitionFile(ctx context.Context, view *cache.View, file uri.URI) (*cache.ParsedFile, error) {
+// AST). It returns nil when the file cannot be read at all — an unresolved
+// include is a normal, reported condition, not a failure of the feature
+// answering a request.
+func parseDefinitionFile(ctx context.Context, view *cache.View, file uri.URI) *cache.ParsedFile {
 	pf, err := view.Parse(ctx, file)
 	if err != nil {
-		return nil, err
+		slog.Debug("definition file unreadable", "file", file, "err", err)
+
+		return nil
 	}
 
 	if len(pf.Errors()) > 0 {
-		slog.Warn("parse error", "errs", pf.Errors())
+		slog.Debug("parse error", "errs", pf.Errors())
 	}
 
-	if pf.AST() == nil {
-		return nil, errNoAST
-	}
-
-	return pf, nil
+	return pf
 }
 
 // Resolved is a resolved definition: the target file, the parsed
@@ -104,8 +104,8 @@ type Resolved struct {
 }
 
 // ResolveType resolves a type reference to its definition, or returns nil
-// when unresolved (base types, unresolvable name). parseDefinitionFile
-// errors are propagated.
+// when unresolved (base types, unresolvable name). Files backing the
+// resolution may fail to read; those count as unresolved.
 func (x *Index) ResolveType(ctx context.Context, from *cache.ParsedFile, ft *syntax.FieldType) (*Resolved, error) {
 	name := typeReferenceName(ft)
 	if name == "" || IsBasicType(name) {
@@ -129,10 +129,11 @@ func (x *Index) ResolveType(ctx context.Context, from *cache.ParsedFile, ft *syn
 // resolveType resolves a non-basic type name in from, without memoization.
 func (x *Index) resolveType(ctx context.Context, from *cache.ParsedFile, name string) (*Resolved, error) {
 	_, identifier := parseIdent(from.URI(), from.AST().Includes(), name)
+
 	for _, astFile := range definitionFiles(ctx, x.view, from.URI(), from.AST(), name) {
-		dst, err := parseDefinitionFile(ctx, x.view, astFile)
-		if err != nil {
-			return nil, err
+		dst := parseDefinitionFile(ctx, x.view, astFile)
+		if dst == nil || dst.AST() == nil {
+			continue
 		}
 
 		switch v := dst.Definitions()[identifier].(type) {
@@ -180,9 +181,9 @@ func (x *Index) resolveValue(ctx context.Context, from *cache.ParsedFile, text s
 	identifier = bareName(identifier)
 
 	for _, astFile := range definitionFiles(ctx, x.view, from.URI(), from.AST(), text) {
-		dst, err := parseDefinitionFile(ctx, x.view, astFile)
-		if err != nil {
-			return nil, err
+		dst := parseDefinitionFile(ctx, x.view, astFile)
+		if dst == nil || dst.AST() == nil {
+			continue
 		}
 
 		if id := dst.EnumValues()[identifier]; id != nil {
@@ -223,9 +224,9 @@ func (x *Index) ResolveService(ctx context.Context, from *cache.ParsedFile, iden
 func (x *Index) resolveService(ctx context.Context, from *cache.ParsedFile, name string) (*Resolved, error) {
 	_, identifier := parseIdent(from.URI(), from.AST().Includes(), name)
 	for _, astFile := range definitionFiles(ctx, x.view, from.URI(), from.AST(), name) {
-		dst, err := parseDefinitionFile(ctx, x.view, astFile)
-		if err != nil {
-			return nil, err
+		dst := parseDefinitionFile(ctx, x.view, astFile)
+		if dst == nil || dst.AST() == nil {
+			continue
 		}
 
 		if svc, ok := dst.Definitions()[identifier].(*syntax.Service); ok {

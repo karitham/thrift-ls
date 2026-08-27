@@ -3,7 +3,9 @@ package lsp
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -169,6 +171,16 @@ func (s *Server) postDiagnostics(ctx context.Context, view *cache.View, res cach
 	ctx = context.WithoutCancel(ctx)
 
 	go func() {
+		// The process must survive a panicking checker: an editor session
+		// dying on one bad document is the failure mode this package
+		// works hardest to avoid. DebugHandler covers request handlers;
+		// this goroutine has no such wrapper of its own.
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("diagnostics worker panicked", "panic", r, "stack", string(debug.Stack()))
+			}
+		}()
+
 		if !view.IsCurrent(res.Gen) {
 			return
 		}

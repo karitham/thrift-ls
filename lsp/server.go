@@ -2,10 +2,12 @@ package lsp
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
@@ -51,6 +53,11 @@ type Server struct {
 	cfgMu   sync.RWMutex
 	configs map[uri.URI]options.Patch
 
+	// configIssues remembers why a folder's own thrift-ls.json could not
+	// be used, so the reason can be surfaced to the user (who only sees
+	// formatter defaults silently otherwise).
+	configIssues map[uri.URI]configIssue
+
 	// workspaceWalkOnce and dirWalkOnce guard the two independent walks:
 	// the whole workspace on Initialized, and the opened file's directory
 	// on the first didOpen (single-file mode). They must not share a guard
@@ -65,12 +72,13 @@ type Server struct {
 // at initialize time and on didChangeConfiguration.
 func NewServer(fs cache.FileSource, client protocol.Client, opts Options) *Server {
 	return &Server{
-		session:    cache.NewSession(fs),
-		client:     client,
-		explicit:   opts.Config,
-		configPath: opts.ConfigPath,
-		cli:        opts.CLI,
-		configs:    make(map[uri.URI]options.Patch),
+		session:      cache.NewSession(fs),
+		client:       client,
+		explicit:     opts.Config,
+		configPath:   opts.ConfigPath,
+		cli:          opts.CLI,
+		configs:      make(map[uri.URI]options.Patch),
+		configIssues: make(map[uri.URI]configIssue),
 	}
 }
 
@@ -118,9 +126,18 @@ func (s *Server) folderConfig(folder uri.URI) options.Patch {
 	return s.configs[folder]
 }
 
+// configIssue records an unusable thrift-ls.json for a folder.
+type configIssue struct {
+	// path is the file that was rejected; empty when discovery itself
+	// failed.
+	path string
+	err  error
+}
+
 // viewConfig resolves the config for a view rooted at folder: the pinned
 // --config file, or the nearest thrift-ls.json walking up, plus CLI flags.
-// A folder with no usable config formats with defaults.
+// A folder with no usable config formats with defaults; the reason is kept
+// and surfaced through notifyConfigIssue.
 func (s *Server) viewConfig(folder uri.URI) options.Patch {
 	if s.configPath != "" {
 		return s.cli.Apply(s.explicit)
@@ -130,10 +147,14 @@ func (s *Server) viewConfig(folder uri.URI) options.Patch {
 	if err != nil {
 		logError("config discovery failed", Expected(err), "dir", folder.FsPath())
 
+		s.recordConfigIssue(folder, configIssue{err: err})
+
 		return s.defaultConfig()
 	}
 
 	if cfgPath == "" {
+		s.clearConfigIssue(folder)
+
 		return s.defaultConfig()
 	}
 
@@ -141,10 +162,92 @@ func (s *Server) viewConfig(folder uri.URI) options.Patch {
 	if err != nil {
 		logError("config file rejected", Expected(err), "path", cfgPath)
 
+		s.recordConfigIssue(folder, configIssue{path: cfgPath, err: err})
+
 		return s.defaultConfig()
 	}
 
+	s.clearConfigIssue(folder)
+
 	return s.cli.Apply(options.Effective(cfg))
+}
+
+// recordConfigIssue remembers and announces a rejected folder config. The
+// announcement is additive: a window message for editors without a buffer
+// on the JSON file, plus an error diagnostic pinned to the config file
+// itself. Safe to call with any client state (nil or pre-initialized).
+func (s *Server) recordConfigIssue(folder uri.URI, issue configIssue) {
+	s.cfgMu.Lock()
+	hadIssue := s.configIssues[folder].err != nil
+	s.configIssues[folder] = issue
+	s.cfgMu.Unlock()
+
+	if hadIssue {
+		// Already announced for this folder; re-resolution only happens
+		// when a folder is re-added anyway.
+		return
+	}
+
+	s.notifyConfigIssue(folder, issue)
+}
+
+func (s *Server) clearConfigIssue(folder uri.URI) {
+	s.cfgMu.Lock()
+	delete(s.configIssues, folder)
+	s.cfgMu.Unlock()
+}
+
+// notifyConfigIssue pushes one warning to the client. Errors before the
+// handshake finishes are dropped: notifications from an uninitialized
+// server stall some clients (Helix).
+func (s *Server) notifyConfigIssue(folder uri.URI, issue configIssue) {
+	if s.client == nil {
+		return
+	}
+
+	// Fire-and-forget: these notifications are best-effort and the
+	// session must not die over a failing client pipe.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	where := "the workspace root"
+	if issue.path != "" {
+		where = issue.path
+	}
+
+	message := fmt.Sprintf(
+		"thrift-ls: %s could not be used (%v); continuing with default settings until it is fixed",
+		where, issue.err)
+
+	err := s.client.ShowMessage(ctx, &protocol.ShowMessageParams{
+		Type:    protocol.MessageTypeError,
+		Message: message,
+	})
+	if err != nil {
+		logError("config issue notification failed", err)
+	}
+
+	if issue.path == "" {
+		return
+	}
+
+	diag := protocol.Diagnostic{
+		Range: protocol.Range{
+			Start: protocol.Position{Line: 0, Character: 0},
+			End:   protocol.Position{Line: 0, Character: 0},
+		},
+		Severity: protocol.DiagnosticSeverityError,
+		Source:   protocol.NewOptional("thrift-ls"),
+		Message:  protocol.String(fmt.Sprintf("invalid configuration: %v — defaults are in effect", issue.err)),
+	}
+
+	err = s.client.PublishDiagnostics(ctx, &protocol.PublishDiagnosticsParams{
+		URI:         uri.File(issue.path),
+		Diagnostics: []protocol.Diagnostic{diag},
+	})
+	if err != nil {
+		logError("config issue diagnostic failed", err)
+	}
 }
 
 // defaultConfig is the fallback for a folder without a usable config
@@ -322,6 +425,7 @@ func (s *Server) DidChangeWorkspaceFolders(ctx context.Context, params *protocol
 
 		s.cfgMu.Lock()
 		delete(s.configs, folder.URI)
+		delete(s.configIssues, folder.URI)
 		s.cfgMu.Unlock()
 	}
 

@@ -176,7 +176,11 @@ func formatFlags() []cli.Flag {
 
 // lspAction serves the language server on stdio.
 func lspAction(ctx context.Context, cmd *cli.Command) error {
-	cfg := loadConfig(cmd.String("config"), ".")
+	// Degrade, don't die: editors launch this process, so a broken
+	// thrift-ls.json here would kill every buffer's language server at
+	// startup. The reason goes to stderr (open before initialize) and
+	// per-folder resolution announces it again via window/showMessage.
+	cfg := loadConfigLax(cmd.String("config"), ".")
 	patch := options.Effective(cfg)
 
 	cliPatch, err := lspPatch(cmd)
@@ -543,6 +547,42 @@ func loadConfig(path, dir string) *options.Patch {
 	cfg, err := options.Load(path)
 	if err != nil {
 		fatal(err)
+	}
+
+	return cfg
+}
+
+// loadConfigLax is loadConfig for the language server: any failure degrades
+// to nil (defaults) after printing why, never os.Exit — see lspAction. The
+// strict variant stays for format/check, where a config typo should fail
+// fast rather than silently reformat against defaults.
+func loadConfigLax(path, dir string) *options.Patch {
+	say := func(err error) {
+		fmt.Fprintf(os.Stderr, "thrift-ls: %v; continuing with defaults\n", err)
+	}
+
+	found := path
+
+	if found == "" {
+		var err error
+
+		found, err = options.FindConfig(dir)
+		if err != nil {
+			say(err)
+
+			return nil
+		}
+	}
+
+	if found == "" {
+		return nil
+	}
+
+	cfg, err := options.Load(found)
+	if err != nil {
+		say(err)
+
+		return nil
 	}
 
 	return cfg
