@@ -47,6 +47,32 @@ func Test_FormatCli_GoldenFields(t *testing.T) {
 	}
 }
 
+// Test_FormatCli_GoldenAnnotations runs the formatter over the structured
+// annotation fixture (tests/e2e/annotations), which exercises @Name
+// <value> annotations on definitions, fields, functions, and throws
+// entries across value forms (map, list, parenthesized scalar).
+func Test_FormatCli_GoldenAnnotations(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"annotations", nil},
+		{"annotations.comma", []string{"-struct-separator", "comma"}},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			args := append([]string{"format"}, c.args...)
+			args = append(args, "tests/e2e/annotations/annotations.thrift")
+
+			stdout, stderr, err := runCLI(t, args...)
+			require.NoError(t, err)
+			assert.Empty(t, stderr)
+			assert.Equal(t, readGolden(t, "tests/e2e/annotations/"+c.name+".expect"), stdout)
+		})
+	}
+}
+
 // Test_FormatCli_GoldenFieldSeparators runs the struct separator modes on
 // the comma-less fields fixture. The golden names keep the flag values of
 // the CLI they were recorded against: add, remove, disable.

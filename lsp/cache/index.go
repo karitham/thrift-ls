@@ -23,6 +23,10 @@ const (
 	RefConstValue
 	// RefServiceExtends is a service extends reference.
 	RefServiceExtends
+	// RefAnnotationType is a structured annotation's type reference: the
+	// name in "@Name <value>", which must resolve to a declared type,
+	// like the upfluence compiler's get_type call.
+	RefAnnotationType
 )
 
 // Reference is one name occurrence that resolves to a definition somewhere:
@@ -71,8 +75,8 @@ func (x *FileIndex) EnumValues() map[string]*syntax.Identifier {
 }
 
 // References returns every name reference in the file, in document order:
-// field and signature type references, constant value identifiers, and
-// service extends references.
+// field and signature type references, constant value identifiers, service
+// extends references, and structured annotation type references.
 func (x *FileIndex) References() []Reference {
 	return x.refs
 }
@@ -108,6 +112,7 @@ func (w *indexWalker) visit(n syntax.Node) {
 	switch v := n.(type) {
 	case *syntax.Struct:
 		w.x.defs[v.Name.Text] = v
+		w.structured(v.Structured)
 		w.note(v.Annotations)
 
 		for _, f := range v.Fields {
@@ -115,6 +120,7 @@ func (w *indexWalker) visit(n syntax.Node) {
 		}
 	case *syntax.Enum:
 		w.x.defs[v.Name.Text] = v
+		w.structured(v.Structured)
 		w.note(v.Annotations)
 
 		for _, ev := range v.Values {
@@ -123,6 +129,7 @@ func (w *indexWalker) visit(n syntax.Node) {
 		}
 	case *syntax.Service:
 		w.x.defs[v.Name.Text] = v
+		w.structured(v.Structured)
 		w.note(v.Annotations)
 
 		if v.Extends != nil {
@@ -134,6 +141,7 @@ func (w *indexWalker) visit(n syntax.Node) {
 		}
 
 		for _, fn := range v.Functions {
+			w.structured(fn.Structured)
 			w.note(fn.Annotations)
 			w.typ(fn.Type, RefSignatureType)
 
@@ -149,13 +157,16 @@ func (w *indexWalker) visit(n syntax.Node) {
 		}
 	case *syntax.Const:
 		w.x.defs[v.Name.Text] = v
+		w.structured(v.Structured)
 		w.typ(v.Type, RefFieldType)
 		w.value(v.Value)
 	case *syntax.Typedef:
 		w.x.defs[v.Name.Text] = v
+		w.structured(v.Structured)
 		w.note(v.Annotations)
 		w.typ(v.Type, RefFieldType)
 	case *syntax.Namespace:
+		w.structured(v.Structured)
 		w.note(v.Annotations)
 	case *syntax.Include, *syntax.CPPInclude:
 		// Headers bind no names and hold no references.
@@ -164,9 +175,26 @@ func (w *indexWalker) visit(n syntax.Node) {
 	}
 }
 
-// field records a field's type and default value references, plus its
-// annotations.
+// structured records a structured annotation's type reference. The name
+// resolves like any other type reference: it is a declared type.
+func (w *indexWalker) structured(annos []*syntax.StructuredAnnotation) {
+	for _, sa := range annos {
+		if sa.Name == nil {
+			continue
+		}
+
+		w.x.refs = append(w.x.refs, Reference{
+			Kind: RefAnnotationType,
+			Name: sa.Name.Text,
+			Node: sa.Name,
+		})
+	}
+}
+
+// field records a field's structured annotations, type and default value
+// references, plus its legacy annotations.
 func (w *indexWalker) field(f *syntax.Field, kind RefKind) {
+	w.structured(f.Structured)
 	w.note(f.Annotations)
 	w.typ(f.Type, kind)
 	w.value(f.Value)

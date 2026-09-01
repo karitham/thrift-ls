@@ -25,6 +25,8 @@ func FuzzLex(f *testing.F) {
 		[]byte("\"unterminated"),
 		[]byte("\"trailing backslash\\"),
 		[]byte("1. + - @ . : ; , < > [ ] { } ( ) = & *"),
+		[]byte("@Foo\n@Bar{'k': \"v\"}\n@Baz('x')"),
+		[]byte("struct S {\n  1: i32 a\n} @trailing.At(1)"),
 		[]byte("\r\n\r\n"),
 		[]byte("0x1F -0x10 .5 1e10 1. 0x e10"),
 		[]byte("include \"foo.thrift\"\ncpp_include \"bar.h\""),

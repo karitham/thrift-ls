@@ -79,12 +79,13 @@ const (
 	TokenStar
 	TokenAmp
 
-	// Comment trivia. A line comment or annotation consumes the rest of
-	// its source line, so whatever follows always starts a fresh line.
+	// Comment trivia. A line comment consumes the rest of its source
+	// line, so whatever follows always starts a fresh line.
 	TokenLineComment
 	TokenBlockComment
 	TokenDocComment
-	TokenAnnotation
+
+	TokenAt // @, structured annotation marker
 )
 
 var keywordKinds = map[string]TokenKind{
@@ -183,7 +184,7 @@ var tokenKindNames = map[TokenKind]string{
 	TokenComma: ",", TokenSemicolon: ";", TokenColon: ":", TokenEqual: "=",
 	TokenStar: "*", TokenAmp: "&",
 	TokenLineComment: "line comment", TokenBlockComment: "block comment",
-	TokenDocComment: "doc comment", TokenAnnotation: "annotation",
+	TokenDocComment: "doc comment", TokenAt: "@",
 }
 
 func (k TokenKind) String() string {
@@ -217,7 +218,7 @@ type Token struct {
 // appear between real tokens in the stream.
 func IsComment(k TokenKind) bool {
 	switch k {
-	case TokenLineComment, TokenBlockComment, TokenDocComment, TokenAnnotation:
+	case TokenLineComment, TokenBlockComment, TokenDocComment:
 		return true
 	}
 
@@ -304,11 +305,6 @@ func (l *lexer) scanTrivia() (blankLines int, comments []Token) {
 			t = l.scanLineComment()
 		case c == '/' && l.peekByte(1) == '*':
 			t = l.scanBlockComment()
-		case c == '@':
-			// Java-style annotations (@name{...}) are preserved as trivia,
-			// like comments, so they round-trip without being part of the
-			// grammar.
-			t = l.scanLineAnnotation()
 		default:
 			return blankLines, comments
 		}
@@ -369,18 +365,6 @@ func (l *lexer) scanLineComment() Token {
 	}
 
 	return l.finishTrivia(TokenLineComment, start)
-}
-
-// scanLineAnnotation scans an @annotation line: from '@' to the end of the
-// line, verbatim. Like line comments, the newline itself is left for the
-// whitespace scanner.
-func (l *lexer) scanLineAnnotation() Token {
-	start := l.pos()
-	for l.off < len(l.src) && l.src[l.off] != '\n' && l.src[l.off] != '\r' {
-		l.advanceRune()
-	}
-
-	return l.finishTrivia(TokenAnnotation, start)
 }
 
 // scanBlockComment scans a /* */ or /** */ comment. /** ... */ yields a doc
@@ -481,6 +465,7 @@ var symbolKinds = map[byte]TokenKind{
 	'<': TokenLt, '>': TokenGt,
 	',': TokenComma, ';': TokenSemicolon,
 	':': TokenColon, '=': TokenEqual,
+	'@': TokenAt,
 }
 
 func (l *lexer) symbolToken(kind TokenKind) Token {

@@ -117,6 +117,7 @@ type Namespace struct {
 	Name  *Identifier
 
 	Annotations *Annotations
+	Structured  []*StructuredAnnotation
 }
 
 // Const declares a constant: const <type> <name> = <value>.
@@ -126,6 +127,8 @@ type Const struct {
 	Name  *Identifier
 	Value *ConstValue
 	Sep   TokenKind // trailing , or ; (0 if none)
+
+	Structured []*StructuredAnnotation
 }
 
 // Typedef declares a type alias: typedef <type> <name>.
@@ -136,6 +139,7 @@ type Typedef struct {
 	Sep  TokenKind
 
 	Annotations *Annotations
+	Structured  []*StructuredAnnotation
 }
 
 // EnumValue is one enum member: <name> [= <int>].
@@ -155,6 +159,7 @@ type Enum struct {
 	Values []*EnumValue
 
 	Annotations *Annotations
+	Structured  []*StructuredAnnotation
 }
 
 // StructKind distinguishes struct, union, and exception declarations.
@@ -175,6 +180,7 @@ type Struct struct {
 	Fields []*Field
 
 	Annotations *Annotations
+	Structured  []*StructuredAnnotation
 }
 
 // Throws is a function's throws clause: throws ( <fields> ).
@@ -196,6 +202,7 @@ type Function struct {
 	Sep    TokenKind
 
 	Annotations *Annotations
+	Structured  []*StructuredAnnotation
 }
 
 // Service declares a service: service <name> [extends <base>] { <functions> }.
@@ -206,6 +213,7 @@ type Service struct {
 	Functions []*Function
 
 	Annotations *Annotations
+	Structured  []*StructuredAnnotation
 }
 
 // Field is a struct field, function argument, or throws entry:
@@ -221,6 +229,7 @@ type Field struct {
 	Sep       TokenKind
 
 	Annotations *Annotations
+	Structured  []*StructuredAnnotation
 }
 
 // Annotation is one entry of an annotation group: <name> [= "value"].
@@ -236,6 +245,20 @@ type Annotation struct {
 type Annotations struct {
 	nodeBase
 	Items []*Annotation
+}
+
+// StructuredAnnotation is a Java-style structured annotation:
+//
+//	@Name <value>
+//
+// where the value is a const map, a const list, or a parenthesized scalar
+// constant, and is mandatory — matching the upfluence compiler, where a
+// bare @Name is a syntax error. The name refers to a declared type; the
+// value is a constant of that type.
+type StructuredAnnotation struct {
+	nodeBase
+	Name  *Identifier
+	Value *ConstValue
 }
 
 // Document is a parsed thrift file: its token stream and the top-level nodes

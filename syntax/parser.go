@@ -110,6 +110,17 @@ func (p *parser) errorfCur(format string, args ...any) {
 	})
 }
 
+// errorfTok records a lexical-style error at the given token's position.
+func (p *parser) errorfTok(t Token, format string, args ...any) {
+	p.errs = append(p.errs, Error{
+		Message:  fmt.Sprintf(format, args...),
+		Offset:   t.Offset,
+		Line:     t.Line,
+		Col:      t.Col,
+		Severity: SeverityError,
+	})
+}
+
 func (p *parser) warnf(t *Token, format string, args ...any) {
 	p.errs = append(p.errs, Error{
 		Message:  fmt.Sprintf(format, args...),
@@ -144,6 +155,30 @@ func (p *parser) parseDocument() *Document {
 			doc.appendNode(p.parseStruct())
 		case TokenService:
 			doc.appendNode(p.parseService())
+		case TokenAt:
+			// Structured annotations precede a definition; the parse
+			// functions below start at the definition keyword, so the
+			// annotations are parsed here and attached afterwards.
+			annos := p.parseStructuredAnnotations()
+			switch p.cur().Kind {
+			case TokenNamespace:
+				doc.appendNode(attachStructured(p.parseNamespace(), annos))
+			case TokenConst:
+				doc.appendNode(attachStructured(p.parseConst(), annos))
+			case TokenTypedef:
+				doc.appendNode(attachStructured(p.parseTypedef(), annos))
+			case TokenEnum:
+				doc.appendNode(attachStructured(p.parseEnum(), annos))
+			case TokenStruct, TokenUnion, TokenException:
+				doc.appendNode(attachStructured(p.parseStruct(), annos))
+			case TokenService:
+				doc.appendNode(attachStructured(p.parseService(), annos))
+			default:
+				p.errorfCur("expected definition after annotation, got %q", p.cur().Text)
+				p.synchronizeTo(TokenInclude, TokenCPPInclude, TokenNamespace,
+					TokenConst, TokenTypedef, TokenEnum, TokenStruct,
+					TokenUnion, TokenException, TokenService)
+			}
 		default:
 			p.errorfCur("unexpected token %q at top level", p.cur().Text)
 			p.synchronizeTo(TokenInclude, TokenCPPInclude, TokenNamespace,
@@ -160,6 +195,40 @@ func (d *Document) appendNode(n Node) {
 	if n != nil {
 		d.Nodes = append(d.Nodes, n)
 	}
+}
+
+// attachStructured stores leading structured annotations on a definition
+// and extends its span to start at the first annotation, so the node's
+// token range stays contiguous. The parse functions start at the definition
+// keyword; the top level parses the annotations before dispatching.
+func attachStructured(n Node, annos []*StructuredAnnotation) Node {
+	s, ok := n.(interface{ setStructured([]*StructuredAnnotation) })
+	if !ok || len(annos) == 0 {
+		return n
+	}
+
+	s.setStructured(annos)
+
+	return n
+}
+
+func (n *Namespace) setStructured(a []*StructuredAnnotation) {
+	n.Structured = a
+	n.first = a[0].TokStart()
+}
+func (n *Const) setStructured(a []*StructuredAnnotation) { n.Structured = a; n.first = a[0].TokStart() }
+func (n *Typedef) setStructured(a []*StructuredAnnotation) {
+	n.Structured = a
+	n.first = a[0].TokStart()
+}
+func (n *Enum) setStructured(a []*StructuredAnnotation) { n.Structured = a; n.first = a[0].TokStart() }
+func (n *Struct) setStructured(a []*StructuredAnnotation) {
+	n.Structured = a
+	n.first = a[0].TokStart()
+}
+func (n *Service) setStructured(a []*StructuredAnnotation) {
+	n.Structured = a
+	n.first = a[0].TokStart()
 }
 
 // --- headers ---------------------------------------------------------------
@@ -430,7 +499,11 @@ func (p *parser) parseService() Node {
 }
 
 func (p *parser) parseFunction() *Function {
-	f := &Function{first: p.nextReal(p.pos)}
+	annos := p.parseStructuredAnnotations()
+	f := &Function{first: p.nextReal(p.pos), Structured: annos}
+	if len(annos) > 0 {
+		f.first = annos[0].TokStart()
+	}
 
 	switch p.cur().Kind {
 	case TokenOneway:
@@ -514,7 +587,11 @@ func (p *parser) parseFieldList(term TokenKind) []*Field {
 }
 
 func (p *parser) parseField() (*Field, bool) {
-	f := &Field{first: p.nextReal(p.pos)}
+	annos := p.parseStructuredAnnotations()
+	f := &Field{first: p.nextReal(p.pos), Structured: annos}
+	if len(annos) > 0 {
+		f.first = annos[0].TokStart()
+	}
 
 	if p.at(TokenIntConstant) && p.peekAfter(p.nextReal(p.pos)) == TokenColon {
 		f.FieldID = p.advance()
@@ -771,6 +848,54 @@ func (p *parser) parseConstValue() *ConstValue {
 }
 
 // --- annotations -----------------------------------------------------------
+
+// parseStructuredAnnotations parses zero or more leading structured
+// annotations, matching the upfluence compiler grammar:
+//
+//	StructuredAnnotation ::= '@' identifier ( ConstMap | ConstList
+//	                                         | '(' scalar ')' )
+//
+// The value is mandatory — a bare @Name is a syntax error, like the
+// compiler. The name refers to a declared type; resolving it is the
+// semantic analysis's job, not the parser's.
+func (p *parser) parseStructuredAnnotations() []*StructuredAnnotation {
+	var out []*StructuredAnnotation
+
+	for p.at(TokenAt) {
+		sa := &StructuredAnnotation{first: p.nextReal(p.pos)}
+		p.advance() // @
+
+		sa.Name = p.expectIdentifier("annotation name")
+		if sa.Name == nil {
+			return out
+		}
+
+		switch p.cur().Kind {
+		case TokenLBrace, TokenLBracket:
+			sa.Value = p.parseConstValue()
+		case TokenLParen:
+			p.advance() // (
+
+			sa.Value = p.parseConstValue()
+			p.expect(TokenRParen, "')' to close annotation value")
+
+			// The parenthesized form takes a single scalar constant only
+			// ('(' StructuredAnnotationScalarValue ')'); a map or list
+			// belongs outside the parens.
+			if sa.Value != nil && (sa.Value.Kind == ValueMap || sa.Value.Kind == ValueList) {
+				p.errorfTok(p.toks[sa.Value.TokStart()],
+					"parenthesized annotation value must be a scalar constant")
+			}
+		default:
+			p.errorfCur("expected annotation value after %q, got %q", sa.Name.Text, p.cur().Text)
+		}
+
+		sa.last = p.pos - 1
+		out = append(out, sa)
+	}
+
+	return out
+}
 
 func (p *parser) parseAnnotationsIfPresent() *Annotations {
 	if !p.at(TokenLParen) {

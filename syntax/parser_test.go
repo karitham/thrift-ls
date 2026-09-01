@@ -73,19 +73,35 @@ func checkDoc(t *testing.T, doc *Document) {
 				walk(entry.Value)
 			}
 		case *Field:
+			for _, sa := range v.Structured {
+				walk(sa)
+			}
+
 			walk(v.Type)
 			walk(v.Name)
 			walk(v.Value)
 			walk(v.Annotations)
 		case *Const:
+			for _, sa := range v.Structured {
+				walk(sa)
+			}
+
 			walk(v.Type)
 			walk(v.Name)
 			walk(v.Value)
 		case *Typedef:
+			for _, sa := range v.Structured {
+				walk(sa)
+			}
+
 			walk(v.Type)
 			walk(v.Name)
 			walk(v.Annotations)
 		case *Enum:
+			for _, sa := range v.Structured {
+				walk(sa)
+			}
+
 			walk(v.Name)
 			walk(v.Annotations)
 
@@ -96,6 +112,10 @@ func checkDoc(t *testing.T, doc *Document) {
 			walk(v.Name)
 			walk(v.Annotations)
 		case *Struct:
+			for _, sa := range v.Structured {
+				walk(sa)
+			}
+
 			walk(v.Name)
 			walk(v.Annotations)
 
@@ -103,6 +123,10 @@ func checkDoc(t *testing.T, doc *Document) {
 				walk(f)
 			}
 		case *Service:
+			for _, sa := range v.Structured {
+				walk(sa)
+			}
+
 			walk(v.Name)
 			walk(v.Extends)
 			walk(v.Annotations)
@@ -111,6 +135,10 @@ func checkDoc(t *testing.T, doc *Document) {
 				walk(f)
 			}
 		case *Function:
+			for _, sa := range v.Structured {
+				walk(sa)
+			}
+
 			walk(v.Type)
 			walk(v.Name)
 			walk(v.Annotations)
@@ -125,6 +153,10 @@ func checkDoc(t *testing.T, doc *Document) {
 				}
 			}
 		case *Namespace:
+			for _, sa := range v.Structured {
+				walk(sa)
+			}
+
 			walk(v.Name)
 			walk(v.Annotations)
 		case *FieldType:
@@ -137,6 +169,8 @@ func checkDoc(t *testing.T, doc *Document) {
 				walk(a)
 			}
 		case *Annotation:
+			walk(v.Name)
+		case *StructuredAnnotation:
 			walk(v.Name)
 		}
 	}
@@ -953,6 +987,155 @@ func TestParseAnnotations(t *testing.T) {
 	}
 }
 
+// TestParseStructuredAnnotations covers @Name <value> annotations, the
+// upfluence compiler's structured annotation syntax.
+func TestParseStructuredAnnotations(t *testing.T) {
+	tests := []struct {
+		name  string
+		src   string
+		check func(t *testing.T, doc *Document)
+	}{
+		{
+			name: "map value before a definition",
+			src:  "@naming.PreviouslyKnownAs{'namespace_': 'x'}\nservice Foo {}",
+			check: func(t *testing.T, doc *Document) {
+				s := top[*Service](t, doc)
+
+				if len(s.Structured) != 1 {
+					t.Fatalf("structured = %d, want 1", len(s.Structured))
+				}
+
+				sa := s.Structured[0]
+				if sa.Name.Text != "naming.PreviouslyKnownAs" {
+					t.Errorf("name = %q", sa.Name.Text)
+				}
+
+				if sa.Value == nil || sa.Value.Kind != ValueMap || len(sa.Value.Map) != 1 {
+					t.Fatalf("value = %+v", sa.Value)
+				}
+
+				if sa.Value.Map[0].Key.Text != `'namespace_'` || sa.Value.Map[0].Value.Text != `'x'` {
+					t.Errorf("entry = %+v", sa.Value.Map[0])
+				}
+
+				if s.TokStart() != sa.TokStart() {
+					t.Errorf("service span starts at %d, want annotation start %d", s.TokStart(), sa.TokStart())
+				}
+			},
+		},
+		{
+			name: "parenthesized scalar values",
+			src:  "@a.B(1)\n@c.D(-2.5)\n@e.F('x')\ntypedef i32 T",
+			check: func(t *testing.T, doc *Document) {
+				td := top[*Typedef](t, doc)
+
+				if len(td.Structured) != 3 {
+					t.Fatalf("structured = %d, want 3", len(td.Structured))
+				}
+
+				kinds := []ConstValueKind{td.Structured[0].Value.Kind, td.Structured[1].Value.Kind, td.Structured[2].Value.Kind}
+				if kinds[0] != ValueInt || kinds[1] != ValueDouble || kinds[2] != ValueString {
+					t.Errorf("value kinds = %v", kinds)
+				}
+
+				if td.Structured[0].Value.Text != "1" || td.Structured[2].Value.Text != `'x'` {
+					t.Errorf("scalar texts = %q, %q", td.Structured[0].Value.Text, td.Structured[2].Value.Text)
+				}
+			},
+		},
+		{
+			name: "identifier and list values",
+			src:  "@a.B(SomeEnum.VALUE)\n@c.D ['x', 'y']\nstruct S {}",
+			check: func(t *testing.T, doc *Document) {
+				s := top[*Struct](t, doc)
+
+				if len(s.Structured) != 2 {
+					t.Fatalf("structured = %d, want 2", len(s.Structured))
+				}
+
+				if s.Structured[0].Value.Kind != ValueIdent || s.Structured[0].Value.Text != "SomeEnum.VALUE" {
+					t.Errorf("ident value = %+v", s.Structured[0].Value)
+				}
+
+				if s.Structured[1].Value.Kind != ValueList || len(s.Structured[1].Value.List) != 2 {
+					t.Errorf("list value = %+v", s.Structured[1].Value)
+				}
+			},
+		},
+		{
+			name: "annotations on a field and a function",
+			src:  "struct S {\n  @dep.Deprecated(1) 1: i32 a\n}\nservice Svc {\n  @rpc.Auth('admin') string whoami()\n}",
+			check: func(t *testing.T, doc *Document) {
+				s := top[*Struct](t, doc)
+
+				if len(s.Fields[0].Structured) != 1 || s.Fields[0].Structured[0].Name.Text != "dep.Deprecated" {
+					t.Fatalf("field structured = %+v", s.Fields[0].Structured)
+				}
+
+				if s.Fields[0].FieldID == nil || s.Fields[0].FieldID.Text != "1" {
+					t.Errorf("field id after annotation = %v", s.Fields[0].FieldID)
+				}
+
+				svc := top[*Service](t, doc)
+
+				if len(svc.Functions) != 1 {
+					t.Fatalf("functions = %d", len(svc.Functions))
+				}
+
+				f := svc.Functions[0]
+				if len(f.Structured) != 1 || f.Structured[0].Name.Text != "rpc.Auth" {
+					t.Fatalf("function structured = %+v", f.Structured)
+				}
+
+				if f.TokStart() != f.Structured[0].TokStart() {
+					t.Errorf("function span starts at %d, want annotation start %d", f.TokStart(), f.Structured[0].TokStart())
+				}
+			},
+		},
+		{
+			name: "annotations on a field in a function argument",
+			src:  "service S {\n  void f(@meta.Range(10) i32 a)\n}",
+			check: func(t *testing.T, doc *Document) {
+				svc := top[*Service](t, doc)
+				arg := svc.Functions[0].Args[0]
+
+				if len(arg.Structured) != 1 || arg.Structured[0].Name.Text != "meta.Range" {
+					t.Fatalf("arg structured = %+v", arg.Structured)
+				}
+			},
+		},
+		{
+			name: "multiple annotations before one definition",
+			src:  "@a.B(1)\n@c.D ['x']\nenum E { A }",
+			check: func(t *testing.T, doc *Document) {
+				e := top[*Enum](t, doc)
+
+				if len(e.Structured) != 2 {
+					t.Fatalf("structured = %d, want 2", len(e.Structured))
+				}
+			},
+		},
+		{
+			name: "mixed with legacy annotations",
+			src:  "@a.B(1)\nstruct S { 1: i32 x } (legacy = \"y\")",
+			check: func(t *testing.T, doc *Document) {
+				s := top[*Struct](t, doc)
+
+				if len(s.Structured) != 1 || s.Annotations == nil || s.Annotations.Items[0].Name.Text != "legacy" {
+					t.Errorf("structured = %v, legacy = %v", s.Structured, s.Annotations)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc := parseOK(t, tt.src)
+			tt.check(t, doc)
+		})
+	}
+}
+
 func TestParseErrors(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -983,6 +1166,36 @@ func TestParseErrors(t *testing.T) {
 			name:     "annotation value must be string",
 			src:      "typedef i32 T (x = 1, y = \"2\")",
 			wantErrs: []string{"expected string literal annotation value"},
+		},
+		{
+			name:     "bare structured annotation has no value",
+			src:      "@Deprecated\nstruct S {}",
+			wantErrs: []string{`expected annotation value after "Deprecated"`},
+		},
+		{
+			name:     "structured annotation with no name",
+			src:      "@\nstruct S {}",
+			wantErrs: []string{"expected annotation name"},
+		},
+		{
+			name:     "structured annotation value must be a constant",
+			src:      "@a.B struct S {}",
+			wantErrs: []string{`expected annotation value after "a.B"`},
+		},
+		{
+			name:     "structured annotation before nothing",
+			src:      "struct A {}\n@x.Y(1)",
+			wantErrs: []string{"expected definition after annotation"},
+		},
+		{
+			name:     "parenthesized annotation value must be scalar: map",
+			src:      "@a.B({'k': 'v'})\nstruct S {}",
+			wantErrs: []string{"parenthesized annotation value must be a scalar constant"},
+		},
+		{
+			name:     "parenthesized annotation value must be scalar: list",
+			src:      "@a.B(['x'])\nstruct S {}",
+			wantErrs: []string{"parenthesized annotation value must be a scalar constant"},
 		},
 		{
 			name:     "unquoted include",

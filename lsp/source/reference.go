@@ -17,6 +17,7 @@ import (
 var highlightKind = map[cache.RefKind]protocol.DocumentHighlightKind{
 	cache.RefFieldType:      protocol.DocumentHighlightKindText,
 	cache.RefSignatureType:  protocol.DocumentHighlightKindText,
+	cache.RefAnnotationType: protocol.DocumentHighlightKindText,
 	cache.RefConstValue:     protocol.DocumentHighlightKindRead,
 	cache.RefServiceExtends: protocol.DocumentHighlightKindText,
 }
@@ -117,7 +118,11 @@ func searchReferences(ctx context.Context, view *cache.View, file uri.URI, pos p
 
 // searchTypeNameRefs resolves the type reference and finds all usages.
 func searchTypeNameRefs(ctx context.Context, ix *Index, view *cache.View, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
-	ft := target.parent.(*syntax.FieldType)
+	ft := target.fieldType()
+	if ft == nil {
+		return nil, nil
+	}
+
 	typeName := typeReferenceName(ft)
 	if typeName == "" || IsBasicType(typeName) {
 		return nil, nil

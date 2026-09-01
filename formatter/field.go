@@ -374,9 +374,16 @@ func (f *formatter) emitWithAnnotations(start, end int, ann *syntax.Annotations,
 // fieldContent renders the field as a token run. padded selects the
 // column-aligned form used when the enclosing body breaks; it has no
 // effect when align is nil. The separator token's text is suppressed (the
-// caller emits it), but its comments are preserved.
+// caller emits it), but its comments are preserved. Leading structured
+// annotations render one per line ahead of the field; their hard line
+// breaks the enclosing group, so an annotated field always gets the
+// multiline layout.
 func (f *formatter) fieldContent(v *syntax.Field, align *columnAlign, padded bool, sepMode SeparatorMode) doc.Doc {
+	pre, start := f.structuredAnnosLead(v.Structured, v.TokStart())
 	padded = padded && align != nil
+	if len(v.Structured) > 0 {
+		padded = false
+	}
 
 	o := emitOpts{}
 	if v.Sep != 0 {
@@ -387,7 +394,7 @@ func (f *formatter) fieldContent(v *syntax.Field, align *columnAlign, padded boo
 		o.pads, o.prefix = f.fieldPads(v, align)
 	}
 
-	return f.emitWithAnnotations(v.TokStart(), v.TokEnd(), v.Annotations, o)
+	return f.Concat(pre, f.emitWithAnnotations(start, v.TokEnd(), v.Annotations, o))
 }
 
 // fieldPads returns the alignment padding after each column token, or nil

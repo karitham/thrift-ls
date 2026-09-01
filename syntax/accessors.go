@@ -172,6 +172,64 @@ func (d *Document) WalkFieldLists(fn func(fields []*Field, kind FieldListKind)) 
 	}
 }
 
+// EachStructuredAnnotation visits every structured annotation in the
+// document in source order: the ones leading definitions, functions and
+// their arguments and throws entries, and struct fields. Unlike legacy
+// annotation groups, structured annotations are tree nodes and are reached
+// by Walk; this accessor exists for consumers that want the flat list.
+func (d *Document) EachStructuredAnnotation(fn func(*StructuredAnnotation)) {
+	visitFields := func(fields []*Field) {
+		for _, f := range fields {
+			for _, sa := range f.Structured {
+				fn(sa)
+			}
+		}
+	}
+
+	for _, n := range d.Nodes {
+		switch v := n.(type) {
+		case *Namespace:
+			for _, sa := range v.Structured {
+				fn(sa)
+			}
+		case *Const:
+			for _, sa := range v.Structured {
+				fn(sa)
+			}
+		case *Typedef:
+			for _, sa := range v.Structured {
+				fn(sa)
+			}
+		case *Enum:
+			for _, sa := range v.Structured {
+				fn(sa)
+			}
+		case *Struct:
+			for _, sa := range v.Structured {
+				fn(sa)
+			}
+
+			visitFields(v.Fields)
+		case *Service:
+			for _, sa := range v.Structured {
+				fn(sa)
+			}
+
+			for _, fnx := range v.Functions {
+				for _, sa := range fnx.Structured {
+					fn(sa)
+				}
+
+				visitFields(fnx.Args)
+
+				if fnx.Throws != nil {
+					visitFields(fnx.Throws.Fields)
+				}
+			}
+		}
+	}
+}
+
 // EachAnnotation visits every annotation group attached to any node of
 // the document: namespaces, typedefs, structs, fields, enum values,
 // services, functions, arguments, throws members, and container types.

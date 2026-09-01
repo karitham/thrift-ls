@@ -345,6 +345,68 @@ func Test_SemanticAnalysis_MapKeyScalar(t *testing.T) {
 	}
 }
 
+// Test_SemanticAnalysis_StructuredAnnotations pins the structured
+// annotation checks: every @Name must resolve to a declared type, like the
+// upfluence compiler's parse-time check. The annotation's value is opaque
+// here — its identifiers resolve against the annotation type, not the
+// global scope, so they are not value-checked.
+func Test_SemanticAnalysis_StructuredAnnotations(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    []string // expected messages
+	}{
+		{
+			name:    "annotation type exists",
+			content: "struct Naming { 1: optional string ns }\n@Naming{'ns': 'x'}\nstruct S {}\n",
+			want:    nil,
+		},
+		{
+			name:    "annotation type doesn't exist",
+			content: "@Naming{'ns': 'x'}\nstruct S {}\n",
+			want:    []string{"annotation type doesn't exist"},
+		},
+		{
+			name:    "field annotation",
+			content: "@Nope(1)\nstruct S {\n  1: i32 a\n}\n",
+			want:    []string{"annotation type doesn't exist"},
+		},
+		{
+			name:    "function annotation",
+			content: "service S {\n  @Nope('x') void f()\n}\n",
+			want:    []string{"annotation type doesn't exist"},
+		},
+		{
+			name:    "value identifiers are not global consts",
+			content: "struct A { 1: i32 a }\n@A(DoesNotExist)\nstruct S {}\n",
+			want:    nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			view := buildSnapshotForTest(t, []*cache.FileChange{
+				{
+					URI:     "file:///tmp/user.thrift",
+					Version: 0,
+					Content: []byte(tt.content),
+					From:    cache.FileChangeTypeDidOpen,
+				},
+			})
+
+			got, err := (&SemanticAnalysis{}).diagnostic(t.Context(), NewBatch(view), "file:///tmp/user.thrift")
+			require.NoError(t, err)
+
+			var msgs []string
+			for _, d := range got {
+				msgs = append(msgs, string(d.Message.(protocol.String)))
+			}
+
+			assert.Equal(t, tt.want, msgs)
+		})
+	}
+}
+
 // Test_SemanticAnalysis_WalkCoverage pins the checks that are driven by the
 // document walk: nested container default values are existence-checked,
 // const types are existence-checked, and diagnostics come out in document

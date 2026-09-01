@@ -96,9 +96,14 @@ func TestFoldingRanges(t *testing.T) {
 			want: []foldCase{{0, 2, protocol.FoldingRangeKindComment}},
 		},
 		{
-			name: "annotation lines fold as comments",
-			src:  "@deprecation.Deprecated{}\n@naming.X{'a': 'b'}\nstruct S {}",
-			want: []foldCase{{0, 1, protocol.FoldingRangeKindComment}},
+			name: "single-line annotations do not fold",
+			src:  "@deprecation.Deprecated(1)\n@naming.X{'a': 'b'}\nstruct S {}",
+			want: []foldCase{},
+		},
+		{
+			name: "multiline annotation value folds like a const value",
+			src:  "@naming.X{\n  'a': 'b',\n  'c': 'd'\n}\nstruct S {}",
+			want: []foldCase{{0, 3, ""}},
 		},
 		{
 			name: "mixed bodies, values, and comments",

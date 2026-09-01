@@ -1,0 +1,46 @@
+// Golden fixture for structured annotations: @Name <value>, the syntax
+// the upfluence thrift compiler parses (tok_at in thrifty.yy). The value
+// is mandatory — a const map, a const list, or a parenthesized scalar —
+// and the name must resolve to a declared type, declared below so the
+// file also passes the semantic checks.
+//
+// The fixture is deliberately uncanonical: missing spaces after the
+// annotation name, annotations sharing the field's line, stray parens
+// spacing. The goldens pin the canonical layout for each option set.
+
+struct Naming { 1: optional string namespace_ }
+
+struct Deprecation { 1: optional string message 2: optional i32 since }
+
+struct Scope { 1: optional list<string> allowed }
+
+struct Roles { 1: optional string minimum }
+
+struct Flag { 1: optional i32 code }
+
+@Naming {'namespace_': 'entities'}
+struct Entity {
+    @Deprecation(2)
+    1: i64 legacy_id,
+    2: optional string name = "unknown",
+}
+
+@Naming {'namespace_': 'annotations'}
+namespace go annotations
+
+@Deprecation('moved to V2')
+typedef map<string, list<i32>> Index (tag = "x")
+
+@Flag(1)
+const i32 Answer = 42
+
+@Scope ['read', 'write']
+service Storage {
+    @Roles('admin')
+    string Get(1: string key) throws (
+        @Flag(5)
+        NotFound e
+    ),
+
+    oneway void Ping()
+}

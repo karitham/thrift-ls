@@ -421,20 +421,21 @@ func (x *Index) FindInWorkspace(ctx context.Context, name string) (*Resolved, er
 
 // refKindsFor returns the reference slots a definition kind can appear in.
 //
-// An exception is only thrown (signatures), never used as a field type.
-// Enum values and consts live in value positions. Services are
-// extends-only. Every other type can appear in both field and signature
-// slots.
+// An exception is thrown (signatures) but never used as a field type;
+// as an annotation type it is legal, since the compiler's get_type
+// resolves any declared type. Enum values and consts live in value
+// positions. Services are extends-only. Every other type can appear in
+// field, signature, and annotation-type slots.
 func refKindsFor(k DefinitionKind) []cache.RefKind {
 	switch k {
 	case DefinitionException:
-		return []cache.RefKind{cache.RefSignatureType}
+		return []cache.RefKind{cache.RefSignatureType, cache.RefAnnotationType}
 	case DefinitionEnumValue, DefinitionConst:
 		return []cache.RefKind{cache.RefConstValue}
 	case DefinitionService:
 		return []cache.RefKind{cache.RefServiceExtends}
 	case DefinitionStruct, DefinitionUnion, DefinitionEnum, DefinitionTypedef:
-		return []cache.RefKind{cache.RefFieldType, cache.RefSignatureType}
+		return []cache.RefKind{cache.RefFieldType, cache.RefSignatureType, cache.RefAnnotationType}
 	}
 
 	return nil
@@ -447,7 +448,7 @@ func refKindsFor(k DefinitionKind) []cache.RefKind {
 // errors, unknown names) yield nil, not an error.
 func (x *Index) resolveReference(ctx context.Context, pf *cache.ParsedFile, r cache.Reference) (*Resolved, error) {
 	switch r.Kind {
-	case cache.RefFieldType, cache.RefSignatureType:
+	case cache.RefFieldType, cache.RefSignatureType, cache.RefAnnotationType:
 		ident, ok := r.Node.(*syntax.Identifier)
 		if !ok {
 			return nil, nil

@@ -163,8 +163,8 @@ func TestIndex_FindInWorkspace(t *testing.T) {
 }
 
 func TestRefKindsFor(t *testing.T) {
-	assert.Equal(t, []cache.RefKind{cache.RefSignatureType}, refKindsFor(DefinitionException))
-	assert.Equal(t, []cache.RefKind{cache.RefFieldType, cache.RefSignatureType}, refKindsFor(DefinitionStruct))
+	assert.Equal(t, []cache.RefKind{cache.RefSignatureType, cache.RefAnnotationType}, refKindsFor(DefinitionException))
+	assert.Equal(t, []cache.RefKind{cache.RefFieldType, cache.RefSignatureType, cache.RefAnnotationType}, refKindsFor(DefinitionStruct))
 	assert.Equal(t, []cache.RefKind{cache.RefServiceExtends}, refKindsFor(DefinitionService))
 	assert.Equal(t, []cache.RefKind{cache.RefConstValue}, refKindsFor(DefinitionConst))
 }

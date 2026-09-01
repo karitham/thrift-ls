@@ -387,7 +387,7 @@ func rawTokenGap(prev, cur syntax.Token) string {
 
 	switch prev.Kind {
 	case syntax.TokenLBrace, syntax.TokenLParen, syntax.TokenLBracket,
-		syntax.TokenLt, syntax.TokenAmp:
+		syntax.TokenLt, syntax.TokenAmp, syntax.TokenAt:
 		return ""
 	}
 
@@ -480,17 +480,19 @@ func (f *formatter) cppInclude(v *syntax.CPPInclude) doc.Doc {
 }
 
 func (f *formatter) namespace(v *syntax.Namespace) doc.Doc {
-	return f.headerWithAnnotations(v.TokStart(), v.TokEnd(), v.Annotations)
+	return f.headerWithAnnotations(v.Structured, v.TokStart(), v.TokEnd(), v.Annotations)
 }
 
 func (f *formatter) typedef(v *syntax.Typedef) doc.Doc {
-	return f.headerWithAnnotations(v.TokStart(), v.TokEnd(), v.Annotations)
+	return f.headerWithAnnotations(v.Structured, v.TokStart(), v.TokEnd(), v.Annotations)
 }
 
-// headerWithAnnotations emits the node's header tokens up to its
-// annotations (which keep their own foldable group), and any stray tokens
-// after them.
-func (f *formatter) headerWithAnnotations(start, end int, ann *syntax.Annotations) doc.Doc {
+// headerWithAnnotations emits the node's structured annotations (one per
+// line), the header tokens up to its annotation group (which keeps its own
+// foldable group), and any stray tokens after them.
+func (f *formatter) headerWithAnnotations(sas []*syntax.StructuredAnnotation, start, end int, ann *syntax.Annotations) doc.Doc {
+	pre, start := f.structuredAnnosLead(sas, start)
+
 	headerEnd := end
 	if ann != nil {
 		headerEnd = ann.TokStart() - 1
@@ -502,6 +504,7 @@ func (f *formatter) headerWithAnnotations(start, end int, ann *syntax.Annotation
 	}
 
 	parts := f.Parts(3)
+	parts = append(parts, pre)
 	parts = append(parts, f.emitTokens(start, headerEnd, o))
 	parts = append(parts, f.annotationsDoc(ann, ann != nil && ann.TokEnd() == end))
 	parts = append(parts, f.afterAnnotations(ann, end))
@@ -510,15 +513,18 @@ func (f *formatter) headerWithAnnotations(start, end int, ann *syntax.Annotation
 }
 
 func (f *formatter) constant(v *syntax.Const) doc.Doc {
+	pre, start := f.structuredAnnosLead(v.Structured, v.TokStart())
+
 	value := v.Value
 	if value == nil {
-		return f.emitTokens(v.TokStart(), v.TokEnd(), emitOpts{})
+		return f.Concat(pre, f.emitTokens(start, v.TokEnd(), emitOpts{}))
 	}
 
 	eq := f.prevReal(value.TokStart() - 1)
 
 	parts := f.Parts(2)
-	parts = append(parts, f.emitTokens(v.TokStart(), eq, emitOpts{trailing: true}))
+	parts = append(parts, pre)
+	parts = append(parts, f.emitTokens(start, eq, emitOpts{trailing: true}))
 	parts = append(parts, f.tokenGap(eq, value.TokStart()))
 	// Own-line comments before the value render at the value boundary,
 	// outside the value's own group.

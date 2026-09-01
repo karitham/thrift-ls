@@ -301,17 +301,10 @@ func TestLexTrivia(t *testing.T) {
 			},
 		},
 		{
-			"annotation is a stream token before the declaration",
+			"@ is a punctuation token before the declaration",
 			"@naming.PreviouslyKnownAs{'namespace_': 'x'}\nservice Foo {}",
 			[]triviaCheck{
-				{idx: 0, text: "@naming.PreviouslyKnownAs{'namespace_': 'x'}", kind: TokenAnnotation, sameLine: false},
-			},
-		},
-		{
-			"annotation inside a struct body precedes the closing brace",
-			"struct S {\n  1: string x\n  @weird\n}",
-			[]triviaCheck{
-				{idx: 7, text: "@weird", kind: TokenAnnotation, sameLine: false},
+				{idx: 0, text: "@", kind: TokenAt, sameLine: false},
 			},
 		},
 		{
@@ -437,8 +430,8 @@ func TestLexTriviaKinds(t *testing.T) {
 		{"line", "// a\n# b\n", []TokenKind{TokenLineComment, TokenLineComment}},
 		{"block and doc", "/** d */\n/* b */\n", []TokenKind{TokenDocComment, TokenBlockComment}},
 		{"silly comment is doc", "/***/\n", []TokenKind{TokenDocComment}},
-		{"annotation", "@naming.PreviouslyKnownAs{'x': 'y'}\n", []TokenKind{TokenAnnotation}},
-		{"annotation with comment", "@deprecation.Deprecated{}\n// note\n", []TokenKind{TokenAnnotation, TokenLineComment}},
+		{"at token", "@Foo(1)\n", []TokenKind{TokenAt, TokenIdentifier, TokenLParen, TokenIntConstant, TokenRParen}},
+		{"at before comment", "@Foo(1)\n// note\n", []TokenKind{TokenAt, TokenIdentifier, TokenLParen, TokenIntConstant, TokenRParen, TokenLineComment}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

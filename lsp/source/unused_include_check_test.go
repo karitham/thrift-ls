@@ -58,6 +58,16 @@ func Test_UnusedIncludeCheck(t *testing.T) {
 			want:    nil,
 		},
 		{
+			name:    "used by structured annotation type",
+			content: "include \"shared.thrift\"\n@shared.User{'id': 1}\nstruct S {}\n",
+			want:    nil,
+		},
+		{
+			name:    "used by structured annotation on a field",
+			content: "include \"shared.thrift\"\nstruct S { @shared.User(1) 1: i32 a }\n",
+			want:    nil,
+		},
+		{
 			name:    "one used, one unused",
 			content: "include \"used.thrift\"\ninclude \"unused.thrift\"\nstruct S { 1: used.User u }\n",
 			want:    []string{`unused include "unused.thrift"`},

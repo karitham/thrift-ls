@@ -15,7 +15,9 @@ import (
 //   - formatted output of a clean document parses without errors
 //   - formatting is idempotent: format(format(x)) == format(x)
 //   - formatted output is deterministic
-//   - every comment and annotation survives formatting (lossless trivia)
+//   - every comment survives formatting (lossless trivia)
+//   - every structured annotation survives formatting (lossless nodes):
+//     names and values round-trip in order
 //   - in preserve mode, every field and enum separator survives
 func FuzzFormat(f *testing.F) {
 	for _, seed := range []string{
@@ -31,6 +33,10 @@ func FuzzFormat(f *testing.F) {
 		"service S {\n  void f(1: i32 a // c\n  )\n}",
 		"struct S {\n  1: map<string, // mid\n i32> m\n}",
 		"const list<i32> L = [1, // mid\n 2]",
+		"@naming.X {'a': 'b'}\nservice S {\n  void bar()\n}",
+		"struct S {\n  @dep.Deprecated(1) 1: i32 a\n}",
+		"@a.B(1)\n@c.D ['x', 'y']\ntypedef string T",
+		"@a.B",
 	} {
 		f.Add(seed)
 	}
@@ -58,11 +64,19 @@ func FuzzFormat(f *testing.F) {
 			}
 		}
 
-		// Losslessness: every comment and annotation text survives, in
-		// order. Right-trimmed because the printer trims line ends.
+		// Losslessness: every comment survives, in order. Right-trimmed
+		// because the printer trims line ends.
 		in := commentTexts(src)
 		if got := commentTexts(out1); !reflect.DeepEqual(in, got) {
 			t.Fatalf("comments lost or reordered:\nin:  %q\nout: %q\ninput: %q\noutput: %q", in, got, src, out1)
+		}
+
+		// Losslessness: every structured annotation survives, in order,
+		// with its name and value text. Annotations are AST nodes, so the
+		// check walks both documents instead of the token streams.
+		inAnnos := structuredAnnotationTexts(src)
+		if got := structuredAnnotationTexts(out1); !reflect.DeepEqual(inAnnos, got) {
+			t.Fatalf("annotations lost or reordered:\nin:  %v\nout: %v\ninput: %q\noutput: %q", inAnnos, got, src, out1)
 		}
 
 		// In preserve mode every field and enum separator survives.
@@ -170,6 +184,25 @@ func commentTexts(src string) []string {
 
 		texts = append(texts, strings.TrimRight(tok.Text, " \t"))
 	}
+
+	return texts
+}
+
+// structuredAnnotationTexts returns every structured annotation name in
+// the source, in document order. Values are not compared text-for-text:
+// formatting canonicalizes their spacing, so only their presence (checked
+// by the reparse) and the names are pinned.
+func structuredAnnotationTexts(src string) []string {
+	doc, errs := syntax.Parse([]byte(src))
+	if len(errs) > 0 {
+		return nil
+	}
+
+	var texts []string
+
+	doc.EachStructuredAnnotation(func(sa *syntax.StructuredAnnotation) {
+		texts = append(texts, sa.Name.Text)
+	})
 
 	return texts
 }

@@ -53,7 +53,10 @@ func hoverService(ctx context.Context, ix *Index, pf *cache.ParsedFile, target *
 }
 
 func hoverDefinition(ctx context.Context, ix *Index, pf *cache.ParsedFile, target *target) (string, error) {
-	ft := target.parent.(*syntax.FieldType)
+	ft := target.fieldType()
+	if ft == nil {
+		return "", nil
+	}
 
 	def, err := ix.ResolveType(ctx, pf, ft)
 	if err != nil || def == nil {

@@ -128,7 +128,7 @@ func resolveReferenceFile(ctx context.Context, ix *Index, pf *cache.ParsedFile, 
 	var err error
 
 	switch ref.Kind {
-	case cache.RefFieldType, cache.RefSignatureType:
+	case cache.RefFieldType, cache.RefSignatureType, cache.RefAnnotationType:
 		id, ok := ref.Node.(*syntax.Identifier)
 		if !ok {
 			return "", false

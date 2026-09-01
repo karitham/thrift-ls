@@ -33,7 +33,10 @@ func Definition(ctx context.Context, view *cache.View, file uri.URI, pos protoco
 }
 
 func typeNameDefinition(ctx context.Context, ix *Index, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
-	ft := target.parent.(*syntax.FieldType)
+	ft := target.fieldType()
+	if ft == nil {
+		return nil, nil
+	}
 
 	def, err := ix.ResolveType(ctx, pf, ft)
 	if err != nil || def == nil {

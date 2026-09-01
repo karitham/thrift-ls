@@ -75,13 +75,14 @@ func resolveTarget(ctx context.Context, view *cache.View, file uri.URI, pos prot
 
 // classify determines what the cursor is on from the deepest node and its
 // parent. Identifiers carry the role of their parent: an identifier inside
-// a FieldType is a type reference, an identifier inside a Service is a
-// service name or extends, and any other identifier is a definition name.
+// a FieldType or a structured annotation is a type reference, an
+// identifier inside a Service is a service name or extends, and any other
+// identifier is a definition name.
 func classify(t *target) TargetKind {
 	switch n := t.node.(type) {
 	case *syntax.Identifier:
 		switch t.parent.(type) {
-		case *syntax.FieldType:
+		case *syntax.FieldType, *syntax.StructuredAnnotation:
 			return TargetTypeName
 		case *syntax.Service:
 			return TargetService
@@ -95,6 +96,22 @@ func classify(t *target) TargetKind {
 	}
 
 	return TargetNone
+}
+
+// fieldType returns the type reference a type-name target points at: the
+// FieldType parent, or — for a structured annotation's name — a synthetic
+// FieldType built from the annotation, so annotation names resolve through
+// the same path as any other type reference. nil for a non-type target.
+func (t *target) fieldType() *syntax.FieldType {
+	if ft, ok := t.parent.(*syntax.FieldType); ok {
+		return ft
+	}
+
+	if sa, ok := t.parent.(*syntax.StructuredAnnotation); ok && sa.Name != nil {
+		return &syntax.FieldType{Kind: syntax.TypeIdent, Ident: sa.Name}
+	}
+
+	return nil
 }
 
 // targetIdentifier returns the identifier node for definition, service, and

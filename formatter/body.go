@@ -9,11 +9,13 @@ import (
 // renders as a token run up to and including the open brace; the brace
 // text itself is emitted by bracedBody.
 func (f *formatter) structLike(v *syntax.Struct) doc.Doc {
-	open := f.scanKind(v.TokStart(), v.TokEnd(), syntax.TokenLBrace)
+	pre, start := f.structuredAnnosLead(v.Structured, v.TokStart())
+	open := f.scanKind(start, v.TokEnd(), syntax.TokenLBrace)
 	close := f.scanKind(open+1, v.TokEnd(), syntax.TokenRBrace)
 
 	parts := []doc.Doc{
-		f.emitTokens(v.TokStart(), open, emitOpts{skipText: []int{open}}),
+		pre,
+		f.emitTokens(start, open, emitOpts{skipText: []int{open}}),
 		f.bracedBody(v.Fields, open, close, close != v.TokEnd(), f.constructOf(v.Kind)),
 	}
 	parts = append(parts, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
@@ -35,11 +37,13 @@ func (f *formatter) bracedBody(fields []*syntax.Field, open, close int, closeTra
 
 // enum formats an enum declaration.
 func (f *formatter) enum(v *syntax.Enum) doc.Doc {
-	open := f.scanKind(v.TokStart(), v.TokEnd(), syntax.TokenLBrace)
+	pre, start := f.structuredAnnosLead(v.Structured, v.TokStart())
+	open := f.scanKind(start, v.TokEnd(), syntax.TokenLBrace)
 	close := f.scanKind(open+1, v.TokEnd(), syntax.TokenRBrace)
 
 	parts := []doc.Doc{
-		f.emitTokens(v.TokStart(), open, emitOpts{skipText: []int{open}}),
+		pre,
+		f.emitTokens(start, open, emitOpts{skipText: []int{open}}),
 		f.bracedEnumBody(v.Values, open, close, close != v.TokEnd()),
 	}
 	parts = append(parts, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
@@ -121,7 +125,8 @@ func (f *formatter) bracedEnumBody(values []*syntax.EnumValue, open, close int, 
 // service formats a service declaration. The body is always multiline:
 // functions are too complex to flatten.
 func (f *formatter) service(v *syntax.Service) doc.Doc {
-	open := f.scanKind(v.TokStart(), v.TokEnd(), syntax.TokenLBrace)
+	pre, start := f.structuredAnnosLead(v.Structured, v.TokStart())
+	open := f.scanKind(start, v.TokEnd(), syntax.TokenLBrace)
 	close := f.scanKind(open+1, v.TokEnd(), syntax.TokenRBrace)
 
 	parts := f.Parts(8)
@@ -174,7 +179,8 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 	)
 
 	out := []doc.Doc{
-		f.emitTokens(v.TokStart(), open, emitOpts{skipText: []int{open}}),
+		pre,
+		f.emitTokens(start, open, emitOpts{skipText: []int{open}}),
 		body,
 	}
 	out = append(out, f.annotationsDoc(v.Annotations, v.Annotations != nil && v.Annotations.TokEnd() == v.TokEnd()))
@@ -189,19 +195,23 @@ func (f *formatter) service(v *syntax.Service) doc.Doc {
 // trailing delimiter in throws never break the arguments, because the
 // throws clause is a sibling group, not an ancestor.
 func (f *formatter) function(v *syntax.Function) doc.Doc {
-	parts := append(f.ownLineComments(v.TokStart()), f.functionBody(v))
+	pre, start := f.structuredAnnosLead(v.Structured, v.TokStart())
+	parts := append(f.ownLineComments(v.TokStart()), pre)
+	parts = append(parts, f.functionBody(v, start))
 	parts = append(parts, f.sameLineComments(v.TokEnd())...)
 
 	return f.Concat(parts...)
 }
 
-func (f *formatter) functionBody(v *syntax.Function) doc.Doc {
+func (f *formatter) functionBody(v *syntax.Function, start int) doc.Doc {
 	// The header (up to the args open paren) renders as a token run, so
 	// comments between the header tokens are preserved by construction.
 	// The open paren's text is emitted by the args group; its same-line
-	// comments belong to that group too.
-	open := f.scanKind(v.TokStart(), v.TokEnd(), syntax.TokenLParen)
-	header := f.emitTokens(v.TokStart(), open, emitOpts{skipText: []int{open}})
+	// comments belong to that group too. start sits after any leading
+	// structured annotations, so the scan finds the args paren, not one
+	// inside an annotation value.
+	open := f.scanKind(start, v.TokEnd(), syntax.TokenLParen)
+	header := f.emitTokens(start, open, emitOpts{skipText: []int{open}})
 
 	// Comments or blank lines in the arguments force the multiline layout:
 	// the flat argument group would drop them.
@@ -442,7 +452,7 @@ func (f *formatter) fieldsForcedBroken(fields []*syntax.Field) bool {
 	}
 
 	for _, field := range fields {
-		if f.blankBefore(field) >= 1 {
+		if len(field.Structured) > 0 || f.blankBefore(field) >= 1 {
 			return true
 		}
 

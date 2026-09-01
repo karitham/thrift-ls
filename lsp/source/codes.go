@@ -20,6 +20,7 @@ const (
 	CodeUndefinedValue    = "undefined-value"
 	CodeValueTypeMismatch = "value-type-mismatch"
 	CodeNonScalarMapKey   = "non-scalar-map-key"
+	CodeUnknownAnnotation = "unknown-annotation-type"
 )
 
 // hasCode reports whether the diagnostic carries code. Diagnostics reach

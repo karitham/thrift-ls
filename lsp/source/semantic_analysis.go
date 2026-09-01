@@ -84,12 +84,41 @@ func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, view *cache
 			}
 		case *syntax.ConstValue:
 			res = append(res, s.checkConstValueExist(ctx, view, ix, pf, v)...)
+		case *syntax.StructuredAnnotation:
+			res = append(res, s.checkAnnotationTypeExist(ctx, view, ix, pf, v)...)
 		}
 
 		return true
 	})
 
 	return res
+}
+
+// checkAnnotationTypeExist reports a structured annotation whose name
+// resolves to no definition. Matching the upfluence compiler, the name of
+// a structured annotation must be a declared type: the compiler errors at
+// parse time ("Type %s does not exist"); here the semantic pass owns it.
+func (s *SemanticAnalysis) checkAnnotationTypeExist(ctx context.Context, view *cache.View, ix *Index,
+	pf *cache.ParsedFile, sa *syntax.StructuredAnnotation,
+) (res []protocol.Diagnostic) {
+	if sa == nil || sa.Name == nil {
+		return res
+	}
+
+	ft := &syntax.FieldType{Kind: syntax.TypeIdent, Ident: sa.Name}
+
+	def, err := ix.ResolveType(ctx, pf, ft)
+	if err == nil && def != nil {
+		return res
+	}
+
+	return append(res, protocol.Diagnostic{
+		Range:    nodeRange(pf, sa.Name),
+		Severity: protocol.DiagnosticSeverityError,
+		Code:     protocol.String(CodeUnknownAnnotation),
+		Source:   protocol.NewOptional("thrift-ls"),
+		Message:  protocol.String("annotation type doesn't exist"),
+	})
 }
 
 func (s *SemanticAnalysis) checkConstValueExist(ctx context.Context, view *cache.View, ix *Index,

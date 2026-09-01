@@ -37,11 +37,18 @@ func nodeChildren(n Node) []Node {
 	case *Document:
 		return v.Nodes
 	case *Const:
-		return []Node{v.Type, v.Name, v.Value}
+		out := structuredChildren(v.Structured)
+		out = append(out, v.Type, v.Name, v.Value)
+
+		return out
 	case *Typedef:
-		return []Node{v.Type, v.Name}
+		out := structuredChildren(v.Structured)
+		out = append(out, v.Type, v.Name)
+
+		return out
 	case *Enum:
-		out := []Node{v.Name}
+		out := structuredChildren(v.Structured)
+		out = append(out, v.Name)
 		for _, value := range v.Values {
 			out = append(out, value)
 		}
@@ -50,14 +57,16 @@ func nodeChildren(n Node) []Node {
 	case *EnumValue:
 		return []Node{v.Name}
 	case *Struct:
-		out := []Node{v.Name}
+		out := structuredChildren(v.Structured)
+		out = append(out, v.Name)
 		for _, field := range v.Fields {
 			out = append(out, field)
 		}
 
 		return out
 	case *Service:
-		out := []Node{v.Name}
+		out := structuredChildren(v.Structured)
+		out = append(out, v.Name)
 		if v.Extends != nil {
 			out = append(out, v.Extends)
 		}
@@ -68,7 +77,8 @@ func nodeChildren(n Node) []Node {
 
 		return out
 	case *Function:
-		out := []Node{v.Name}
+		out := structuredChildren(v.Structured)
+		out = append(out, v.Name)
 		if v.Type != nil {
 			out = append(out, v.Type)
 		}
@@ -90,7 +100,8 @@ func nodeChildren(n Node) []Node {
 
 		return out
 	case *Field:
-		out := []Node{v.Type, v.Name}
+		out := structuredChildren(v.Structured)
+		out = append(out, v.Type, v.Name)
 		if v.Value != nil {
 			out = append(out, v.Value)
 		}
@@ -123,16 +134,36 @@ func nodeChildren(n Node) []Node {
 
 		return out
 	case *Namespace:
-		return []Node{v.Name}
+		out := structuredChildren(v.Structured)
+		out = append(out, v.Name)
+
+		return out
 	case *Include, *CPPInclude, *Identifier:
 		return nil
 	case *Annotation, *Annotations:
 		// Annotations stay opaque: their names and values are not part of
 		// any node path.
 		return nil
+	case *StructuredAnnotation:
+		// The name is a type reference, so it joins the path (the LSP
+		// resolves it and can navigate to the annotation's definition).
+		// The value stays opaque: its identifiers resolve against the
+		// annotation type's fields, not the global scope.
+		return []Node{v.Name}
 	default:
 		panic(fmt.Sprintf("syntax: nodeChildren missing case for %T", n))
 	}
+}
+
+// structuredChildren returns the leading structured annotations of a
+// node as children, in source order.
+func structuredChildren(annos []*StructuredAnnotation) []Node {
+	out := make([]Node, 0, len(annos))
+	for _, sa := range annos {
+		out = append(out, sa)
+	}
+
+	return out
 }
 
 // Walk visits n and its descendants depth-first in source order, preorder:

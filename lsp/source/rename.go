@@ -9,7 +9,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/syntax"
 )
 
 // PrepareRename returns the range of the identifier under the cursor when
@@ -28,8 +27,8 @@ func PrepareRename(ctx context.Context, view *cache.View, file uri.URI, pos prot
 	case TargetTypeName:
 		// Rename supports type references; basic types are the only
 		// position it rejects, so prepare must reject them too.
-		ft := target.parent.(*syntax.FieldType)
-		if typeReferenceName(ft) == "" || IsBasicType(typeReferenceName(ft)) {
+		ft := target.fieldType()
+		if ft == nil || typeReferenceName(ft) == "" || IsBasicType(typeReferenceName(ft)) {
 			return nil, fmt.Errorf("rename not supported for basic types")
 		}
 
@@ -54,8 +53,8 @@ func Rename(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Po
 
 	switch target.kind {
 	case TargetTypeName:
-		ft := target.parent.(*syntax.FieldType)
-		if typeReferenceName(ft) == "" || IsBasicType(typeReferenceName(ft)) {
+		ft := target.fieldType()
+		if ft == nil || typeReferenceName(ft) == "" || IsBasicType(typeReferenceName(ft)) {
 			return nil, fmt.Errorf("rename not supported for basic types")
 		}
 

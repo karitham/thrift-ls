@@ -30,7 +30,7 @@ func Ranges(ctx context.Context, view *cache.View, file uri.URI) []protocol.Fold
 	for _, node := range doc.Nodes {
 		switch v := node.(type) {
 		case *syntax.Struct, *syntax.Enum, *syntax.Service:
-			if r, ok := bracedRange(pf, node); ok {
+			if r, ok := bracedRange(pf, node, contentStart(node, doc.Tokens)); ok {
 				ranges = append(ranges, r)
 			}
 		case *syntax.Const:
@@ -52,6 +52,21 @@ func Ranges(ctx context.Context, view *cache.View, file uri.URI) []protocol.Fold
 			}
 		}
 	}
+
+	// Structured annotation values fold like const values when they span
+	// lines; single-line annotations yield no degenerate range.
+	doc.EachStructuredAnnotation(func(sa *syntax.StructuredAnnotation) {
+		if sa.Value == nil {
+			return
+		}
+
+		switch sa.Value.Kind {
+		case syntax.ValueList, syntax.ValueMap:
+			if r, ok := spanRange(pf, sa.Value.TokStart(), sa.Value.TokEnd()); ok {
+				ranges = append(ranges, r)
+			}
+		}
+	})
 
 	ranges = append(ranges, commentBlocks(pf)...)
 
@@ -75,12 +90,36 @@ func startChar(r protocol.FoldingRange) uint32 {
 	return *r.StartCharacter
 }
 
+// contentStart returns the first token index of a node's structural
+// content: nodes carrying structured annotations span from the first
+// annotation, but their braced body scan must not see an annotation
+// value's braces.
+func contentStart(n syntax.Node, toks []syntax.Token) int {
+	var annos []*syntax.StructuredAnnotation
+
+	switch v := n.(type) {
+	case *syntax.Struct:
+		annos = v.Structured
+	case *syntax.Enum:
+		annos = v.Structured
+	case *syntax.Service:
+		annos = v.Structured
+	}
+
+	if len(annos) == 0 {
+		return n.TokStart()
+	}
+
+	return syntax.NextReal(toks, annos[len(annos)-1].TokEnd()+1)
+}
+
 // bracedRange returns the fold range of a brace-delimited body: from the
-// opening brace to the closing one.
-func bracedRange(pf *cache.ParsedFile, n syntax.Node) (protocol.FoldingRange, bool) {
+// opening brace to the closing one. start is the first content token
+// (see contentStart).
+func bracedRange(pf *cache.ParsedFile, n syntax.Node, start int) (protocol.FoldingRange, bool) {
 	open := -1
 
-	for i := n.TokStart(); i <= n.TokEnd(); i++ {
+	for i := start; i <= n.TokEnd(); i++ {
 		if pf.AST().Tokens[i].Kind == syntax.TokenLBrace {
 			open = i
 
@@ -227,5 +266,5 @@ func commentBlocks(pf *cache.ParsedFile) []protocol.FoldingRange {
 }
 
 func isLineComment(k syntax.TokenKind) bool {
-	return k == syntax.TokenLineComment || k == syntax.TokenAnnotation
+	return k == syntax.TokenLineComment
 }

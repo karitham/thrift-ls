@@ -28,11 +28,11 @@ func isComment(k syntax.TokenKind) bool {
 	return syntax.IsComment(k)
 }
 
-// lineComment reports whether the token kind is a line comment or
-// annotation, which consumes the rest of its source line: whatever follows
-// always starts a fresh line.
+// lineComment reports whether the token kind is a line comment, which
+// consumes the rest of its source line: whatever follows always starts a
+// fresh line.
 func lineComment(k syntax.TokenKind) bool {
-	return k == syntax.TokenLineComment || k == syntax.TokenAnnotation
+	return k == syntax.TokenLineComment
 }
 
 // ownLineComment renders the comment token at c, which starts its own

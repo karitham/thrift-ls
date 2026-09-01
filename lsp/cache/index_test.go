@@ -82,6 +82,42 @@ func TestFileIndex_References(t *testing.T) {
 	require.True(t, has("Err", RefSignatureType), "throws type")
 }
 
+// TestFileIndex_StructuredAnnotationReferences pins the structured
+// annotation names as type references: every @Name occurrence across
+// definitions, fields, and functions lands in References() with the
+// RefAnnotationType slot.
+func TestFileIndex_StructuredAnnotationReferences(t *testing.T) {
+	idx := buildIndex(parse(t, `
+		@Naming{'ns': 'x'}
+		@Tags ['a']
+		struct Foo {
+			@Dep(1) 1: i32 id,
+		}
+
+		@Naming{'ns': 'y'}
+		service Svc {
+			@Dep(2) void do()
+		}
+	`))
+
+	refs := idx.References()
+
+	count := func(name string, kind RefKind) int {
+		n := 0
+		for _, r := range refs {
+			if r.Name == name && r.Kind == kind {
+				n++
+			}
+		}
+
+		return n
+	}
+
+	require.Equal(t, 2, count("Naming", RefAnnotationType), "definition-level annotations")
+	require.Equal(t, 2, count("Dep", RefAnnotationType), "field and function annotations")
+	require.Equal(t, 1, count("Tags", RefAnnotationType), "list-valued annotation")
+}
+
 func TestFileIndex_ServiceExtends(t *testing.T) {
 	idx := buildIndex(parse(t, `
 		service Base {}

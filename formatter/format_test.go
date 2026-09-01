@@ -114,27 +114,62 @@ func TestFormatAnnotations(t *testing.T) {
 		{
 			name: "annotation before a service is preserved",
 			src:  "@naming.PreviouslyKnownAs{'namespace_': 'x'}\nservice Foo {\n  void bar()\n}\n",
-			want: "@naming.PreviouslyKnownAs{'namespace_': 'x'}\nservice Foo {\n  void bar()\n}\n",
+			want: "@naming.PreviouslyKnownAs {'namespace_': 'x'}\nservice Foo {\n  void bar()\n}\n",
 		},
 		{
 			name: "empty annotation before an enum",
 			src:  "@deprecation.Deprecated{}\nenum Status {\n  A,\n  B,\n}\n",
-			want: "@deprecation.Deprecated{}\nenum Status {\n  A,\n  B,\n}\n",
+			want: "@deprecation.Deprecated {}\nenum Status {\n  A,\n  B,\n}\n",
 		},
 		{
 			name: "multiple annotations keep order",
 			src:  "@a.B{}\n@c.D{'k': 'v'}\nservice Foo {\n\n}\n",
-			want: "@a.B{}\n@c.D{'k': 'v'}\nservice Foo {\n\n}\n",
+			want: "@a.B {}\n@c.D {'k': 'v'}\nservice Foo {\n\n}\n",
 		},
 		{
 			name: "comment and annotation before a declaration",
 			src:  "// keep me\n@naming.X{'a': 'b'}\nstruct S {}\n",
-			want: "// keep me\n@naming.X{'a': 'b'}\nstruct S {}\n",
+			want: "// keep me\n@naming.X {'a': 'b'}\nstruct S {}\n",
 		},
 		{
 			name: "annotation after a blank line keeps the blank line",
 			src:  "struct A {}\n\n@naming.X{}\nservice B {\n\n}\n",
-			want: "struct A {}\n\n@naming.X{}\nservice B {\n\n}\n",
+			want: "struct A {}\n\n@naming.X {}\nservice B {\n\n}\n",
+		},
+		{
+			name: "parenthesized scalar annotation",
+			src:  "@tags( 'a' )\ntypedef string T\n",
+			want: "@tags('a')\ntypedef string T\n",
+		},
+		{
+			name: "annotation on a struct field moves to its own line",
+			src:  "struct S {\n  @dep.Deprecated(1) 1: i32 a\n  2: i32 b\n}\n",
+			want: "struct S {\n  @dep.Deprecated(1)\n  1: i32 a\n  2: i32 b\n}\n",
+		},
+		{
+			name: "annotation on a function",
+			src:  "service S {\n  @rpc.Auth('admin') string whoami()\n}\n",
+			want: "service S {\n  @rpc.Auth('admin')\n  string whoami()\n}\n",
+		},
+		{
+			name: "annotation on a const and typedef",
+			src:  "@meta.Flag(true)\nconst i32 A = 1\n@meta.Flag( 2 )\ntypedef i64 B\n",
+			want: "@meta.Flag(true)\nconst i32 A = 1\n@meta.Flag(2)\ntypedef i64 B\n",
+		},
+		{
+			name: "list-valued annotation",
+			src:  "@scope['read','write']\nservice S {}\n",
+			want: "@scope ['read', 'write']\nservice S {\n}\n",
+		},
+		{
+			name: "blank line between annotations is dropped",
+			src:  "@a.B(1)\n\n@c.D(2)\nstruct S {}\n",
+			want: "@a.B(1)\n@c.D(2)\nstruct S {}\n",
+		},
+		{
+			name: "trailing line comment after an annotation does not double the break",
+			src:  "@a.B(1) // c\nstruct S {}\n",
+			want: "@a.B(1) // c\nstruct S {}\n",
 		},
 	}
 	for _, tt := range tests {
