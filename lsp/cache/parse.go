@@ -74,6 +74,11 @@ func (p *ParsedFile) AST() *syntax.Document {
 	return p.ast
 }
 
+// Content returns the file's source text.
+func (p *ParsedFile) Content() ([]byte, error) {
+	return p.fh.Content()
+}
+
 func (p *ParsedFile) Errors() []syntax.Error {
 	return p.errs
 }

@@ -4,6 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFindConfig(t *testing.T) {
@@ -189,5 +192,59 @@ func TestLoadRejectsUnknownOverrideKeys(t *testing.T) {
 
 	if _, err := Load(cfgPath); err == nil {
 		t.Fatal("Load accepted a config with an overrides key")
+	}
+}
+
+// TestLintConfigDecodeAndConvert pins the lint config: JSON decoding,
+// typo rejection, and the plain-data shape the server converts.
+func TestLintConfigDecodeAndConvert(t *testing.T) {
+	tests := []struct {
+		name         string
+		data         string
+		wantErr      bool
+		wantEnabled  bool
+		wantDisabled []string
+		wantSeverity map[string]string
+	}{
+		{
+			name:         "disabled analyzers and severity overrides",
+			data:         `{"lint": {"disabled": ["unused-include"], "severity": {"implicit-enum-value": "info"}}}`,
+			wantEnabled:  true,
+			wantDisabled: []string{"unused-include"},
+			wantSeverity: map[string]string{"implicit-enum-value": "info"},
+		},
+		{
+			name:    "unknown severity is rejected",
+			data:    `{"lint": {"severity": {"unused-include": "loud"}}}`,
+			wantErr: true,
+		},
+		{
+			name:    "unknown lint key is rejected",
+			data:    `{"lint": {"disabledz": []}}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p, err := Parse([]byte(tt.data))
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, p.Lint)
+
+			if tt.wantDisabled != nil {
+				require.NotNil(t, p.Lint.Disabled)
+				assert.Equal(t, tt.wantDisabled, *p.Lint.Disabled)
+			}
+
+			if tt.wantSeverity != nil {
+				require.NotNil(t, p.Lint.Severity)
+				assert.Equal(t, tt.wantSeverity, *p.Lint.Severity)
+			}
+		})
 	}
 }

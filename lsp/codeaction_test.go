@@ -10,7 +10,7 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/source"
+	"github.com/karitham/thrift-ls/lsp/cache"
 )
 
 func Test_CodeAction(t *testing.T) {
@@ -21,27 +21,29 @@ func Test_CodeAction(t *testing.T) {
 	tests := []struct {
 		name    string
 		content string
+		rng     protocol.Range // zero: a cursor at line 0, character 10
 		context protocol.CodeActionContext
 		want    map[string]protocol.CodeActionKind // title -> kind
 	}{
 		{
-			// Already formatted: only the enum rewrite applies.
-			name:    "enum refactor",
+			// The server's own diagnostics turn the rewrite into the
+			// quickfix for them; a selection away from every diagnostic
+			// keeps the plain rewrite.
+			name:    "enum rewrite away from diagnostics",
 			content: "enum E { A, B = 1 }\n",
+			rng: protocol.Range{
+				Start: protocol.Position{Line: 0, Character: 18},
+				End:   protocol.Position{Line: 0, Character: 18},
+			},
 			want: map[string]protocol.CodeActionKind{
 				"Make enum values explicit": protocol.CodeActionKindRefactorRewrite,
 			},
 		},
 		{
-			// A reported diagnostic turns the enum refactor into the
-			// quickfix for it.
+			// The server's own reported diagnostic turns the enum
+			// refactor into the quickfix for it.
 			name:    "enum quickfix",
 			content: "enum E { A, B = 1 }\n",
-			context: protocol.CodeActionContext{Diagnostics: []protocol.Diagnostic{{
-				Range:   protocol.Range{Start: protocol.Position{Character: 10}, End: protocol.Position{Character: 11}},
-				Code:    protocol.String(source.CodeImplicitEnumValue),
-				Message: protocol.String("A has no explicit value (implicitly 0)"),
-			}}},
 			want: map[string]protocol.CodeActionKind{
 				"Make enum values explicit": protocol.CodeActionKindQuickFix,
 			},
@@ -50,11 +52,6 @@ func Test_CodeAction(t *testing.T) {
 			name:    "only quickfix",
 			content: "enum E { A, B = 1 }\n",
 			context: protocol.CodeActionContext{
-				Diagnostics: []protocol.Diagnostic{{
-					Range:   protocol.Range{Start: protocol.Position{Character: 10}, End: protocol.Position{Character: 11}},
-					Code:    protocol.String(source.CodeImplicitEnumValue),
-					Message: protocol.String("A has no enum value (implicitly 0)"),
-				}},
 				Only: []protocol.CodeActionKind{protocol.CodeActionKindQuickFix},
 			},
 			want: map[string]protocol.CodeActionKind{
@@ -65,11 +62,6 @@ func Test_CodeAction(t *testing.T) {
 			name:    "only refactor drops the quickfix",
 			content: "enum E { A, B = 1 }\n",
 			context: protocol.CodeActionContext{
-				Diagnostics: []protocol.Diagnostic{{
-					Range:   protocol.Range{Start: protocol.Position{Character: 10}, End: protocol.Position{Character: 11}},
-					Code:    protocol.String(source.CodeImplicitEnumValue),
-					Message: protocol.String("A has no enum value (implicitly 0)"),
-				}},
 				Only: []protocol.CodeActionKind{protocol.CodeActionKindRefactorRewrite},
 			},
 			want: map[string]protocol.CodeActionKind{
@@ -86,27 +78,17 @@ func Test_CodeAction(t *testing.T) {
 			// the include line.
 			name:    "remove unused include quickfix",
 			content: "include \"shared.thrift\"\nstruct S { 1: i32 a }\n",
-			context: protocol.CodeActionContext{
-				Diagnostics: []protocol.Diagnostic{{
-					Range:   protocol.Range{Start: protocol.Position{Line: 0, Character: 0}, End: protocol.Position{Line: 0, Character: 22}},
-					Code:    protocol.String(source.CodeUnusedInclude),
-					Message: protocol.String(`unused include "shared.thrift"`),
-				}},
-			},
 			want: map[string]protocol.CodeActionKind{
 				`Remove unused include "shared.thrift"`: protocol.CodeActionKindQuickFix,
 			},
 		},
 		{
-			// The same diagnostic elsewhere does not offer the removal.
-			name:    "unused include diagnostic elsewhere",
-			content: "include \"shared.thrift\"\nstruct S { 1: i32 a }\n",
-			context: protocol.CodeActionContext{
-				Diagnostics: []protocol.Diagnostic{{
-					Range:   protocol.Range{Start: protocol.Position{Line: 5, Character: 0}, End: protocol.Position{Line: 5, Character: 1}},
-					Code:    protocol.String(source.CodeUnusedInclude),
-					Message: protocol.String(`unused include "shared.thrift"`),
-				}},
+			// A selection away from the diagnostic offers nothing.
+			name:    "selection away from the diagnostic",
+			content: "include \"shared.thrift\"\nstruct S {}\n",
+			rng: protocol.Range{
+				Start: protocol.Position{Line: 1, Character: 5},
+				End:   protocol.Position{Line: 1, Character: 6},
 			},
 			want: map[string]protocol.CodeActionKind{},
 		},
@@ -126,9 +108,25 @@ func Test_CodeAction(t *testing.T) {
 			})
 			require.NoError(t, err)
 
+			// Produce the report the server would publish, so code
+			// actions pair with the server's own diagnostics.
+			_, err = withFile(ctx, srv.session, fileURI, func(view *cache.View, _ cache.FileHandle) (struct{}, error) {
+				srv.diagnose(ctx, view, []uri.URI{fileURI})
+				return struct{}{}, nil
+			})
+			require.NoError(t, err)
+
+			rng := tt.rng
+			if rng == (protocol.Range{}) {
+				rng = protocol.Range{
+					Start: protocol.Position{Line: 0, Character: 10},
+					End:   protocol.Position{Line: 0, Character: 10},
+				}
+			}
+
 			params := &protocol.CodeActionParams{
 				TextDocument: protocol.TextDocumentIdentifier{URI: fileURI},
-				Range:        protocol.Range{Start: protocol.Position{Line: 0, Character: 10}, End: protocol.Position{Line: 0, Character: 10}},
+				Range:        rng,
 				Context:      tt.context,
 			}
 
@@ -150,37 +148,25 @@ func Test_CodeAction(t *testing.T) {
 
 func TestCodeActionAddMissingInclude(t *testing.T) {
 	const content = "struct S {\n  1: User u,\n}\n"
-	diagnosticRange := protocol.Range{
-		Start: protocol.Position{Line: 1, Character: 5},
-		End:   protocol.Position{Line: 1, Character: 9},
-	}
 
 	tests := []struct {
 		name          string
 		requestRange  protocol.Range
-		diagnostic    protocol.Diagnostic
 		wantAddAction bool
 	}{
 		{
-			name: "selection starts before diagnostic",
+			name: "selection overlaps the undefined type",
 			requestRange: protocol.Range{
 				Start: protocol.Position{Line: 1, Character: 2},
 				End:   protocol.Position{Line: 1, Character: 9},
 			},
-			diagnostic: protocol.Diagnostic{
-				Range:   diagnosticRange,
-				Code:    protocol.String(source.CodeUndefinedType),
-				Message: protocol.String("field type doesn't exist"),
-			},
 			wantAddAction: true,
 		},
 		{
-			name:         "wrong diagnostic code",
-			requestRange: diagnosticRange,
-			diagnostic: protocol.Diagnostic{
-				Range:   diagnosticRange,
-				Code:    protocol.String(source.CodeUndefinedValue),
-				Message: protocol.String("default value doesn't exist"),
+			name: "selection elsewhere offers no fix",
+			requestRange: protocol.Range{
+				Start: protocol.Position{Line: 2, Character: 0},
+				End:   protocol.Position{Line: 2, Character: 1},
 			},
 		},
 	}
@@ -197,12 +183,18 @@ func TestCodeActionAddMissingInclude(t *testing.T) {
 			fileURI := uri.File(user)
 			openDocument(t, srv, fileURI, content)
 
+			// Produce the report the server would publish.
+			_, err := withFile(t.Context(), srv.session, fileURI, func(view *cache.View, _ cache.FileHandle) (struct{}, error) {
+				srv.diagnose(t.Context(), view, []uri.URI{fileURI})
+				return struct{}{}, nil
+			})
+			require.NoError(t, err)
+
 			actions, err := srv.codeAction(t.Context(), &protocol.CodeActionParams{
 				TextDocument: protocol.TextDocumentIdentifier{URI: fileURI},
 				Range:        tt.requestRange,
 				Context: protocol.CodeActionContext{
-					Diagnostics: []protocol.Diagnostic{tt.diagnostic},
-					Only:        []protocol.CodeActionKind{protocol.CodeActionKindQuickFix},
+					Only: []protocol.CodeActionKind{protocol.CodeActionKindQuickFix},
 				},
 			})
 			require.NoError(t, err)

@@ -1,13 +1,11 @@
-package source
+package sema
 
 import (
 	"context"
-	"sort"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
@@ -72,7 +70,7 @@ struct TestUUID {
 	tests := []struct {
 		name      string
 		args      args
-		want      DiagnosticResult
+		want      map[uri.URI][]diagCmp
 		assertion assert.ErrorAssertionFunc
 	}{
 		{
@@ -84,167 +82,67 @@ struct TestUUID {
 					"file:///tmp/user.thrift",
 				},
 			},
-			want: DiagnosticResult{
+			want: map[uri.URI][]diagCmp{
 				"file:///tmp/user.thrift": {
 					{
-						Range: protocol.Range{
-							Start: protocol.Position{
-								Line:      2,
-								Character: 13,
-							},
-							End: protocol.Position{
-								Line:      2,
-								Character: 17,
-							},
-						},
-						Severity: protocol.DiagnosticSeverityError,
-						Source:   protocol.NewOptional("thrift-ls"),
-						Code:     protocol.String(CodeUndefinedType),
-						Message:  protocol.String("field type doesn't exist"),
+						StartLine: 2 + 1, StartCol: 13 + 1, EndLine: 2 + 1, EndCol: 17 + 1,
+						Severity: SeverityError,
+						Code:     CodeUndefinedType,
+						Message:  "field type doesn't exist",
 					},
 					{
-						Range: protocol.Range{
-							Start: protocol.Position{
-								Line:      10,
-								Character: 13,
-							},
-							End: protocol.Position{
-								Line:      10,
-								Character: 17,
-							},
-						},
-						Severity: protocol.DiagnosticSeverityError,
-						Source:   protocol.NewOptional("thrift-ls"),
-						Code:     protocol.String(CodeUndefinedType),
-						Message:  protocol.String("field type doesn't exist"),
+						StartLine: 10 + 1, StartCol: 13 + 1, EndLine: 10 + 1, EndCol: 17 + 1,
+						Severity: SeverityError,
+						Code:     CodeUndefinedType,
+						Message:  "field type doesn't exist",
 					},
 					{
-						Range: protocol.Range{
-							Start: protocol.Position{
-								Line:      11,
-								Character: 29,
-							},
-							End: protocol.Position{
-								Line:      11,
-								Character: 42,
-							},
-						},
-						Severity: protocol.DiagnosticSeverityError,
-						Source:   protocol.NewOptional("thrift-ls"),
-						Code:     protocol.String(CodeUndefinedValue),
-						Message:  protocol.String("default value doesn't exist"),
+						StartLine: 11 + 1, StartCol: 29 + 1, EndLine: 11 + 1, EndCol: 42 + 1,
+						Severity: SeverityError,
+						Code:     CodeUndefinedValue,
+						Message:  "default value doesn't exist",
 					},
 					{
-						Range: protocol.Range{
-							Start: protocol.Position{
-								Line:      16,
-								Character: 13,
-							},
-							End: protocol.Position{
-								Line:      16,
-								Character: 17,
-							},
-						},
-						Severity: protocol.DiagnosticSeverityError,
-						Source:   protocol.NewOptional("thrift-ls"),
-						Code:     protocol.String(CodeUndefinedType),
-						Message:  protocol.String("field type doesn't exist"),
+						StartLine: 16 + 1, StartCol: 13 + 1, EndLine: 16 + 1, EndCol: 17 + 1,
+						Severity: SeverityError,
+						Code:     CodeUndefinedType,
+						Message:  "field type doesn't exist",
 					},
 					{
-						Range: protocol.Range{
-							Start: protocol.Position{
-								Line:      21,
-								Character: 16,
-							},
-							End: protocol.Position{
-								Line:      21,
-								Character: 20,
-							},
-						},
-						Severity: protocol.DiagnosticSeverityError,
-						Source:   protocol.NewOptional("thrift-ls"),
-						Code:     protocol.String(CodeUndefinedType),
-						Message:  protocol.String("field type doesn't exist"),
+						StartLine: 21 + 1, StartCol: 16 + 1, EndLine: 21 + 1, EndCol: 20 + 1,
+						Severity: SeverityError,
+						Code:     CodeUndefinedType,
+						Message:  "field type doesn't exist",
 					},
 					{
-						Range: protocol.Range{
-							Start: protocol.Position{
-								Line:      21,
-								Character: 57,
-							},
-							End: protocol.Position{
-								Line:      21,
-								Character: 74,
-							},
-						},
-						Severity: protocol.DiagnosticSeverityError,
-						Source:   protocol.NewOptional("thrift-ls"),
-						Code:     protocol.String(CodeUndefinedType),
-						Message:  protocol.String("field type doesn't exist"),
+						StartLine: 21 + 1, StartCol: 57 + 1, EndLine: 21 + 1, EndCol: 74 + 1,
+						Severity: SeverityError,
+						Code:     CodeUndefinedType,
+						Message:  "field type doesn't exist",
 					},
 					{
-						Range: protocol.Range{
-							Start: protocol.Position{
-								Line:      26,
-								Character: 27,
-							},
-							End: protocol.Position{
-								Line:      26,
-								Character: 31,
-							},
-						},
-						Severity: protocol.DiagnosticSeverityError,
-						Source:   protocol.NewOptional("thrift-ls"),
-						Code:     protocol.String(CodeValueTypeMismatch),
-						Message:  protocol.String("expect i32 but got bool"),
+						StartLine: 26 + 1, StartCol: 27 + 1, EndLine: 26 + 1, EndCol: 31 + 1,
+						Severity: SeverityError,
+						Code:     CodeValueTypeMismatch,
+						Message:  "expect i32 but got bool",
 					},
 					{
-						Range: protocol.Range{
-							Start: protocol.Position{
-								Line:      27,
-								Character: 27,
-							},
-							End: protocol.Position{
-								Line:      27,
-								Character: 29,
-							},
-						},
-						Severity: protocol.DiagnosticSeverityError,
-						Source:   protocol.NewOptional("thrift-ls"),
-						Code:     protocol.String(CodeValueTypeMismatch),
-						Message:  protocol.String("expect i32 but got string"),
+						StartLine: 27 + 1, StartCol: 27 + 1, EndLine: 27 + 1, EndCol: 29 + 1,
+						Severity: SeverityError,
+						Code:     CodeValueTypeMismatch,
+						Message:  "expect i32 but got string",
 					},
 					{
-						Range: protocol.Range{
-							Start: protocol.Position{
-								Line:      28,
-								Character: 30,
-							},
-							End: protocol.Position{
-								Line:      28,
-								Character: 34,
-							},
-						},
-						Severity: protocol.DiagnosticSeverityError,
-						Source:   protocol.NewOptional("thrift-ls"),
-						Code:     protocol.String(CodeValueTypeMismatch),
-						Message:  protocol.String("expect string but got bool"),
+						StartLine: 28 + 1, StartCol: 30 + 1, EndLine: 28 + 1, EndCol: 34 + 1,
+						Severity: SeverityError,
+						Code:     CodeValueTypeMismatch,
+						Message:  "expect string but got bool",
 					},
 					{
-						Range: protocol.Range{
-							Start: protocol.Position{
-								Line:      29,
-								Character: 30,
-							},
-							End: protocol.Position{
-								Line:      29,
-								Character: 32,
-							},
-						},
-						Severity: protocol.DiagnosticSeverityError,
-						Source:   protocol.NewOptional("thrift-ls"),
-						Code:     protocol.String(CodeValueTypeMismatch),
-						Message:  protocol.String("expect string but got int"),
+						StartLine: 29 + 1, StartCol: 30 + 1, EndLine: 29 + 1, EndCol: 32 + 1,
+						Severity: SeverityError,
+						Code:     CodeValueTypeMismatch,
+						Message:  "expect string but got int",
 					},
 				},
 			},
@@ -255,16 +153,21 @@ struct TestUUID {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &SemanticAnalysis{}
-			got, err := c.Diagnostic(tt.args.ctx, NewBatch(tt.args.view), tt.args.changeFiles)
+			report, err := New(Config{}, []Analyzer{EachFile(c)}).Run(tt.args.ctx, tt.args.view, tt.args.changeFiles)
 
-			for key := range got {
-				sort.SliceStable(got[key], func(i, j int) bool {
-					if got[key][i].Range.Start.Line == got[key][j].Range.Start.Line {
-						return got[key][i].Range.Start.Character < got[key][j].Range.Start.Character
+			for key := range report {
+				slices.SortStableFunc(report[key], func(a, b Diagnostic) int {
+					if a.Span.Start.Line != b.Span.Start.Line {
+						return a.Span.Start.Line - b.Span.Start.Line
 					}
 
-					return got[key][i].Range.Start.Line < got[key][j].Range.Start.Line
+					return a.Span.Start.Col - b.Span.Start.Col
 				})
+			}
+
+			got := make(map[uri.URI][]diagCmp, len(report))
+			for key, ds := range report {
+				got[key] = cmpAll(ds)
 			}
 
 			tt.assertion(t, err)
@@ -332,12 +235,11 @@ func Test_SemanticAnalysis_MapKeyScalar(t *testing.T) {
 				},
 			})
 
-			got, err := (&SemanticAnalysis{}).diagnostic(t.Context(), NewBatch(view), "file:///tmp/user.thrift")
-			require.NoError(t, err)
+			got := analyzeOne(t, view, "file:///tmp/user.thrift")
 
 			var msgs []string
 			for _, d := range got {
-				msgs = append(msgs, string(d.Message.(protocol.String)))
+				msgs = append(msgs, d.Message)
 			}
 
 			assert.Equal(t, tt.want, msgs)
@@ -394,12 +296,11 @@ func Test_SemanticAnalysis_StructuredAnnotations(t *testing.T) {
 				},
 			})
 
-			got, err := (&SemanticAnalysis{}).diagnostic(t.Context(), NewBatch(view), "file:///tmp/user.thrift")
-			require.NoError(t, err)
+			got := analyzeOne(t, view, "file:///tmp/user.thrift")
 
 			var msgs []string
 			for _, d := range got {
-				msgs = append(msgs, string(d.Message.(protocol.String)))
+				msgs = append(msgs, d.Message)
 			}
 
 			assert.Equal(t, tt.want, msgs)
@@ -461,12 +362,11 @@ func Test_SemanticAnalysis_WalkCoverage(t *testing.T) {
 				},
 			})
 
-			got, err := (&SemanticAnalysis{}).diagnostic(t.Context(), NewBatch(view), "file:///tmp/user.thrift")
-			require.NoError(t, err)
+			got := analyzeOne(t, view, "file:///tmp/user.thrift")
 
 			var msgs []string
 			for _, d := range got {
-				msgs = append(msgs, string(d.Message.(protocol.String)))
+				msgs = append(msgs, d.Message)
 			}
 
 			assert.Equal(t, tt.want, msgs)
@@ -601,13 +501,12 @@ func Test_SemanticAnalysis_ConstValueType(t *testing.T) {
 				},
 			})
 
-			got, err := (&SemanticAnalysis{}).diagnostic(t.Context(), NewBatch(view), "file:///tmp/orth.thrift")
-			require.NoError(t, err)
+			got := analyzeOne(t, view, "file:///tmp/orth.thrift")
 
 			var msgs []string
 			for _, d := range got {
-				if string(d.Code.(protocol.String)) == CodeValueTypeMismatch {
-					msgs = append(msgs, string(d.Message.(protocol.String)))
+				if d.Code == CodeValueTypeMismatch {
+					msgs = append(msgs, d.Message)
 				}
 			}
 
@@ -627,8 +526,7 @@ func Test_SemanticAnalysis_ConstValueType_CrossFile(t *testing.T) {
 
 		view := crossSnap(t, "/tmp/orth.thrift", orth, "/tmp/abyss.thrift", abyss)
 
-		got, err := (&SemanticAnalysis{}).diagnostic(t.Context(), NewBatch(view), fu("/tmp/orth.thrift"))
-		require.NoError(t, err)
+		got := analyzeOne(t, view, fu("/tmp/orth.thrift"))
 		assert.Empty(t, got)
 	})
 
@@ -638,8 +536,7 @@ func Test_SemanticAnalysis_ConstValueType_CrossFile(t *testing.T) {
 
 		view := crossSnap(t, "/tmp/orth.thrift", orth, "/tmp/abyss.thrift", abyss)
 
-		got, err := (&SemanticAnalysis{}).diagnostic(t.Context(), NewBatch(view), fu("/tmp/orth.thrift"))
-		require.NoError(t, err)
+		got := analyzeOne(t, view, fu("/tmp/orth.thrift"))
 		assert.Empty(t, got)
 	})
 
@@ -651,13 +548,12 @@ func Test_SemanticAnalysis_ConstValueType_CrossFile(t *testing.T) {
 
 		view := crossSnap(t, "/tmp/orth.thrift", orth, "/tmp/abyss.thrift", abyss)
 
-		got, err := (&SemanticAnalysis{}).diagnostic(t.Context(), NewBatch(view), fu("/tmp/orth.thrift"))
-		require.NoError(t, err)
+		got := analyzeOne(t, view, fu("/tmp/orth.thrift"))
 
 		var msgs []string
 		for _, d := range got {
-			if string(d.Code.(protocol.String)) == CodeValueTypeMismatch {
-				msgs = append(msgs, string(d.Message.(protocol.String)))
+			if d.Code == CodeValueTypeMismatch {
+				msgs = append(msgs, d.Message)
 			}
 		}
 

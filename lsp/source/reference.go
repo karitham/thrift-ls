@@ -10,6 +10,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -100,7 +101,7 @@ func searchReferences(ctx context.Context, view *cache.View, file uri.URI, pos p
 		return nil, err
 	}
 
-	ix := NewIndex(view)
+	ix := sema.NewIndex(view)
 
 	switch target.kind {
 	case TargetTypeName:
@@ -117,14 +118,14 @@ func searchReferences(ctx context.Context, view *cache.View, file uri.URI, pos p
 }
 
 // searchTypeNameRefs resolves the type reference and finds all usages.
-func searchTypeNameRefs(ctx context.Context, ix *Index, view *cache.View, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
+func searchTypeNameRefs(ctx context.Context, ix *sema.Index, view *cache.View, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
 	ft := target.fieldType()
 	if ft == nil {
 		return nil, nil
 	}
 
-	typeName := typeReferenceName(ft)
-	if typeName == "" || IsBasicType(typeName) {
+	typeName := sema.TypeReferenceName(ft)
+	if typeName == "" || sema.IsBasicType(typeName) {
 		return nil, nil
 	}
 
@@ -144,20 +145,21 @@ func searchTypeNameRefs(ctx context.Context, ix *Index, view *cache.View, pf *ca
 
 	hits := []indexHit{{loc: loc, text: def.Name.Text, kind: cache.RefFieldType}}
 
-	refs, err := ix.ReferencesTo(ctx, def, refKindsFor(def.Kind)...)
+	refs, err := ix.ReferencesTo(ctx, def, sema.RefKindsFor(def.Kind)...)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, h := range refs {
-		hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: h.Kind})
+	more, err := hitLocs(ctx, view, refs)
+	if err != nil {
+		return nil, err
 	}
 
-	return hits, nil
+	return append(hits, more...), nil
 }
 
 // searchConstValueRefs resolves a const-value or enum-value reference.
-func searchConstValueRefs(ctx context.Context, ix *Index, view *cache.View, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
+func searchConstValueRefs(ctx context.Context, ix *sema.Index, view *cache.View, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
 	value := target.node.(*syntax.ConstValue)
 
 	def, err := ix.ResolveValue(ctx, pf, value)
@@ -181,15 +183,16 @@ func searchConstValueRefs(ctx context.Context, ix *Index, view *cache.View, pf *
 		return nil, err
 	}
 
-	for _, h := range refs {
-		hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: h.Kind})
+	more, err := hitLocs(ctx, view, refs)
+	if err != nil {
+		return nil, err
 	}
 
-	return hits, nil
+	return append(hits, more...), nil
 }
 
 // searchServiceRefs finds the includes and extends referencing a service.
-func searchServiceRefs(ctx context.Context, ix *Index, view *cache.View, file uri.URI, svcName string) ([]indexHit, error) {
+func searchServiceRefs(ctx context.Context, ix *sema.Index, view *cache.View, file uri.URI, svcName string) ([]indexHit, error) {
 	pf, err := view.Parse(ctx, file)
 	if err != nil || pf.AST() == nil {
 		return nil, err
@@ -205,17 +208,12 @@ func searchServiceRefs(ctx context.Context, ix *Index, view *cache.View, file ur
 		return nil, err
 	}
 
-	hits := make([]indexHit, 0, len(refs))
-	for _, h := range refs {
-		hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: h.Kind})
-	}
-
-	return hits, nil
+	return hitLocs(ctx, view, refs)
 }
 
 // searchDefRefs handles references from a definition name: struct, union,
 // exception, enum, typedef, const, enum value, and service names.
-func searchDefRefs(ctx context.Context, ix *Index, view *cache.View, file uri.URI, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
+func searchDefRefs(ctx context.Context, ix *sema.Index, view *cache.View, file uri.URI, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
 	id := target.identifier()
 	if id == nil {
 		return nil, nil
@@ -223,27 +221,27 @@ func searchDefRefs(ctx context.Context, ix *Index, view *cache.View, file uri.UR
 
 	parent := target.parent
 
-	var def *Resolved
+	var def *sema.Resolved
 	var kinds []cache.RefKind
 
 	switch parent.(type) {
 	case *syntax.Const:
-		def = defFromNode(pf, parent)
+		def = sema.DefFromNode(pf, parent)
 		kinds = []cache.RefKind{cache.RefConstValue}
 	case *syntax.EnumValue:
-		def = defFromNode(pf, id)
+		def = sema.DefFromNode(pf, id)
 		kinds = []cache.RefKind{cache.RefConstValue}
 	case *syntax.Service:
 		svcName := id.Text
 		if strings.Contains(svcName, ".") {
-			include, _ := parseIdent(file, pf.AST().Includes(), svcName)
+			include, _ := sema.ParseIdent(file, pf.AST().Includes(), svcName)
 
 			resolver := view.Resolver()
 			if path := resolver.GetIncludePath(pf.AST(), include); path != "" {
 				file = resolver.ResolveInclude(file, path)
 			}
 		} else {
-			svcName = fmt.Sprintf("%s.%s", includeNameOf(file), svcName)
+			svcName = fmt.Sprintf("%s.%s", sema.IncludeNameOf(file), svcName)
 		}
 
 		return searchServiceRefs(ctx, ix, view, file, svcName)
@@ -257,12 +255,12 @@ func searchDefRefs(ctx context.Context, ix *Index, view *cache.View, file uri.UR
 			return nil, nil
 		}
 
-		def = defFromNode(pf, parent)
-		kinds = refKindsFor(kind)
+		def = sema.DefFromNode(pf, parent)
+		kinds = sema.RefKindsFor(kind)
 
 		// Renaming an enum definition also touches value positions
 		// qualified with the enum name ("Color.RED").
-		if kind == DefinitionEnum {
+		if kind == sema.DefinitionEnum {
 			kinds = append(kinds, cache.RefConstValue)
 		}
 	}
@@ -272,37 +270,60 @@ func searchDefRefs(ctx context.Context, ix *Index, view *cache.View, file uri.UR
 		return nil, err
 	}
 
-	hits := make([]indexHit, 0, len(refs))
-	for _, h := range refs {
-		hits = append(hits, indexHit{loc: protocol.Location{URI: h.File, Range: h.Range}, text: h.Text, kind: h.Kind})
-	}
-
-	return hits, nil
+	return hitLocs(ctx, view, refs)
 }
 
 // definitionKindOf maps a definition node to its kind.
-func definitionKindOf(n syntax.Node) (DefinitionKind, bool) {
+func definitionKindOf(n syntax.Node) (sema.DefinitionKind, bool) {
 	switch v := n.(type) {
 	case *syntax.Struct:
 		switch v.Kind {
 		case syntax.StructDecl:
-			return DefinitionStruct, true
+			return sema.DefinitionStruct, true
 		case syntax.UnionDecl:
-			return DefinitionUnion, true
+			return sema.DefinitionUnion, true
 		case syntax.ExceptionDecl:
-			return DefinitionException, true
+			return sema.DefinitionException, true
 		}
 	case *syntax.Enum:
-		return DefinitionEnum, true
+		return sema.DefinitionEnum, true
 	case *syntax.Typedef:
-		return DefinitionTypedef, true
+		return sema.DefinitionTypedef, true
 	case *syntax.Const:
-		return DefinitionConst, true
+		return sema.DefinitionConst, true
 	case *syntax.Service:
-		return DefinitionService, true
+		return sema.DefinitionService, true
 	}
 
-	return DefinitionNone, false
+	return sema.DefinitionNone, false
+}
+
+// hitLocs translates sema hits to LSP locations: each hit's parser-
+// coordinate span maps through its own file's mapper.
+func hitLocs(ctx context.Context, view *cache.View, hits []sema.Hit) ([]indexHit, error) {
+	out := make([]indexHit, 0, len(hits))
+
+	for _, h := range hits {
+		loc, err := hitLoc(ctx, view, h)
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, indexHit{loc: loc, text: h.Text, kind: h.Kind})
+	}
+
+	return out, nil
+}
+
+// hitLoc translates one hit's parser-coordinate span to an LSP location
+// through the hit file's mapper.
+func hitLoc(ctx context.Context, view *cache.View, h sema.Hit) (protocol.Location, error) {
+	pf, err := view.Parse(ctx, h.File)
+	if err != nil {
+		return protocol.Location{}, err
+	}
+
+	return protocol.Location{URI: h.File, Range: toLSPRange(pf, h.Span.Start, h.Span.End)}, nil
 }
 
 // indexHit is a referenceSearch result: location, text as written, and
@@ -315,10 +336,10 @@ type indexHit struct {
 
 // validReferenceDefinitionType lists definition kinds that can have type
 // references (i.e. everything except services and consts).
-var validReferenceDefinitionType = map[DefinitionKind]struct{}{
-	DefinitionStruct:    {},
-	DefinitionUnion:     {},
-	DefinitionEnum:      {},
-	DefinitionException: {},
-	DefinitionTypedef:   {},
+var validReferenceDefinitionType = map[sema.DefinitionKind]struct{}{
+	sema.DefinitionStruct:    {},
+	sema.DefinitionUnion:     {},
+	sema.DefinitionEnum:      {},
+	sema.DefinitionException: {},
+	sema.DefinitionTypedef:   {},
 }

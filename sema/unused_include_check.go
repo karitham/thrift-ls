@@ -1,12 +1,9 @@
-package source
+package sema
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log/slog"
 
-	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
@@ -22,36 +19,8 @@ func (c *UnusedIncludeCheck) Name() string {
 	return "UnusedIncludeCheck"
 }
 
-func (c *UnusedIncludeCheck) Diagnostic(ctx context.Context, b *Batch, changeFiles []uri.URI) (DiagnosticResult, error) {
-	res := make(DiagnosticResult)
-
-	for _, file := range changeFiles {
-		items, err := c.diagnostic(ctx, b, file)
-		if err != nil {
-			return nil, err
-		}
-
-		res[file] = items
-	}
-
-	return res, nil
-}
-
-func (c *UnusedIncludeCheck) diagnostic(ctx context.Context, b *Batch, file uri.URI) ([]protocol.Diagnostic, error) {
-	pf, err := b.Tree(ctx, file)
-	if err != nil {
-		return nil, err
-	}
-
-	if pf.AST() == nil {
-		return nil, errors.New("parse ast failed")
-	}
-
-	for _, err := range pf.Errors() {
-		slog.Debug("parse failed", "err", err)
-	}
-
-	return unusedIncludeDiagnostics(ctx, b, file, pf), nil
+func (c *UnusedIncludeCheck) AnalyzeFile(ctx context.Context, f File) ([]Diagnostic, error) {
+	return unusedIncludeDiagnostics(ctx, f, f.PF), nil
 }
 
 // unusedIncludeDiagnostics warns on every include whose target file never
@@ -59,50 +28,85 @@ func (c *UnusedIncludeCheck) diagnostic(ctx context.Context, b *Batch, file uri.
 // name, a constant value identifier, or a service extends clause, used
 // qualified ("base.Type") or unqualified (resolving through the include
 // chain).
-func unusedIncludeDiagnostics(ctx context.Context, b *Batch, file uri.URI, pf *cache.ParsedFile) []protocol.Diagnostic {
+func unusedIncludeDiagnostics(ctx context.Context, f File, pf *cache.ParsedFile) []Diagnostic {
 	includes := pf.AST().Includes()
 	if len(includes) == 0 {
 		return nil
 	}
 
-	used := usedIncludes(ctx, b, file, pf)
+	used := usedIncludes(ctx, f, pf)
 
-	var ret []protocol.Diagnostic
+	var ret []Diagnostic
+
+	content, contentErr := pf.Content()
 
 	for _, inc := range includes {
 		if used[inc] {
 			continue
 		}
 
-		ret = append(ret, protocol.Diagnostic{
-			Range:    nodeRange(pf, inc),
-			Severity: protocol.DiagnosticSeverityWarning,
-			Code:     protocol.String(CodeUnusedInclude),
-			Source:   protocol.NewOptional("thrift-ls"),
-			Message:  protocol.String(fmt.Sprintf("unused include %q", inc.PathText())),
-		})
+		d := Diagnostic{
+			Span:     SpanOf(pf, inc),
+			Severity: SeverityWarning,
+			Code:     CodeUnusedInclude,
+			Message:  fmt.Sprintf("unused include %q", inc.PathText()),
+		}
+
+		// The include statement is a statement of its own: the fix
+		// deletes its whole line.
+		if contentErr == nil {
+			d.Fixes = append(d.Fixes, Fix{
+				Title: fmt.Sprintf("Remove unused include %q", inc.PathText()),
+				Edits: []Edit{{Span: lineSpan(content, d.Span.Start)}},
+			})
+		}
+
+		ret = append(ret, d)
 	}
 
 	return ret
+}
+
+// lineSpan returns the span of the whole source line containing pos, the
+// trailing newline included.
+func lineSpan(content []byte, pos syntax.Position) Span {
+	start := pos.Offset
+	for start > 0 && content[start-1] != '\n' {
+		start--
+	}
+
+	end := pos.Offset
+	for end < len(content) && content[end] != '\n' {
+		end++
+	}
+
+	if end < len(content) {
+		end++
+	}
+
+	return Span{
+		Start: syntax.Position{Line: pos.Line, Col: 1, Offset: start},
+		End:   syntax.Position{Line: pos.Line + 1, Col: 1, Offset: end},
+	}
 }
 
 // usedIncludes marks every include that at least one reference in the
 // document resolves into. Resolution goes through the run's shared
 // cross-file index, which handles both qualified ("base.Type") and
 // unqualified names that resolve through the include chain.
-func usedIncludes(ctx context.Context, b *Batch, file uri.URI, pf *cache.ParsedFile) map[*syntax.Include]bool {
-	resolver := b.View().Resolver()
+func usedIncludes(ctx context.Context, f File, pf *cache.ParsedFile) map[*syntax.Include]bool {
+	resolver := f.View().Resolver()
 	includeByFile := make(map[uri.URI]*syntax.Include)
 
 	for _, inc := range pf.AST().Includes() {
 		if p := inc.PathText(); p != "" {
-			includeByFile[resolver.ResolveInclude(file, p)] = inc
+			includeByFile[resolver.ResolveInclude(f.URI, p)] = inc
 		}
 	}
 
 	used := make(map[*syntax.Include]bool)
 	seen := make(map[string]bool)
-	ix := b.Index()
+	ix := f.Index()
 
 	for _, ref := range pf.Index().References() {
 		if seen[ref.Name] {

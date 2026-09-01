@@ -8,6 +8,7 @@ import (
 
 	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -19,7 +20,7 @@ func Hover(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Pos
 		return res, err
 	}
 
-	ix := NewIndex(view)
+	ix := sema.NewIndex(view)
 
 	switch target.kind {
 	case TargetTypeName:
@@ -38,7 +39,7 @@ func formatNode(doc *syntax.Document, node syntax.Node) (string, error) {
 	return formatter.FormatNode(doc, node, formatter.DefaultOptions())
 }
 
-func hoverService(ctx context.Context, ix *Index, pf *cache.ParsedFile, target *target) (string, error) {
+func hoverService(ctx context.Context, ix *sema.Index, pf *cache.ParsedFile, target *target) (string, error) {
 	def, err := ix.ResolveService(ctx, pf, target.identifier())
 	if err != nil || def == nil {
 		return "", err
@@ -52,7 +53,7 @@ func hoverService(ctx context.Context, ix *Index, pf *cache.ParsedFile, target *
 	return formatNode(def.Parsed.AST(), svc)
 }
 
-func hoverDefinition(ctx context.Context, ix *Index, pf *cache.ParsedFile, target *target) (string, error) {
+func hoverDefinition(ctx context.Context, ix *sema.Index, pf *cache.ParsedFile, target *target) (string, error) {
 	ft := target.fieldType()
 	if ft == nil {
 		return "", nil
@@ -70,13 +71,13 @@ func hoverDefinition(ctx context.Context, ix *Index, pf *cache.ParsedFile, targe
 	return formatNode(def.Parsed.AST(), def.Node)
 }
 
-func hoverConstValue(ctx context.Context, ix *Index, pf *cache.ParsedFile, target *target) (string, error) {
+func hoverConstValue(ctx context.Context, ix *sema.Index, pf *cache.ParsedFile, target *target) (string, error) {
 	def, err := ix.ResolveValue(ctx, pf, target.node.(*syntax.ConstValue))
 	if err != nil || def == nil {
 		return "", err
 	}
 
-	if def.Kind == DefinitionEnumValue {
+	if def.Kind == sema.DefinitionEnumValue {
 		dst := enumOfValue(def.Parsed, def.Name.Text)
 		if dst == nil {
 			return "", nil

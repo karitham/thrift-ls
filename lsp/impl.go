@@ -7,7 +7,6 @@ import (
 	"path"
 	"runtime/debug"
 	"strings"
-	"sync"
 
 	"go.lsp.dev/uri"
 
@@ -67,7 +66,7 @@ func (s *Server) openFile(ctx context.Context, change *cache.FileChange) error {
 }
 
 func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDocumentParams) error {
-	changes := cache.FileChangeFromLSPDidChange(params)
+	changes := FileChangeFromLSPDidChange(params)
 	if err := s.session.UpdateOverlayFS(ctx, changes); err != nil {
 		return err
 	}
@@ -99,6 +98,8 @@ func (s *Server) didClose(ctx context.Context, params *protocol.DidCloseTextDocu
 		return err
 	}
 
+	s.forgetReport(fileURI)
+
 	s.postDiagnostics(ctx, view, view.Update(ctx, change))
 
 	return nil
@@ -117,6 +118,11 @@ func (s *Server) didChangeWatchedFiles(ctx context.Context, params *protocol.Did
 		change, err := s.watchedFileChange(ctx, event)
 		if err != nil {
 			return err
+		}
+
+		// A watched file reported as closed is a deletion from disk.
+		if change.From == cache.FileChangeTypeDidClose {
+			s.forgetReport(event.URI)
 		}
 
 		view, err := s.session.ViewOf(event.URI)
@@ -187,24 +193,6 @@ func (s *Server) postDiagnostics(ctx context.Context, view *cache.View, res cach
 
 		s.diagnose(ctx, view, res.Affected)
 	}()
-}
-
-// diagnose publishes diagnostics for every affected file, in parallel: a
-// change to a shared include re-diagnoses all its dependents, and the view
-// (and the client connection) are safe for concurrent reads and
-// notifications.
-func (s *Server) diagnose(ctx context.Context, view *cache.View, affected []uri.URI) {
-	var wg sync.WaitGroup
-
-	for _, file := range affected {
-		wg.Go(func() {
-			if err := s.diagnostic(ctx, view, file); err != nil {
-				logError("diagnostic error", err)
-			}
-		})
-	}
-
-	wg.Wait()
 }
 
 func (s *Server) completion(ctx context.Context, params *protocol.CompletionParams) (*protocol.CompletionList, error) {

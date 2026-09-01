@@ -1,4 +1,4 @@
-package source
+package sema
 
 import (
 	"testing"
@@ -197,9 +197,9 @@ func TestSemanticAnalysisSkipsBrokenFile(t *testing.T) {
 				},
 			})
 
-			got, err := (&SemanticAnalysis{}).Diagnostic(t.Context(), NewBatch(view), []uri.URI{"file:///f.thrift"})
+			report, err := New(Config{}, []Analyzer{EachFile(&SemanticAnalysis{})}).Run(t.Context(), view, []uri.URI{"file:///f.thrift"})
 			require.NoError(t, err, "a broken file must not fail the diagnostics run")
-			assert.NotNil(t, got)
+			assert.NotNil(t, report)
 		})
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -24,13 +25,13 @@ func TypeDefinition(ctx context.Context, view *cache.View, file uri.URI, pos pro
 
 	switch target.kind {
 	case TargetTypeName:
-		return typeNameDefinition(ctx, NewIndex(view), pf, target)
+		return typeNameDefinition(ctx, sema.NewIndex(view), pf, target)
 	case TargetConstValue:
 		// The type definition of a constant value is the value's own
 		// definition: the enum value or const it references.
-		return constValueDefinition(ctx, NewIndex(view), pf, target)
+		return constValueDefinition(ctx, sema.NewIndex(view), pf, target)
 	case TargetDefinition:
-		return declarationTypeDefinition(ctx, NewIndex(view), pf, target)
+		return declarationTypeDefinition(ctx, sema.NewIndex(view), pf, target)
 	}
 
 	return res, err
@@ -38,7 +39,7 @@ func TypeDefinition(ctx context.Context, view *cache.View, file uri.URI, pos pro
 
 // declarationTypeDefinition jumps to the definition of the declared type of
 // a field, typedef, function, or const under the cursor.
-func declarationTypeDefinition(ctx context.Context, ix *Index, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
+func declarationTypeDefinition(ctx context.Context, ix *sema.Index, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
 	var ft *syntax.FieldType
 
 	switch parent := target.parent.(type) {
@@ -61,7 +62,7 @@ func declarationTypeDefinition(ctx context.Context, ix *Index, pf *cache.ParsedF
 		return nil, err
 	}
 
-	loc, err := jumpInFile(ctx, ix.view, def.File, def.Name)
+	loc, err := jumpInFile(ctx, ix.View(), def.File, def.Name)
 	if err != nil {
 		return nil, err
 	}

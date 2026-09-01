@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 )
 
@@ -73,27 +72,4 @@ type FileChange struct {
 
 func (f *FileChange) FullContent() []byte {
 	return f.Content
-}
-
-// FileChangeFromLSPDidChange converts a didChange payload into file
-// changes. The server advertises whole-document sync, so whole-document
-// events map one-to-one; incremental (partial) events are a client
-// protocol violation and are skipped.
-func FileChangeFromLSPDidChange(params *protocol.DidChangeTextDocumentParams) []*FileChange {
-	changes := make([]*FileChange, 0, len(params.ContentChanges))
-	for i := range params.ContentChanges {
-		event, ok := params.ContentChanges[i].(*protocol.TextDocumentContentChangeWholeDocument)
-		if !ok {
-			continue
-		}
-
-		changes = append(changes, &FileChange{
-			URI:     params.TextDocument.URI,
-			Version: int(params.TextDocument.Version),
-			Content: []byte(event.Text),
-			From:    FileChangeTypeDidChange,
-		})
-	}
-
-	return changes
 }

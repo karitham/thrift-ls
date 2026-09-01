@@ -1,14 +1,9 @@
-package source
+package sema
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log/slog"
 	"strconv"
-
-	"go.lsp.dev/protocol"
-	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/syntax"
@@ -26,38 +21,10 @@ func (c *DuplicateCheck) Name() string {
 	return "DuplicateCheck"
 }
 
-func (c *DuplicateCheck) Diagnostic(ctx context.Context, b *Batch, changeFiles []uri.URI) (DiagnosticResult, error) {
-	view := b.View()
+func (c *DuplicateCheck) AnalyzeFile(ctx context.Context, f File) ([]Diagnostic, error) {
+	pf := f.PF
 
-	res := make(DiagnosticResult)
-
-	for _, file := range changeFiles {
-		items, err := c.diagnostic(ctx, view, file)
-		if err != nil {
-			return nil, err
-		}
-
-		res[file] = items
-	}
-
-	return res, nil
-}
-
-func (c *DuplicateCheck) diagnostic(ctx context.Context, view *cache.View, file uri.URI) ([]protocol.Diagnostic, error) {
-	pf, err := view.Parse(ctx, file)
-	if err != nil {
-		return nil, err
-	}
-
-	if pf.AST() == nil {
-		return nil, errors.New("parse ast failed")
-	}
-
-	for _, err := range pf.Errors() {
-		slog.Debug("parse failed", "err", err)
-	}
-
-	var ret []protocol.Diagnostic
+	var ret []Diagnostic
 
 	// Top-level definitions share one scope.
 	var defs []named
@@ -171,10 +138,10 @@ func fieldNames(fields []*syntax.Field, kind string) []named {
 
 // checkNames reports a diagnostic on every name in a scope that repeats an
 // earlier one.
-func checkNames(pf *cache.ParsedFile, defs []named) []protocol.Diagnostic {
+func checkNames(pf *cache.ParsedFile, defs []named) []Diagnostic {
 	seen := make(map[string]bool)
 
-	var ret []protocol.Diagnostic
+	var ret []Diagnostic
 
 	for _, d := range defs {
 		if d.id == nil || d.id.Text == "" {
@@ -182,12 +149,11 @@ func checkNames(pf *cache.ParsedFile, defs []named) []protocol.Diagnostic {
 		}
 
 		if seen[d.id.Text] {
-			ret = append(ret, protocol.Diagnostic{
-				Range:    tokenRange(pf, nameToken(pf, d.id)),
-				Severity: protocol.DiagnosticSeverityError,
-				Code:     protocol.String(CodeDuplicateDef),
-				Source:   protocol.NewOptional("thrift-ls"),
-				Message:  protocol.String(fmt.Sprintf("duplicate %s %s", d.kind, d.id.Text)),
+			ret = append(ret, Diagnostic{
+				Span:     spanOfToken(nameToken(pf, d.id)),
+				Severity: SeverityError,
+				Code:     CodeDuplicateDef,
+				Message:  fmt.Sprintf("duplicate %s %s", d.kind, d.id.Text),
 			})
 			continue
 		}
@@ -206,10 +172,10 @@ func nameToken(pf *cache.ParsedFile, id *syntax.Identifier) *syntax.Token {
 // checkEnumValues reports enum members whose resolved value — an explicit
 // constant or the compiler's auto-increment — collides with an earlier
 // member's.
-func checkEnumValues(pf *cache.ParsedFile, enum *syntax.Enum) []protocol.Diagnostic {
+func checkEnumValues(pf *cache.ParsedFile, enum *syntax.Enum) []Diagnostic {
 	seen := make(map[int64]string) // value -> first member with it
 
-	var ret []protocol.Diagnostic
+	var ret []Diagnostic
 
 	for _, mv := range enumValues(enum) {
 		if !mv.known {
@@ -217,12 +183,11 @@ func checkEnumValues(pf *cache.ParsedFile, enum *syntax.Enum) []protocol.Diagnos
 		}
 
 		if first, ok := seen[mv.value]; ok {
-			ret = append(ret, protocol.Diagnostic{
-				Range:    tokenRange(pf, enumValueNameToken(pf, mv.member)),
-				Severity: protocol.DiagnosticSeverityError,
-				Code:     protocol.String(CodeDuplicateEnumVal),
-				Source:   protocol.NewOptional("thrift-ls"),
-				Message:  protocol.String(fmt.Sprintf("enum value %d duplicates %s", mv.value, first)),
+			ret = append(ret, Diagnostic{
+				Span:     spanOfToken(enumValueNameToken(pf, mv.member)),
+				Severity: SeverityError,
+				Code:     CodeDuplicateEnumVal,
+				Message:  fmt.Sprintf("enum value %d duplicates %s", mv.value, first),
 			})
 			continue
 		}
@@ -237,8 +202,8 @@ func checkEnumValues(pf *cache.ParsedFile, enum *syntax.Enum) []protocol.Diagnos
 // values in set literals, recursing into nested containers. The declared
 // type decides whether a list literal is a set: lists keep duplicates,
 // sets reject them.
-func checkValueDuplicates(pf *cache.ParsedFile, value *syntax.ConstValue, typ *syntax.FieldType) []protocol.Diagnostic {
-	var ret []protocol.Diagnostic
+func checkValueDuplicates(pf *cache.ParsedFile, value *syntax.ConstValue, typ *syntax.FieldType) []Diagnostic {
+	var ret []Diagnostic
 
 	switch value.Kind {
 	case syntax.ValueMap:
@@ -315,12 +280,11 @@ func valueKey(v *syntax.ConstValue) string {
 
 // duplicateValueDiagnostic is the diagnostic for a repeated map key or set
 // value.
-func duplicateValueDiagnostic(pf *cache.ParsedFile, v *syntax.ConstValue, kind string) protocol.Diagnostic {
-	return protocol.Diagnostic{
-		Range:    tokenRange(pf, &pf.AST().Tokens[v.TokStart()]),
-		Severity: protocol.DiagnosticSeverityError,
-		Code:     protocol.String(CodeDuplicateValue),
-		Source:   protocol.NewOptional("thrift-ls"),
-		Message:  protocol.String(fmt.Sprintf("duplicate %s %s", kind, v.Text)),
+func duplicateValueDiagnostic(pf *cache.ParsedFile, v *syntax.ConstValue, kind string) Diagnostic {
+	return Diagnostic{
+		Span:     spanOfToken(&pf.AST().Tokens[v.TokStart()]),
+		Severity: SeverityError,
+		Code:     CodeDuplicateValue,
+		Message:  fmt.Sprintf("duplicate %s %s", kind, v.Text),
 	}
 }

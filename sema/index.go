@@ -1,4 +1,4 @@
-package source
+package sema
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
@@ -30,6 +29,11 @@ type Index struct {
 // NewIndex returns an Index over the view's store.
 func NewIndex(view *cache.View) *Index {
 	return &Index{view: view}
+}
+
+// View returns the store view the index reads from.
+func (x *Index) View() *cache.View {
+	return x.view
 }
 
 // resolveKey identifies one resolution: the referencing file, the name as
@@ -107,7 +111,7 @@ type Resolved struct {
 // when unresolved (base types, unresolvable name). Files backing the
 // resolution may fail to read; those count as unresolved.
 func (x *Index) ResolveType(ctx context.Context, from *cache.ParsedFile, ft *syntax.FieldType) (*Resolved, error) {
-	name := typeReferenceName(ft)
+	name := TypeReferenceName(ft)
 	if name == "" || IsBasicType(name) {
 		return nil, nil
 	}
@@ -165,7 +169,7 @@ const maxTypedefDepth = 32
 
 // resolveType resolves a non-basic type name in from, without memoization.
 func (x *Index) resolveType(ctx context.Context, from *cache.ParsedFile, name string) (*Resolved, error) {
-	_, identifier := parseIdent(from.URI(), from.AST().Includes(), name)
+	_, identifier := ParseIdent(from.URI(), from.AST().Includes(), name)
 
 	for _, astFile := range definitionFiles(ctx, x.view, from.URI(), from.AST(), name) {
 		dst := parseDefinitionFile(ctx, x.view, astFile)
@@ -214,8 +218,8 @@ func (x *Index) ResolveValue(ctx context.Context, from *cache.ParsedFile, v *syn
 // resolveValue resolves a value-identifier text in from, without
 // memoization.
 func (x *Index) resolveValue(ctx context.Context, from *cache.ParsedFile, text string) (*Resolved, error) {
-	_, identifier := parseIdent(from.URI(), from.AST().Includes(), text)
-	identifier = bareName(identifier)
+	_, identifier := ParseIdent(from.URI(), from.AST().Includes(), text)
+	identifier = BareName(identifier)
 
 	for _, astFile := range definitionFiles(ctx, x.view, from.URI(), from.AST(), text) {
 		dst := parseDefinitionFile(ctx, x.view, astFile)
@@ -259,7 +263,7 @@ func (x *Index) ResolveService(ctx context.Context, from *cache.ParsedFile, iden
 // resolveService resolves a service name text in from, without
 // memoization.
 func (x *Index) resolveService(ctx context.Context, from *cache.ParsedFile, name string) (*Resolved, error) {
-	_, identifier := parseIdent(from.URI(), from.AST().Includes(), name)
+	_, identifier := ParseIdent(from.URI(), from.AST().Includes(), name)
 	for _, astFile := range definitionFiles(ctx, x.view, from.URI(), from.AST(), name) {
 		dst := parseDefinitionFile(ctx, x.view, astFile)
 		if dst == nil || dst.AST() == nil {
@@ -277,9 +281,9 @@ func (x *Index) resolveService(ctx context.Context, from *cache.ParsedFile, name
 // Hit is one reference occurrence of a name, with the qualifying text
 // preserved so a rename can rewrite includes correctly.
 type Hit struct {
-	File  uri.URI
-	Range protocol.Range
-	Text  string // as written: "User", "shared.User", "shared.thrift.User"
+	File uri.URI
+	Span Span   // parser coordinates; the frontend maps them
+	Text string // as written: "User", "shared.User", "shared.thrift.User"
 
 	// Kind is the grammar slot the reference sits in, so callers can tell
 	// type hits from value hits (e.g. for highlight kinds).
@@ -363,7 +367,7 @@ func (x *Index) ReferencesTo(ctx context.Context, def *Resolved, kinds ...cache.
 				continue
 			}
 
-			if bareName(r.Name) != bareName(def.Name.Text) {
+			if BareName(r.Name) != BareName(def.Name.Text) {
 				continue
 			}
 
@@ -377,10 +381,10 @@ func (x *Index) ReferencesTo(ctx context.Context, def *Resolved, kinds ...cache.
 			}
 
 			out = append(out, Hit{
-				File:  pf.URI(),
-				Range: nodeRange(pf, r.Node),
-				Text:  r.Name,
-				Kind:  r.Kind,
+				File: pf.URI(),
+				Span: SpanOf(pf, r.Node),
+				Text: r.Name,
+				Kind: r.Kind,
 			})
 		}
 	}
@@ -401,7 +405,7 @@ func (x *Index) FindInWorkspace(ctx context.Context, name string) (*Resolved, er
 	include, identifier := splitQualifiedName(name)
 
 	for _, f := range x.view.KnownFiles() {
-		if include != "" && includeNameOf(f) != include {
+		if include != "" && IncludeNameOf(f) != include {
 			continue
 		}
 
@@ -411,7 +415,7 @@ func (x *Index) FindInWorkspace(ctx context.Context, name string) (*Resolved, er
 		}
 
 		if n, ok := pf.Definitions()[identifier]; ok {
-			return defFromNode(pf, n), nil
+			return DefFromNode(pf, n), nil
 		}
 	}
 
@@ -439,7 +443,7 @@ func (x *Index) FindInWorkspace(ctx context.Context, name string) (*Resolved, er
 	slices.Sort(files)
 
 	for _, f := range files {
-		if include != "" && includeNameOf(f) != include {
+		if include != "" && IncludeNameOf(f) != include {
 			continue
 		}
 
@@ -449,21 +453,21 @@ func (x *Index) FindInWorkspace(ctx context.Context, name string) (*Resolved, er
 		}
 
 		if n, ok := pf.Definitions()[identifier]; ok {
-			return defFromNode(pf, n), nil
+			return DefFromNode(pf, n), nil
 		}
 	}
 
 	return nil, nil
 }
 
-// refKindsFor returns the reference slots a definition kind can appear in.
+// RefKindsFor returns the reference slots a definition kind can appear in.
 //
 // An exception is thrown (signatures) but never used as a field type;
 // as an annotation type it is legal, since the compiler's get_type
 // resolves any declared type. Enum values and consts live in value
 // positions. Services are extends-only. Every other type can appear in
 // field, signature, and annotation-type slots.
-func refKindsFor(k DefinitionKind) []cache.RefKind {
+func RefKindsFor(k DefinitionKind) []cache.RefKind {
 	switch k {
 	case DefinitionException:
 		return []cache.RefKind{cache.RefSignatureType, cache.RefAnnotationType}
@@ -537,18 +541,18 @@ func referenceKind(k cache.RefKind, kinds []cache.RefKind) bool {
 func enumSegmentHit(pf *cache.ParsedFile, node syntax.Node, off int, seg string) Hit {
 	start, _ := pf.AST().Range(node)
 
-	segStart := toLSPPosition(pf, syntax.Position{
+	segStart := syntax.Position{
 		Line: start.Line, Col: start.Col, Offset: start.Offset + off,
-	})
-	segEnd := toLSPPosition(pf, syntax.Position{
+	}
+	segEnd := syntax.Position{
 		Line: start.Line, Col: start.Col, Offset: start.Offset + off + len(seg),
-	})
+	}
 
 	return Hit{
-		File:  pf.URI(),
-		Range: protocol.Range{Start: segStart, End: segEnd},
-		Text:  seg,
-		Kind:  cache.RefConstValue,
+		File: pf.URI(),
+		Span: Span{Start: segStart, End: segEnd},
+		Text: seg,
+		Kind: cache.RefConstValue,
 	}
 }
 
@@ -570,7 +574,7 @@ func (x *Index) searchFiles(file uri.URI) []uri.URI {
 }
 
 // matches returns hits for references in pf whose kind is in kinds and
-// whose bare name equals bareName(name).
+// whose bare name equals BareName(name).
 func (x *Index) matches(pf *cache.ParsedFile, name string, kinds []cache.RefKind) []Hit {
 	var out []Hit
 
@@ -579,15 +583,15 @@ func (x *Index) matches(pf *cache.ParsedFile, name string, kinds []cache.RefKind
 			continue
 		}
 
-		if bareName(r.Name) != bareName(name) {
+		if BareName(r.Name) != BareName(name) {
 			continue
 		}
 
 		out = append(out, Hit{
-			File:  pf.URI(),
-			Range: nodeRange(pf, r.Node),
-			Text:  r.Name,
-			Kind:  r.Kind,
+			File: pf.URI(),
+			Span: SpanOf(pf, r.Node),
+			Text: r.Name,
+			Kind: r.Kind,
 		})
 	}
 
@@ -640,10 +644,10 @@ func defFrom(pf *cache.ParsedFile, name *syntax.Identifier, node syntax.Node, ki
 	return &Resolved{File: pf.URI(), Parsed: pf, Name: name, Node: node, Kind: kind}
 }
 
-// defFromNode builds a Resolved from any top-level definition node. Use
+// DefFromNode builds a Resolved from any top-level definition node. Use
 // when the concrete type and Kind are not known statically (e.g.
 // FindInWorkspace).
-func defFromNode(pf *cache.ParsedFile, n syntax.Node) *Resolved {
+func DefFromNode(pf *cache.ParsedFile, n syntax.Node) *Resolved {
 	switch v := n.(type) {
 	case *syntax.Struct:
 		return defStruct(pf, v)

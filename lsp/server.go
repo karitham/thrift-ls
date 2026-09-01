@@ -16,6 +16,7 @@ import (
 	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/lsp/source"
 	"github.com/karitham/thrift-ls/options"
+	"github.com/karitham/thrift-ls/sema"
 )
 
 type Server struct {
@@ -65,6 +66,12 @@ type Server struct {
 	// permanently skip the workspace walk.
 	workspaceWalkOnce sync.Once
 	dirWalkOnce       sync.Once
+
+	// lastReport remembers the diagnostics the server last published per
+	// file, so code actions can pair fixes with the diagnostics without a
+	// round trip through the client. Guarded by reportMu.
+	reportMu sync.RWMutex
+	reports  map[uri.URI]sema.Report
 }
 
 // NewServer returns a Server resolving configuration per view. The options
@@ -79,6 +86,7 @@ func NewServer(fs cache.FileSource, client protocol.Client, opts Options) *Serve
 		cli:          opts.CLI,
 		configs:      make(map[uri.URI]options.Patch),
 		configIssues: make(map[uri.URI]configIssue),
+		reports:      make(map[uri.URI]sema.Report),
 	}
 }
 

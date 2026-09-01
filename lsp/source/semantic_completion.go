@@ -8,6 +8,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -63,7 +64,7 @@ func typeCandidates(ctx context.Context, view *cache.View, file uri.URI, c Conte
 		incNames := make(map[string]struct{})
 		collectTypeNames(pf.AST(), incNames)
 
-		qual := includeNameOf(inc)
+		qual := sema.IncludeNameOf(inc)
 		for name := range incNames {
 			show := qual + "." + name
 			res = append(res, Candidate{

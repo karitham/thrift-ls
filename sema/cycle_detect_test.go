@@ -1,4 +1,4 @@
-package source
+package sema
 
 import (
 	"maps"
@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
@@ -38,18 +37,15 @@ type cyclePair struct {
 	to   uri.URI
 }
 
-func sortedPairs(t *testing.T, res DiagnosticResult) []cyclePair {
+func sortedPairs(t *testing.T, res Report) []cyclePair {
 	t.Helper()
 
 	pairs := make([]cyclePair, 0)
 	for file, diags := range res {
 		for _, d := range diags {
-			msg, ok := d.Message.(protocol.String)
-			require.True(t, ok, "diagnostic message must be protocol.String")
-
 			pairs = append(pairs, cyclePair{
 				from: file,
-				to:   uri.URI(strings.TrimPrefix(string(msg), "cycle dependency in ")),
+				to:   uri.URI(strings.TrimPrefix(d.Message, "cycle dependency in ")),
 			})
 		}
 	}
@@ -90,13 +86,12 @@ func runCycleCheck(t *testing.T, files map[string]string, root string) []cyclePa
 
 	view := buildSnapshotForTest(t, changes)
 
-	res, err := (&CycleCheck{}).Diagnostic(t.Context(), NewBatch(view), []uri.URI{uri.URI("file:///tmp/" + root)})
-	require.NoError(t, err)
+	res := runOne(t, &CycleCheck{}, view, uri.URI("file:///tmp/"+root))
 
 	for file, diags := range res {
 		for _, d := range diags {
-			assert.Equal(t, protocol.DiagnosticSeverityWarning, d.Severity, file)
-			assert.Equal(t, protocol.String(CodeIncludeCycle), d.Code, file)
+			assert.Equal(t, SeverityWarning, d.Severity, file)
+			assert.Equal(t, CodeIncludeCycle, d.Code, file)
 		}
 	}
 

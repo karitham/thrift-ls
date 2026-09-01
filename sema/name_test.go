@@ -1,4 +1,4 @@
-package source
+package sema
 
 import (
 	"testing"
@@ -43,7 +43,7 @@ func TestIncludeNameOf(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, includeNameOf(tt.args.file))
+			assert.Equal(t, tt.want, IncludeNameOf(tt.args.file))
 		})
 	}
 }
@@ -153,7 +153,7 @@ func TestParseIdent(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotInclude, gotIdent := parseIdent(tt.args.cur, tt.args.includes, tt.args.identifier)
+			gotInclude, gotIdent := ParseIdent(tt.args.cur, tt.args.includes, tt.args.identifier)
 			assert.Equal(t, tt.wantInclude, gotInclude)
 			assert.Equal(t, tt.wantIdent, gotIdent)
 		})

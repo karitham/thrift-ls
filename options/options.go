@@ -28,8 +28,9 @@ const ConfigFileName = "thrift-ls.json"
 type Patch struct {
 	formatter.FormatPatch
 
-	IncludePaths *[]string `json:"includePaths"`
-	LogLevel     *int      `json:"logLevel"`
+	IncludePaths *[]string   `json:"includePaths"`
+	LogLevel     *int        `json:"logLevel"`
+	Lint         *LintConfig `json:"lint"`
 }
 
 // Apply overlays p onto base: every set field of p replaces the
@@ -46,7 +47,38 @@ func (p Patch) Apply(base Patch) Patch {
 		out.LogLevel = p.LogLevel
 	}
 
+	if p.Lint != nil {
+		out.Lint = p.Lint
+	}
+
 	return out
+}
+
+// LintConfig tunes the analysis pipeline: which analyzers run, and at what
+// severity their diagnostics surface.
+type LintConfig struct {
+	// Disabled names analyzers (by Name) to skip.
+	Disabled *[]string `json:"disabled"`
+
+	// Severity overrides a diagnostic's severity by code.
+	Severity *map[string]string `json:"severity"`
+}
+
+// Validate checks the lint settings for validity.
+func (l LintConfig) Validate() error {
+	if l.Severity == nil {
+		return nil
+	}
+
+	for code, sev := range *l.Severity {
+		switch sev {
+		case "error", "warning", "info", "hint":
+		default:
+			return fmt.Errorf("lint: severity for %q must be one of \"error\", \"warning\", \"info\", \"hint\", got %q", code, sev)
+		}
+	}
+
+	return nil
 }
 
 // Default returns the default options as a fully-set patch.
@@ -56,7 +88,15 @@ func Default() Patch {
 
 // Validate checks every set field for validity.
 func (p Patch) Validate() error {
-	return p.FormatPatch.Validate()
+	if err := p.FormatPatch.Validate(); err != nil {
+		return err
+	}
+
+	if p.Lint != nil {
+		return p.Lint.Validate()
+	}
+
+	return nil
 }
 
 // Parse parses a config document. Unknown keys are rejected so that typos

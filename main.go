@@ -20,6 +20,7 @@ import (
 	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/lsp/source"
 	"github.com/karitham/thrift-ls/options"
+	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/syntax"
 
 	"go.lsp.dev/jsonrpc2"
@@ -441,7 +442,7 @@ func checkAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	diags, err := checkFiles(ctx, files, rootAbs, derefStrings(patch.IncludePaths))
+	diags, err := checkFiles(ctx, files, rootAbs, derefStrings(patch.IncludePaths), lintConfigOf(patch.Lint))
 	if err != nil {
 		return err
 	}
@@ -473,7 +474,7 @@ func checkAction(ctx context.Context, cmd *cli.Command) error {
 // checkFiles runs the language server's diagnostic pipeline — parse,
 // semantic analysis, and lints — over files opened in a session rooted at
 // folder, and returns the diagnostics per file, keyed by absolute path.
-func checkFiles(ctx context.Context, files []string, folder string, includePaths []string) (map[string][]protocol.Diagnostic, error) {
+func checkFiles(ctx context.Context, files []string, folder string, includePaths []string, lint sema.Config) (map[string][]protocol.Diagnostic, error) {
 	fs := cache.NewMemoizedFS()
 	sess := cache.NewSession(fs)
 	sess.AddView(uri.File(folder), includePaths)
@@ -498,18 +499,25 @@ func checkFiles(ctx context.Context, files []string, folder string, includePaths
 
 	out := make(map[string][]protocol.Diagnostic, len(files))
 
+	v, err := sess.ViewOf(uris[0])
+	if err != nil {
+		return nil, err
+	}
+
+	// One pipeline run over the whole corpus: the shared index memoizes
+	// resolutions across files, so each name resolves once.
+	report, err := sema.DefaultPipeline(lint).Run(ctx, v, uris)
+	if err != nil {
+		return nil, err
+	}
+
 	for i := range files {
-		v, err := sess.ViewOf(uris[i])
+		diags, err := source.ToProtocolDiagnostics(ctx, v, uris[i], report[uris[i]])
 		if err != nil {
 			return nil, err
 		}
 
-		res, err := source.NewDiagnostic().Diagnostic(ctx, v, uris)
-		if err != nil {
-			return nil, err
-		}
-
-		out[files[i]] = res[uris[i]]
+		out[files[i]] = diags
 	}
 
 	return out, nil
@@ -792,4 +800,25 @@ func derefStrings(p *[]string) []string {
 	}
 
 	return *p
+}
+
+// lintConfigOf converts the config layer's lint settings into the
+// pipeline's config. The options package stays plain data, so each
+// frontend owns this translation; sema.ConfigFromLint does the work.
+func lintConfigOf(l *options.LintConfig) sema.Config {
+	if l == nil {
+		return sema.Config{}
+	}
+
+	var disabled []string
+	if l.Disabled != nil {
+		disabled = *l.Disabled
+	}
+
+	var severity map[string]string
+	if l.Severity != nil {
+		severity = *l.Severity
+	}
+
+	return sema.ConfigFromLint(disabled, severity)
 }

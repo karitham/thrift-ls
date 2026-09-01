@@ -1,4 +1,4 @@
-package source
+package sema
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"slices"
 
-	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
@@ -18,15 +17,18 @@ import (
 // length are caught, including self-includes.
 type CycleCheck struct{}
 
-func (c *CycleCheck) Diagnostic(ctx context.Context, b *Batch, changeFiles []uri.URI) (DiagnosticResult, error) {
-	view := b.View()
+func (c *CycleCheck) Name() string {
+	return "CycleCheck"
+}
+
+func (c *CycleCheck) Analyze(ctx context.Context, run *Run) error {
+	view := run.view
 
 	closure := make(map[uri.URI][]Include)
-	for _, file := range changeFiles {
+	for _, file := range run.Files() {
 		_ = getIncludes(ctx, view, file, &closure)
 	}
 
-	diagnostics := make(DiagnosticResult)
 	for file, includes := range closure {
 		// Reachability comes from the view's include graph: parsing
 		// the closure above registered exactly these edges via Register,
@@ -38,26 +40,21 @@ func (c *CycleCheck) Diagnostic(ctx context.Context, b *Batch, changeFiles []uri
 				continue
 			}
 
-			diagnostics[file] = append(diagnostics[file], cycleDiagnostic(inc))
+			run.Add(file, cycleDiagnostic(inc))
 		}
 	}
 
-	return diagnostics, nil
-}
-
-func (c *CycleCheck) Name() string {
-	return "CycleCheck"
+	return nil
 }
 
 // cycleDiagnostic builds the warning for one include edge that closes a
 // cycle back to its including file.
-func cycleDiagnostic(inc Include) protocol.Diagnostic {
-	return protocol.Diagnostic{
-		Range:    nodeRange(inc.pf, inc.include),
-		Severity: protocol.DiagnosticSeverityWarning,
-		Code:     protocol.String(CodeIncludeCycle),
-		Source:   protocol.NewOptional("thrift-ls"),
-		Message:  protocol.String(fmt.Sprintf("cycle dependency in %s", inc.file)),
+func cycleDiagnostic(inc Include) Diagnostic {
+	return Diagnostic{
+		Span:     SpanOf(inc.pf, inc.include),
+		Severity: SeverityWarning,
+		Code:     CodeIncludeCycle,
+		Message:  fmt.Sprintf("cycle dependency in %s", inc.file),
 	}
 }
 

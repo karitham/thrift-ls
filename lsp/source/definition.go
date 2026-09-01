@@ -7,6 +7,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -22,17 +23,17 @@ func Definition(ctx context.Context, view *cache.View, file uri.URI, pos protoco
 
 	switch target.kind {
 	case TargetTypeName:
-		return typeNameDefinition(ctx, NewIndex(view), pf, target)
+		return typeNameDefinition(ctx, sema.NewIndex(view), pf, target)
 	case TargetConstValue:
-		return constValueDefinition(ctx, NewIndex(view), pf, target)
+		return constValueDefinition(ctx, sema.NewIndex(view), pf, target)
 	case TargetService:
-		return serviceDefinition(ctx, NewIndex(view), pf, target)
+		return serviceDefinition(ctx, sema.NewIndex(view), pf, target)
 	}
 
 	return res, err
 }
 
-func typeNameDefinition(ctx context.Context, ix *Index, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
+func typeNameDefinition(ctx context.Context, ix *sema.Index, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
 	ft := target.fieldType()
 	if ft == nil {
 		return nil, nil
@@ -43,7 +44,7 @@ func typeNameDefinition(ctx context.Context, ix *Index, pf *cache.ParsedFile, ta
 		return nil, err
 	}
 
-	loc, err := jumpInFile(ctx, ix.view, def.File, def.Name)
+	loc, err := jumpInFile(ctx, ix.View(), def.File, def.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -51,13 +52,13 @@ func typeNameDefinition(ctx context.Context, ix *Index, pf *cache.ParsedFile, ta
 	return []protocol.Location{loc}, nil
 }
 
-func constValueDefinition(ctx context.Context, ix *Index, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
+func constValueDefinition(ctx context.Context, ix *sema.Index, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
 	def, err := ix.ResolveValue(ctx, pf, target.node.(*syntax.ConstValue))
 	if err != nil || def == nil {
 		return nil, err
 	}
 
-	loc, err := jumpInFile(ctx, ix.view, def.File, def.Name)
+	loc, err := jumpInFile(ctx, ix.View(), def.File, def.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -65,13 +66,13 @@ func constValueDefinition(ctx context.Context, ix *Index, pf *cache.ParsedFile, 
 	return []protocol.Location{loc}, nil
 }
 
-func serviceDefinition(ctx context.Context, ix *Index, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
+func serviceDefinition(ctx context.Context, ix *sema.Index, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
 	def, err := ix.ResolveService(ctx, pf, target.identifier())
 	if err != nil || def == nil {
 		return nil, err
 	}
 
-	loc, err := jumpInFile(ctx, ix.view, def.File, def.Name)
+	loc, err := jumpInFile(ctx, ix.View(), def.File, def.Name)
 	if err != nil {
 		return nil, err
 	}

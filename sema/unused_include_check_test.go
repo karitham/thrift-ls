@@ -1,11 +1,9 @@
-package source
+package sema
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
@@ -92,16 +90,15 @@ func Test_UnusedIncludeCheck(t *testing.T) {
 				},
 			})
 
-			got, err := (&UnusedIncludeCheck{}).diagnostic(t.Context(), NewBatch(view), uri.File(filePath))
-			require.NoError(t, err)
+			got := runOne(t, EachFile(&UnusedIncludeCheck{}), view, uri.File(filePath))[uri.File(filePath)]
 
-			var msgs []string
+			var gotMsgs []string
 			for _, d := range got {
-				assert.Equal(t, protocol.DiagnosticSeverityWarning, d.Severity)
-				msgs = append(msgs, string(d.Message.(protocol.String)))
+				assert.Equal(t, SeverityWarning, d.Severity)
+				gotMsgs = append(gotMsgs, d.Message)
 			}
 
-			assert.Equal(t, tt.want, msgs)
+			assert.Equal(t, tt.want, gotMsgs)
 		})
 	}
 }

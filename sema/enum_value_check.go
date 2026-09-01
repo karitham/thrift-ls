@@ -1,14 +1,9 @@
-package source
+package sema
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log/slog"
 	"strconv"
-
-	"go.lsp.dev/protocol"
-	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/syntax"
@@ -22,42 +17,14 @@ type EnumValueCheck struct{}
 // one greater than the preceding member's value otherwise. Their on-wire
 // value therefore follows their position; inserting, removing, or
 // reordering members silently changes serialized data.
-func (c *EnumValueCheck) Diagnostic(ctx context.Context, b *Batch, changeFiles []uri.URI) (DiagnosticResult, error) {
-	view := b.View()
-
-	res := make(DiagnosticResult)
-
-	for _, file := range changeFiles {
-		items, err := c.diagnostic(ctx, view, file)
-		if err != nil {
-			return nil, err
-		}
-
-		res[file] = items
-	}
-
-	return res, nil
-}
-
 func (c *EnumValueCheck) Name() string {
 	return "EnumValueCheck"
 }
 
-func (c *EnumValueCheck) diagnostic(ctx context.Context, view *cache.View, file uri.URI) ([]protocol.Diagnostic, error) {
-	pf, err := view.Parse(ctx, file)
-	if err != nil {
-		return nil, err
-	}
+func (c *EnumValueCheck) AnalyzeFile(ctx context.Context, f File) ([]Diagnostic, error) {
+	pf := f.PF
 
-	if pf.AST() == nil {
-		return nil, errors.New("parse ast failed")
-	}
-
-	for _, err := range pf.Errors() {
-		slog.Debug("parse failed", "err", err)
-	}
-
-	var ret []protocol.Diagnostic
+	var ret []Diagnostic
 
 	for _, enum := range pf.AST().Enums() {
 		// A member whose name already appeared earlier in the enum is a
@@ -81,12 +48,11 @@ func (c *EnumValueCheck) diagnostic(ctx context.Context, view *cache.View, file 
 				msg = fmt.Sprintf("%s has no explicit value (implicitly %d)", mv.member.Name.Text, mv.value)
 			}
 
-			ret = append(ret, protocol.Diagnostic{
-				Range:    tokenRange(pf, enumValueNameToken(pf, mv.member)),
-				Severity: protocol.DiagnosticSeverityWarning,
-				Code:     protocol.String(CodeImplicitEnumValue),
-				Source:   protocol.NewOptional("thrift-ls"),
-				Message:  protocol.String(msg),
+			ret = append(ret, Diagnostic{
+				Span:     spanOfToken(enumValueNameToken(pf, mv.member)),
+				Severity: SeverityWarning,
+				Code:     CodeImplicitEnumValue,
+				Message:  msg,
 			})
 		}
 	}
@@ -99,28 +65,28 @@ func enumValueNameToken(pf *cache.ParsedFile, v *syntax.EnumValue) *syntax.Token
 	return &pf.AST().Tokens[v.Name.TokStart()]
 }
 
-// enumImplicitValue is an enum member that lacks an explicit value, with
+// EnumImplicitValue is an enum member that lacks an explicit value, with
 // the int constant the compiler auto-increments for it.
-type enumImplicitValue struct {
-	member *syntax.EnumValue
-	value  int64
-	known  bool // false when the preceding value is broken, so value is unknowable
+type EnumImplicitValue struct {
+	Member *syntax.EnumValue
+	Value  int64
+	Known  bool // false when the preceding value is broken, so Value is unknowable
 }
 
-// enumImplicitValues reports the members of an enum that carry no explicit
+// EnumImplicitValues reports the members of an enum that carry no explicit
 // value, together with the value the compiler would auto-increment: 0 for
 // the first member, one greater than the preceding member's value
 // otherwise. Members after an unparseable explicit constant report
-// known=false until the next parseable constant settles the chain.
-func enumImplicitValues(enum *syntax.Enum) []enumImplicitValue {
-	var out []enumImplicitValue
+// Known=false until the next parseable constant settles the chain.
+func EnumImplicitValues(enum *syntax.Enum) []EnumImplicitValue {
+	var out []EnumImplicitValue
 
 	for _, mv := range enumValues(enum) {
 		if mv.member.Value != nil {
 			continue
 		}
 
-		out = append(out, enumImplicitValue(mv))
+		out = append(out, EnumImplicitValue{Member: mv.member, Value: mv.value, Known: mv.known})
 	}
 
 	return out

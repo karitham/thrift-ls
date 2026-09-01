@@ -3,6 +3,7 @@ package source
 import (
 	"context"
 	"errors"
+	"unicode/utf8"
 
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
@@ -170,6 +171,18 @@ func toLSPRange(pf *cache.ParsedFile, start, end syntax.Position) protocol.Range
 // nodeRange converts a node span to an LSP range.
 func nodeRange(pf *cache.ParsedFile, node syntax.Node) protocol.Range {
 	start, end := pf.AST().Range(node)
+
+	return toLSPRange(pf, start, end)
+}
+
+// tokenRange converts a token's span to an LSP range.
+func tokenRange(pf *cache.ParsedFile, tok *syntax.Token) protocol.Range {
+	if tok == nil {
+		return protocol.Range{}
+	}
+
+	start := syntax.Position{Line: tok.Line, Col: tok.Col, Offset: tok.Offset}
+	end := syntax.Position{Line: tok.Line, Col: tok.Col + utf8.RuneCountInString(tok.Text), Offset: tok.Offset + len(tok.Text)}
 
 	return toLSPRange(pf, start, end)
 }

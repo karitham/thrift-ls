@@ -9,6 +9,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/sema"
 )
 
 // PrepareRename returns the range of the identifier under the cursor when
@@ -28,7 +29,7 @@ func PrepareRename(ctx context.Context, view *cache.View, file uri.URI, pos prot
 		// Rename supports type references; basic types are the only
 		// position it rejects, so prepare must reject them too.
 		ft := target.fieldType()
-		if ft == nil || typeReferenceName(ft) == "" || IsBasicType(typeReferenceName(ft)) {
+		if ft == nil || sema.TypeReferenceName(ft) == "" || sema.IsBasicType(sema.TypeReferenceName(ft)) {
 			return nil, fmt.Errorf("rename not supported for basic types")
 		}
 
@@ -54,17 +55,17 @@ func Rename(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Po
 	switch target.kind {
 	case TargetTypeName:
 		ft := target.fieldType()
-		if ft == nil || typeReferenceName(ft) == "" || IsBasicType(typeReferenceName(ft)) {
+		if ft == nil || sema.TypeReferenceName(ft) == "" || sema.IsBasicType(sema.TypeReferenceName(ft)) {
 			return nil, fmt.Errorf("rename not supported for basic types")
 		}
 
-		refs, err = searchTypeNameRefs(ctx, NewIndex(view), view, pf, target)
+		refs, err = searchTypeNameRefs(ctx, sema.NewIndex(view), view, pf, target)
 		if err != nil {
 			return nil, err
 		}
 
 	case TargetConstValue:
-		refs, err = searchConstValueRefs(ctx, NewIndex(view), view, pf, target)
+		refs, err = searchConstValueRefs(ctx, sema.NewIndex(view), view, pf, target)
 		if err != nil {
 			return nil, err
 		}
@@ -72,9 +73,9 @@ func Rename(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Po
 	case TargetService:
 		svcName := target.identifier().Text
 		if !strings.Contains(svcName, ".") {
-			svcName = fmt.Sprintf("%s.%s", includeNameOf(file), svcName)
+			svcName = fmt.Sprintf("%s.%s", sema.IncludeNameOf(file), svcName)
 		} else {
-			include, _ := parseIdent(file, pf.AST().Includes(), svcName)
+			include, _ := sema.ParseIdent(file, pf.AST().Includes(), svcName)
 
 			resolver := view.Resolver()
 			if path := resolver.GetIncludePath(pf.AST(), include); path != "" {
@@ -82,13 +83,13 @@ func Rename(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Po
 			}
 		}
 
-		refs, err = searchServiceRefs(ctx, NewIndex(view), view, file, svcName)
+		refs, err = searchServiceRefs(ctx, sema.NewIndex(view), view, file, svcName)
 		if err != nil {
 			return nil, err
 		}
 
 	case TargetDefinition:
-		refs, err = searchDefRefs(ctx, NewIndex(view), view, file, pf, target)
+		refs, err = searchDefRefs(ctx, sema.NewIndex(view), view, file, pf, target)
 		if err != nil {
 			return nil, err
 		}

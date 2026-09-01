@@ -21,6 +21,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/sema"
 )
 
 // utf16Snapshot parses src as htt.thrift.
@@ -87,15 +88,16 @@ func TestParseErrorDiagnosticUTF16(t *testing.T) {
 
 	view := utf16Snapshot(t, src)
 
-	res, err := (&Parse{}).Diagnostic(t.Context(), NewBatch(view), []uri.URI{"file:///tmp/htt.thrift"})
+	report, err := sema.New(sema.Config{}, []sema.Analyzer{&sema.ParseCheck{}}).Run(t.Context(), view, []uri.URI{"file:///tmp/htt.thrift"})
 	require.NoError(t, err)
 
-	diags := res["file:///tmp/htt.thrift"]
-	require.NotEmpty(t, diags)
+	protoDiags, err := ToProtocolDiagnostics(t.Context(), view, "file:///tmp/htt.thrift", report["file:///tmp/htt.thrift"])
+	require.NoError(t, err)
+	require.NotEmpty(t, protoDiags)
 
 	// The unterminated string error points at the opening quote, at UTF-16
 	// column 29: 28 runes before it, one of them the emoji pair.
-	assert.Equal(t, uint32(29), diags[0].Range.Start.Character)
+	assert.Equal(t, uint32(29), protoDiags[0].Range.Start.Character)
 }
 
 func TestLinksUTF16(t *testing.T) {

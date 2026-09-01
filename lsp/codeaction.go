@@ -5,77 +5,104 @@ import (
 	"strings"
 
 	"go.lsp.dev/protocol"
+	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
-	"github.com/karitham/thrift-ls/lsp/source"
+	"github.com/karitham/thrift-ls/sema"
 )
 
-// codeAction returns the code actions for the document: the refactors for
-// the code at the selection. An action that fixes a reported diagnostic is
-// also offered as a quickfix. Actions are filtered to the kinds the client
-// requested.
+// codeAction returns the code actions for the document: quickfixes for the
+// diagnostics the server published for it (inline fixes, then fixers),
+// then the refactor actions for the code at the selection. An action that
+// fixes a reported diagnostic is also offered as a quickfix. Actions are
+// filtered to the kinds the client requested.
 func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionParams) ([]protocol.CommandOrCodeAction, error) {
 	return withFile(ctx, s.session, params.TextDocument.URI, func(view *cache.View, fh cache.FileHandle) ([]protocol.CommandOrCodeAction, error) {
-		var actions []protocol.CodeAction
-
-		enum, err := source.MakeEnumValuesExplicitAction(ctx, view, fh, params.Range)
+		pf, err := view.Parse(ctx, params.TextDocument.URI)
 		if err != nil {
 			return nil, err
 		}
-		if enum != nil {
-			// A diagnostic on the selection makes the action a quickfix
-			// for it; the rewrite stays for kind-filtered requests.
-			if diagnosticOverlaps(params.Context.Diagnostics, params.Range) {
-				fix := *enum
-				fix.Kind = new(protocol.CodeActionKindQuickFix)
-				actions = append(actions, fix)
-			}
-			actions = append(actions, *enum)
-		}
 
-		fieldActions, err := source.MakeFieldQualifierAction(ctx, view, fh, params.Range)
+		span, err := toSemaSpan(pf, params.Range)
 		if err != nil {
 			return nil, err
 		}
-		actions = append(actions, fieldActions...)
 
-		removeInclude, err := source.MakeRemoveUnusedIncludeAction(ctx, view, fh, params.Range, params.Context.Diagnostics)
-		if err != nil {
-			return nil, err
-		}
-		if removeInclude != nil {
-			actions = append(actions, *removeInclude)
-		}
+		report := s.reportFor(params.TextDocument.URI)
 
-		addInclude, err := source.MakeAddMissingIncludeAction(ctx, view, fh, params.Range, params.Context.Diagnostics)
-		if err != nil {
-			return nil, err
-		}
-		if addInclude != nil {
-			actions = append(actions, *addInclude)
+		actions := sema.DefaultPipeline(s.lintConfig(view)).
+			CodeActions(ctx, view, params.TextDocument.URI, span, report)
+
+		proto := make([]protocol.CodeAction, 0, len(actions))
+		for _, a := range actions {
+			proto = append(proto, toProtocolCodeAction(pf, a))
 		}
 
-		actions = preferQuickFixes(filterCodeActions(actions, params.Context.Only))
+		proto = preferQuickFixes(filterCodeActions(proto, params.Context.Only))
 
-		out := make([]protocol.CommandOrCodeAction, 0, len(actions))
-		for i := range actions {
-			out = append(out, &actions[i])
+		out := make([]protocol.CommandOrCodeAction, 0, len(proto))
+		for i := range proto {
+			out = append(out, &proto[i])
 		}
+
 		return out, nil
 	})
 }
 
-// diagnosticOverlaps reports whether any diagnostic shares a position with
-// rng: the client presents a problem there, so the action is a quickfix for
-// it.
-func diagnosticOverlaps(diags []protocol.Diagnostic, rng protocol.Range) bool {
-	for _, d := range diags {
-		if source.RangesOverlap(rng, d.Range) {
-			return true
-		}
+// toSemaSpan converts an LSP range to the pipeline's parser-coordinate
+// span through the file's mapper.
+func toSemaSpan(pf *cache.ParsedFile, rng protocol.Range) (sema.Span, error) {
+	m := pf.Mapper()
+
+	start, err := m.LSPPosToParserPosition(rng.Start)
+	if err != nil {
+		return sema.Span{}, err
 	}
 
-	return false
+	end, err := m.LSPPosToParserPosition(rng.End)
+	if err != nil {
+		return sema.Span{}, err
+	}
+
+	return sema.Span{Start: start, End: end}, nil
+}
+
+// toProtocolCodeAction translates a pipeline action to the wire type.
+func toProtocolCodeAction(pf *cache.ParsedFile, a sema.Action) protocol.CodeAction {
+	kind := protocol.CodeActionKindRefactorRewrite
+	if a.Fix {
+		kind = protocol.CodeActionKindQuickFix
+	}
+
+	changes := make(map[uri.URI][]protocol.TextEdit, 1)
+	edits := make([]protocol.TextEdit, 0, len(a.Edits))
+
+	for _, e := range a.Edits {
+		// Edit spans carry authoritative byte offsets; the mapper turns
+		// them into UTF-16 columns the wire requires.
+		start, err := pf.Mapper().OffsetToLSPPosition(e.Span.Start.Offset)
+		if err != nil {
+			start = protocol.Position{Line: uint32(e.Span.Start.Line - 1), Character: uint32(e.Span.Start.Col - 1)}
+		}
+
+		end, err := pf.Mapper().OffsetToLSPPosition(e.Span.End.Offset)
+		if err != nil {
+			end = protocol.Position{Line: uint32(e.Span.End.Line - 1), Character: uint32(e.Span.End.Col - 1)}
+		}
+
+		edits = append(edits, protocol.TextEdit{
+			Range:   protocol.Range{Start: start, End: end},
+			NewText: e.NewText,
+		})
+	}
+
+	changes[a.File] = edits
+
+	return protocol.CodeAction{
+		Title: a.Title,
+		Kind:  &kind,
+		Edit:  &protocol.WorkspaceEdit{Changes: changes},
+	}
 }
 
 // filterCodeActions keeps only the actions whose kind falls under one of

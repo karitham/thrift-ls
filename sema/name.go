@@ -1,4 +1,4 @@
-package source
+package sema
 
 import (
 	"path"
@@ -10,9 +10,9 @@ import (
 	"github.com/karitham/thrift-ls/syntax"
 )
 
-// includeNameOf returns the include name of a file URI: the base name
+// IncludeNameOf returns the include name of a file URI: the base name
 // without extension. file:///base.thrift -> "base".
-func includeNameOf(file uri.URI) string {
+func IncludeNameOf(file uri.URI) string {
 	// URI paths are always slash-separated, even for Windows drive
 	// letters, so path (not filepath) is the matching stdlib.
 	fileName := path.Base(file.Path())
@@ -25,12 +25,12 @@ func includeNameOf(file uri.URI) string {
 	return string(fileName[0:index])
 }
 
-// parseIdent parses an identifier. identifier format:
+// ParseIdent parses an identifier. identifier format:
 //  1. identifier
 //  2. include.identifier
 //
 // it returns include, ident
-func parseIdent(cur uri.URI, includes []*syntax.Include, identifier string) (include, ident string) {
+func ParseIdent(cur uri.URI, includes []*syntax.Include, identifier string) (include, ident string) {
 	includeNames := includeNames(cur, includes)
 
 	// sort by string length, make sure longest include match early
@@ -64,7 +64,7 @@ func includeNames(cur uri.URI, includes []*syntax.Include) (includeNames []strin
 	for _, inc := range includes {
 		if p := inc.PathText(); p != "" {
 			u := uri.File(path.Join(path.Dir(cur.Path()), p))
-			includeNames = append(includeNames, includeNameOf(u))
+			includeNames = append(includeNames, IncludeNameOf(u))
 		}
 	}
 

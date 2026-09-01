@@ -1,4 +1,4 @@
-package source
+package sema
 
 import (
 	"os"
@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
@@ -63,15 +62,14 @@ func Test_IncludeShadowCheck(t *testing.T) {
 				},
 			})
 
-			got, err := (&IncludeShadowCheck{}).diagnostic(t.Context(), NewBatch(view), uri.File(filePath))
-			require.NoError(t, err)
+			got := runOne(t, EachFile(&IncludeShadowCheck{}), view, uri.File(filePath))
 
-			require.Len(t, got, tt.wantCount)
+			require.Len(t, got[uri.File(filePath)], tt.wantCount)
 
-			for _, d := range got {
-				assert.Equal(t, protocol.DiagnosticSeverityWarning, d.Severity)
-				assert.Equal(t, CodeIncludeShadow, string(d.Code.(protocol.String)))
-				assert.Contains(t, string(d.Message.(protocol.String)), tt.wantMessage)
+			for _, d := range got[uri.File(filePath)] {
+				assert.Equal(t, SeverityWarning, d.Severity)
+				assert.Equal(t, CodeIncludeShadow, d.Code)
+				assert.Contains(t, d.Message, tt.wantMessage)
 			}
 		})
 	}

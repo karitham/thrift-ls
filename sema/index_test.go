@@ -1,4 +1,4 @@
-package source
+package sema
 
 import (
 	"testing"
@@ -163,10 +163,10 @@ func TestIndex_FindInWorkspace(t *testing.T) {
 }
 
 func TestRefKindsFor(t *testing.T) {
-	assert.Equal(t, []cache.RefKind{cache.RefSignatureType, cache.RefAnnotationType}, refKindsFor(DefinitionException))
-	assert.Equal(t, []cache.RefKind{cache.RefFieldType, cache.RefSignatureType, cache.RefAnnotationType}, refKindsFor(DefinitionStruct))
-	assert.Equal(t, []cache.RefKind{cache.RefServiceExtends}, refKindsFor(DefinitionService))
-	assert.Equal(t, []cache.RefKind{cache.RefConstValue}, refKindsFor(DefinitionConst))
+	assert.Equal(t, []cache.RefKind{cache.RefSignatureType, cache.RefAnnotationType}, RefKindsFor(DefinitionException))
+	assert.Equal(t, []cache.RefKind{cache.RefFieldType, cache.RefSignatureType, cache.RefAnnotationType}, RefKindsFor(DefinitionStruct))
+	assert.Equal(t, []cache.RefKind{cache.RefServiceExtends}, RefKindsFor(DefinitionService))
+	assert.Equal(t, []cache.RefKind{cache.RefConstValue}, RefKindsFor(DefinitionConst))
 }
 
 // --- helpers ---

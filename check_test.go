@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -8,6 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
+
+	"github.com/karitham/thrift-ls/sema"
 )
 
 // Test_CheckMadeInAbyss pins the lint corpus: tests/made-in-abyss is the
@@ -23,7 +26,7 @@ func Test_CheckMadeInAbyss(t *testing.T) {
 	rootAbs, err := filepath.Abs("tests/made-in-abyss")
 	require.NoError(t, err)
 
-	diags, err := checkFiles(ctx, files, rootAbs, nil)
+	diags, err := checkFiles(ctx, files, rootAbs, nil, sema.Config{})
 	require.NoError(t, err)
 
 	// The clean corpus files report nothing.
@@ -158,4 +161,27 @@ func diagsOnLine(diags []protocol.Diagnostic, line uint32) []protocol.Diagnostic
 	}
 
 	return out
+}
+
+// Test_Check_LintConfig pins that thrift-ls.json lint settings reach the
+// check pipeline: a disabled analyzer produces no diagnostics and exits 0,
+// where it would otherwise warn and exit 1.
+func Test_Check_LintConfig(t *testing.T) {
+	folder := t.TempDir()
+	content := "include \"shared.thrift\"\nstruct S { 1: i32 a }\n"
+	require.NoError(t, os.WriteFile(filepath.Join(folder, "user.thrift"), []byte(content), 0o644))
+
+	// The unused include is a warning: the check fails on it only via
+	// the config downgrade. Disable the analyzer entirely.
+	config := `{"lint": {"disabled": ["UnusedIncludeCheck"]}}`
+	require.NoError(t, os.WriteFile(filepath.Join(folder, "thrift-ls.json"), []byte(config), 0o644))
+
+	stdout, _, err := runCLI(t, "check", "--config", filepath.Join(folder, "thrift-ls.json"), filepath.Join(folder, "user.thrift"))
+	require.NoError(t, err)
+	assert.Empty(t, strings.TrimSpace(stdout))
+
+	// Without the config the warning fires.
+	stdout, _, err = runCLI(t, "check", filepath.Join(folder, "user.thrift"))
+	require.NoError(t, err)
+	assert.Contains(t, stdout, "unused include")
 }
