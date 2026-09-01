@@ -133,11 +133,9 @@ func New(command []string, dir string, opts Options) (*Server, error) {
 	initParams := &protocol.InitializeParams{
 		RootURI:      &root,
 		Capabilities: protocol.ClientCapabilities{},
-		WorkspaceFoldersInitializeParams: protocol.WorkspaceFoldersInitializeParams{
-			WorkspaceFolders: protocol.NewNullable([]protocol.WorkspaceFolder{
-				{URI: root, Name: filepath.Base(dir)},
-			}),
-		},
+		WorkspaceFolders: protocol.NewNullable([]protocol.WorkspaceFolder{
+			{URI: root, Name: filepath.Base(dir)},
+		}),
 	}
 
 	if _, ierr := s.disp.Initialize(initCtx, initParams); ierr != nil {
