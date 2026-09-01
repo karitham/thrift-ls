@@ -41,6 +41,84 @@ func TestFindConfig(t *testing.T) {
 	if err != nil || got != near {
 		t.Fatalf("FindConfig = %q, %v; want %q", got, err, near)
 	}
+
+	// Discovery from a relative dir must still return an absolute path.
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(wd) }()
+
+	got, err = FindConfig(".")
+	if err != nil || got != cfgPath {
+		t.Fatalf("FindConfig(\".\") = %q, %v; want absolute %q", got, err, cfgPath)
+	}
+}
+
+// A relative THRIFT_LS_CONFIG also comes back absolute.
+func TestFindConfigRelativeEnv(t *testing.T) {
+	dir := t.TempDir()
+
+	cfgPath := filepath.Join(dir, "thrift-ls.json")
+	if err := os.WriteFile(cfgPath, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("THRIFT_LS_CONFIG", "thrift-ls.json")
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(wd) }()
+
+	got, err := FindConfig(".")
+	if err != nil || got != cfgPath {
+		t.Fatalf("FindConfig = %q, %v; want %q", got, err, cfgPath)
+	}
+}
+
+// A relative config path anchors its include paths to the config's
+// directory, not the process CWD.
+func TestLoadRelativePathAnchorsIncludePaths(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := os.MkdirAll(filepath.Join(dir, "dungeon"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfgPath := filepath.Join(dir, "thrift-ls.json")
+	if err := os.WriteFile(cfgPath, []byte(`{"includePaths": ["dungeon"]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(wd) }()
+
+	cfg, err := Load("thrift-ls.json")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if cfg.IncludePaths == nil || len(*cfg.IncludePaths) != 1 {
+		t.Fatalf("includePaths = %v", cfg.IncludePaths)
+	}
+
+	if got := (*cfg.IncludePaths)[0]; got != filepath.Join(dir, "dungeon") {
+		t.Errorf("includePaths[0] = %q, want %q", got, filepath.Join(dir, "dungeon"))
+	}
 }
 
 func TestLoadAndEffective(t *testing.T) {

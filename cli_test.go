@@ -114,6 +114,33 @@ func Test_CheckCLI_MadeInAbyss(t *testing.T) {
 	assert.Contains(t, err.Error(), "9 warning(s)")
 }
 
+// Test_DumpIncludesCLI runs dump --includes over a file whose include
+// matches two sibling include roots, and checks the report names both.
+func Test_DumpIncludesCLI(t *testing.T) {
+	folder := t.TempDir()
+
+	content := "include \"recipes/stew.thrift\"\nstruct Party { 1: i32 members }\n"
+	stew := "struct Monster {}\n"
+
+	require.NoError(t, os.MkdirAll(filepath.Join(folder, "laios", "kitchen", "recipes"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(folder, "senshi", "kitchen", "recipes"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(folder, "camp"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(folder, "laios", "kitchen", "recipes", "stew.thrift"), []byte(stew), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(folder, "senshi", "kitchen", "recipes", "stew.thrift"), []byte(stew), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(folder, "camp", "main.thrift"), []byte(content), 0o644))
+
+	configPath := filepath.Join(folder, "thrift-ls.json")
+	require.NoError(t, os.WriteFile(configPath, []byte(`{"includePaths": ["laios/kitchen", "senshi/kitchen"]}`), 0o644))
+
+	stdout, stderr, err := runCLI(t, "dump", "--includes", "--config", configPath, filepath.Join(folder, "camp", "main.thrift"))
+	require.NoError(t, err)
+	assert.Empty(t, stderr)
+
+	assert.Contains(t, stdout, "recipes/stew.thrift")
+	assert.Contains(t, stdout, filepath.Join(folder, "senshi", "kitchen", "recipes", "stew.thrift"))
+	assert.Contains(t, stdout, filepath.Join(folder, "laios", "kitchen", "recipes", "stew.thrift"))
+}
+
 // readGolden returns the recorded output of a CLI test case.
 func readGolden(t *testing.T, path string) string {
 	t.Helper()

@@ -23,6 +23,7 @@ func init() {
 		&DuplicateCheck{},
 		&EnumValueCheck{},
 		&UnusedIncludeCheck{},
+		&IncludeShadowCheck{},
 		&SemanticAnalysis{},
 	}
 }

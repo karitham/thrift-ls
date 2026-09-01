@@ -38,7 +38,7 @@ extension (`thrift-ls-<version>.vsix`) are attached to
 thrift-ls [flags]            run the language server (default)
 thrift-ls lsp [flags]        run the language server
 thrift-ls format [flags] <file>   format a thrift file
-thrift-ls dump [--ir] <file>      dump the parse tree and formatter IR
+thrift-ls dump [--ir|--includes] <file>   dump the parse tree, formatter IR, or include resolution
 ```
 
 Run `thrift-ls --help` or `thrift-ls format --help` for the full flag list.
@@ -159,6 +159,17 @@ which groups broke and which stayed flat:
 
 ```bash
 thrift-ls dump --ir --printWidth 100 path/to/file.thrift
+```
+
+With `--includes`, it shows how every include of the file resolves instead
+of dumping the tree: the chosen location, whether it parses, and every
+other include path the include also matches. Pass `--logLevel 5` to `dump`
+or `check` to route the pipeline's debug log (resolver decisions,
+unreadable definition files, parse errors) to stderr:
+
+```bash
+thrift-ls dump --includes path/to/file.thrift
+thrift-ls check --logLevel 5 path/to/file.thrift
 ```
 
 ### Diagnostics: `check`

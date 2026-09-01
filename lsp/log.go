@@ -32,7 +32,7 @@ func InitLogger(level int) {
 
 	logger.mu.Lock()
 	logger.inner = slog.NewTextHandler(logger.file, &slog.HandlerOptions{
-		Level: slogLevel(level),
+		Level: SlogLevel(level),
 	})
 	logger.mu.Unlock()
 }
@@ -120,7 +120,7 @@ func logMessageType(level slog.Level) protocol.MessageType {
 	}
 }
 
-func slogLevel(level int) slog.Level {
+func SlogLevel(level int) slog.Level {
 	switch {
 	case level >= 5: // logrus Debug / Trace
 		return slog.LevelDebug

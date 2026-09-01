@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -72,6 +73,10 @@ func rootCommand() *cli.Command {
 					&cli.BoolFlag{
 						Name:  "ast",
 						Usage: "dump only the parse tree (tokens, trivia, node spans)",
+					},
+					&cli.BoolFlag{
+						Name:  "includes",
+						Usage: "show how each include resolves instead of dumping the tree",
 					},
 					&cli.IntFlag{
 						Name:  "printWidth",
@@ -241,6 +246,12 @@ func dumpAction(ctx context.Context, cmd *cli.Command) error {
 		return errors.New("must specify a thrift file to dump, e.g. thrift-ls dump file.thrift")
 	}
 
+	initCLILogger(cmd)
+
+	if cmd.Bool("includes") {
+		return dumpIncludes(ctx, file, cmd)
+	}
+
 	src, err := os.ReadFile(file)
 	if err != nil {
 		return err
@@ -285,16 +296,116 @@ func dumpAction(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-// checkAction reports the diagnostics the language server computes — parse
-// errors, semantic analysis, and lints — for a thrift file or folder,
-// through the same cache and checker pipeline the LSP uses. Diagnostics
-// print to stdout; the command exits 1 when any error-severity diagnostic
-// is found, so it can gate CI. Warnings do not fail the check.
+// initCLILogger routes slog records to stderr at the requested --logLevel.
+// Without --logLevel the CLI stays silent.
+func initCLILogger(cmd *cli.Command) {
+	if !cmd.IsSet("logLevel") {
+		return
+	}
+
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: lsp.SlogLevel(cmd.Int("logLevel")),
+	})))
+}
+
+// dumpIncludes prints how each include of file resolves: the chosen
+// location, its parse status, and the other locations the include path
+// matches. It uses the same config and session pipeline as check.
+func dumpIncludes(ctx context.Context, file string, cmd *cli.Command) error {
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		return err
+	}
+
+	content, err := os.ReadFile(abs)
+	if err != nil {
+		return err
+	}
+
+	cfg := loadConfig(cmd.String("config"), filepath.Dir(abs))
+	patch := options.Effective(cfg)
+
+	cliPatch, err := lspPatch(cmd)
+	if err != nil {
+		return err
+	}
+
+	patch = cliPatch.Apply(patch)
+
+	fs := cache.NewMemoizedFS()
+	sess := cache.NewSession(fs)
+	sess.AddView(uri.File(filepath.Dir(abs)), derefStrings(patch.IncludePaths))
+
+	u := uri.File(abs)
+
+	err = sess.UpdateOverlayFS(ctx, []*cache.FileChange{
+		{URI: u, Version: 0, Content: content, From: cache.FileChangeTypeDidOpen},
+	})
+	if err != nil {
+		return err
+	}
+
+	view, err := sess.ViewOf(u)
+	if err != nil {
+		return err
+	}
+
+	pf, err := view.Parse(ctx, u)
+	if err != nil {
+		return err
+	}
+
+	w := cmd.Writer
+
+	for _, e := range pf.Errors() {
+		fmt.Fprintf(w, "parse error: %v\n", e)
+	}
+
+	resolver := view.Resolver()
+
+	for _, inc := range pf.AST().Includes() {
+		path := inc.PathText()
+		if path == "" {
+			continue
+		}
+
+		candidates := resolver.ResolveIncludeCandidates(u, path)
+		fmt.Fprintf(w, "%s\n", path)
+
+		if len(candidates) == 0 {
+			fmt.Fprintf(w, "  not found\n")
+
+			continue
+		}
+
+		target, terr := view.Parse(ctx, candidates[0])
+		switch {
+		case terr != nil:
+			fmt.Fprintf(w, "  resolved: %s (unreadable: %v)\n", candidates[0].FsPath(), terr)
+		default:
+			fmt.Fprintf(w, "  resolved: %s (%d parse errors)\n", candidates[0].FsPath(), len(target.Errors()))
+		}
+
+		for _, cand := range candidates[1:] {
+			fmt.Fprintf(w, "  also matches: %s\n", cand.FsPath())
+		}
+	}
+
+	return nil
+}
+
+// checkAction reports the diagnostics the language server computes for a
+// thrift file or folder, through the same cache and checker pipeline the
+// LSP uses. Diagnostics print to stdout; the command exits 1 when any
+// error-severity diagnostic is found, so it can gate CI. Warnings do not
+// fail the check.
 func checkAction(ctx context.Context, cmd *cli.Command) error {
 	path := cmd.Args().First()
 	if path == "" {
 		return errors.New("must specify a thrift file or folder to check, e.g. thrift-ls check file.thrift")
 	}
+
+	initCLILogger(cmd)
 
 	files, err := collectThriftFiles(path)
 	if err != nil {

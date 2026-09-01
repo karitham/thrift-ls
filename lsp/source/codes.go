@@ -15,6 +15,7 @@ const (
 	CodeDuplicateValue    = "duplicate-value"
 	CodeImplicitEnumValue = "implicit-enum-value"
 	CodeUnusedInclude     = "unused-include"
+	CodeIncludeShadow     = "include-shadow"
 	CodeUndefinedType     = "undefined-type"
 	CodeUndefinedValue    = "undefined-value"
 	CodeValueTypeMismatch = "value-type-mismatch"

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io/fs"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -41,7 +42,26 @@ func (r *Resolver) ResolveInclude(cur uri.URI, includePath string) uri.URI {
 	filePath := cur.FsPath()
 	resolvedPath := r.central.Resolve(filePath, includePath)
 
+	slog.Debug("include resolved", "file", filePath, "include", includePath, "resolved", resolvedPath)
+
 	return uri.File(resolvedPath)
+}
+
+// ResolveIncludeCandidates returns the existing locations of includePath
+// for cur, nearest first. More than one location means the include path is
+// shadowed by another include path.
+func (r *Resolver) ResolveIncludeCandidates(cur uri.URI, includePath string) []uri.URI {
+	filePath := cur.FsPath()
+
+	paths := r.central.Candidates(filePath, includePath)
+	slog.Debug("include candidates", "file", filePath, "include", includePath, "paths", paths)
+
+	uris := make([]uri.URI, 0, len(paths))
+	for _, p := range paths {
+		uris = append(uris, uri.File(p))
+	}
+
+	return uris
 }
 
 // GetIncludePath returns the include path text for a given include name.
