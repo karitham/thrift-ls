@@ -244,7 +244,7 @@ struct TestUUID {
 						Severity: protocol.DiagnosticSeverityError,
 						Source:   protocol.NewOptional("thrift-ls"),
 						Code:     protocol.String(CodeValueTypeMismatch),
-						Message:  protocol.String("expect string but got i64"),
+						Message:  protocol.String("expect string but got int"),
 					},
 				},
 			},
@@ -472,4 +472,195 @@ func Test_SemanticAnalysis_WalkCoverage(t *testing.T) {
 			assert.Equal(t, tt.want, msgs)
 		})
 	}
+}
+
+// Test_SemanticAnalysis_ConstValueType pins value-kind matching against
+// underlying types: typedef chains resolve before comparing, consts are
+// checked like field defaults, and an unresolvable type is left to the
+// existence check instead of producing a cascading mismatch.
+func Test_SemanticAnalysis_ConstValueType(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    []string // value-type-mismatch messages, in document order
+	}{
+		{
+			name:    "typedef'd map accepts a map literal",
+			content: "typedef map<string, string> RelicMap\nstruct Delver {\n  1: required RelicMap relics = {'gansi': 'bell'},\n}\n",
+		},
+		{
+			name:    "typedef'd string accepts a string literal",
+			content: "typedef string CurseNote\nstruct Delver {\n  1: required CurseNote note = \"bell\",\n}\n",
+		},
+		{
+			name:    "typedef'd list accepts a list literal",
+			content: "typedef list<i32> DepthLog\nstruct Delver {\n  1: required DepthLog dives = [1, 2],\n}\n",
+		},
+		{
+			name:    "typedef'd set accepts a list literal",
+			content: "typedef set<i32> WhistleSet\nstruct Delver {\n  1: required WhistleSet whistles = [1],\n}\n",
+		},
+		{
+			name:    "const with typedef'd map accepts a map literal",
+			content: "typedef map<string, string> RelicMap\nconst RelicMap RIKO_BAG = {'bell': 'gansi'}\n",
+		},
+		{
+			name:    "enum field accepts an int literal",
+			content: "enum WhistleRank { BLACK, RED }\nstruct Delver {\n  1: required WhistleRank rank = 1,\n}\n",
+		},
+		{
+			name:    "bool const reference against a typedef'd bool is accepted",
+			content: "const bool HAS_DELVED = true\ntypedef bool DelvedFlag\nstruct Delver {\n  1: required DelvedFlag delved = HAS_DELVED,\n}\n",
+		},
+		{
+			name:    "non-bool const reference against bool is reported",
+			content: "const string RIKO = \"riko\"\nstruct Delver {\n  1: required bool is_hollowed = RIKO,\n}\n",
+			want:    []string{"expect bool but got identifier"},
+		},
+		{
+			name:    "mismatch through a typedef reports the underlying kind",
+			content: "typedef string CurseNote\nstruct Delver {\n  1: required CurseNote note = 71,\n}\n",
+			want:    []string{"expect string but got int"},
+		},
+		{
+			name:    "const with typedef'd map rejects a string literal",
+			content: "typedef map<string, string> RelicMap\nconst RelicMap RIKO_BAG = \"nope\"\n",
+			want:    []string{"expect map but got string"},
+		},
+		{
+			name:    "map literal initializes a struct-typed value",
+			content: "struct Relic {\n  1: string name,\n}\nstruct Delver {\n  1: required Relic relic = {'name': 'bell'},\n}\n",
+		},
+		{
+			name:    "map literal against an enum type is reported",
+			content: "enum WhistleRank { BLACK, RED }\nstruct Delver {\n  1: required WhistleRank rank = {'a': 'b'},\n}\n",
+			want:    []string{"expect WhistleRank but got map"},
+		},
+		{
+			name:    "int literal against string is reported",
+			content: "struct Delver {\n  1: required string name = 71,\n}\n",
+			want:    []string{"expect string but got int"},
+		},
+		{
+			name:    "unresolvable type produces no cascading mismatch",
+			content: "struct Delver {\n  1: required VoidStone stone = {'a': 'b'},\n}\n",
+		},
+		{
+			name:    "map entry values are checked against the value type",
+			content: "typedef map<string, i32> DepthLog\nstruct Delver {\n  1: required DepthLog dives = {'abyss': 'sixth'},\n}\n",
+			want:    []string{"expect i32 but got string"},
+		},
+		{
+			name:    "map entry keys are checked against the key type",
+			content: "struct Delver {\n  1: required map<i32, string> dives = {'one': 'bell'},\n}\n",
+			want:    []string{"expect i32 but got string"},
+		},
+		{
+			name:    "list elements are checked against the element type",
+			content: "struct Delver {\n  1: required list<i32> dives = [1, 'sixth'],\n}\n",
+			want:    []string{"expect i32 but got string"},
+		},
+		{
+			name:    "nested container entries resolve through typedefs",
+			content: "typedef map<string, list<i32>> DiveRecord\nstruct Delver {\n  1: required DiveRecord dives = {'riko': [1, 6]},\n}\n",
+		},
+		{
+			name:    "deeply nested entry mismatches report the innermost type",
+			content: "typedef map<string, list<i32>> DiveRecord\nstruct Delver {\n  1: required DiveRecord dives = {'riko': ['sixth layer']},\n}\n",
+			want:    []string{"expect i32 but got string"},
+		},
+		{
+			name:    "struct literal field values are checked against field types",
+			content: "struct Relic {\n  1: string name,\n  2: i32 lucerium_value,\n}\nstruct Delver {\n  1: required Relic relic = {'name': 'bell', 'lucerium_value': 'many'},\n}\n",
+			want:    []string{"expect i32 but got string"},
+		},
+		{
+			name:    "unknown struct literal field is reported",
+			content: "struct Relic {\n  1: string name,\n}\nstruct Delver {\n  1: required Relic relic = {'curse': 'bell'},\n}\n",
+			want:    []string{"no field named \"curse\" in Relic"},
+		},
+		{
+			name:    "non-string struct literal key is reported",
+			content: "struct Relic {\n  1: string name,\n}\nstruct Delver {\n  1: required Relic relic = {1: 'bell'},\n}\n",
+			want:    []string{"expect field name but got int"},
+		},
+		{
+			name:    "struct literal through a typedef resolves field types",
+			content: "typedef Relic AncientRelic\nstruct Relic {\n  1: string name,\n}\nstruct Delver {\n  1: required AncientRelic relic = {'name': 'bell'},\n}\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			view := buildSnapshotForTest(t, []*cache.FileChange{
+				{
+					URI:     "file:///tmp/orth.thrift",
+					Version: 0,
+					Content: []byte(tt.content),
+					From:    cache.FileChangeTypeDidOpen,
+				},
+			})
+
+			got, err := (&SemanticAnalysis{}).diagnostic(t.Context(), NewBatch(view), "file:///tmp/orth.thrift")
+			require.NoError(t, err)
+
+			var msgs []string
+			for _, d := range got {
+				if string(d.Code.(protocol.String)) == CodeValueTypeMismatch {
+					msgs = append(msgs, string(d.Message.(protocol.String)))
+				}
+			}
+
+			assert.Equal(t, tt.want, msgs)
+		})
+	}
+}
+
+// Test_SemanticAnalysis_ConstValueType_CrossFile pins that a typedef in an
+// included file classifies values in the including file, and that value
+// identifiers keep resolving in the referencing file's scope even when the
+// type was reached through the include.
+func Test_SemanticAnalysis_ConstValueType_CrossFile(t *testing.T) {
+	t.Run("typedef'd map from the include accepts a map literal", func(t *testing.T) {
+		abyss := "typedef map<string, string> RelicMap\n"
+		orth := "include \"abyss.thrift\"\nstruct Delver {\n  1: required abyss.RelicMap relics = {'gansi': 'bell'},\n}\n"
+
+		view := crossSnap(t, "/tmp/orth.thrift", orth, "/tmp/abyss.thrift", abyss)
+
+		got, err := (&SemanticAnalysis{}).diagnostic(t.Context(), NewBatch(view), fu("/tmp/orth.thrift"))
+		require.NoError(t, err)
+		assert.Empty(t, got)
+	})
+
+	t.Run("bool const reference through a typedef'd bool in the include", func(t *testing.T) {
+		abyss := "typedef bool DelvedFlag\n"
+		orth := "include \"abyss.thrift\"\nconst bool HAS_DELVED = true\nstruct Delver {\n  1: required abyss.DelvedFlag delved = HAS_DELVED,\n}\n"
+
+		view := crossSnap(t, "/tmp/orth.thrift", orth, "/tmp/abyss.thrift", abyss)
+
+		got, err := (&SemanticAnalysis{}).diagnostic(t.Context(), NewBatch(view), fu("/tmp/orth.thrift"))
+		require.NoError(t, err)
+		assert.Empty(t, got)
+	})
+
+	t.Run("struct literal field values classify in the struct's file", func(t *testing.T) {
+		// RelicRarity resolves in abyss.thrift's scope; the literal's
+		// ranges map in orth.thrift's.
+		abyss := "typedef i32 RelicRarity\nstruct Relic {\n  1: required RelicRarity lucerium_value,\n}\n"
+		orth := "include \"abyss.thrift\"\nconst abyss.Relic THE_BELL = {'lucerium_value': 'many'}\n"
+
+		view := crossSnap(t, "/tmp/orth.thrift", orth, "/tmp/abyss.thrift", abyss)
+
+		got, err := (&SemanticAnalysis{}).diagnostic(t.Context(), NewBatch(view), fu("/tmp/orth.thrift"))
+		require.NoError(t, err)
+
+		var msgs []string
+		for _, d := range got {
+			if string(d.Code.(protocol.String)) == CodeValueTypeMismatch {
+				msgs = append(msgs, string(d.Message.(protocol.String)))
+			}
+		}
+
+		assert.Equal(t, []string{"expect i32 but got string"}, msgs)
+	})
 }

@@ -126,6 +126,43 @@ func (x *Index) ResolveType(ctx context.Context, from *cache.ParsedFile, ft *syn
 	return def, nil
 }
 
+// UnderlyingType follows typedef chains — across includes — until it
+// reaches a type that is not itself a typedef, returning that type and the
+// parsed file whose scope it resolves in. Every consumer that classifies a
+// type by kind (value matching, completion, checks) resolves through here
+// instead of comparing surface names, so "typedef map<string,string> M"
+// classifies as a map everywhere.
+//
+// An identifier that resolves to no definition returns nil — the type has
+// no classifiable kind, and existence is another check's job. A cyclic or
+// pathological chain stops at maxTypedefDepth steps.
+func (x *Index) UnderlyingType(ctx context.Context, from *cache.ParsedFile, ft *syntax.FieldType) (*syntax.FieldType, *cache.ParsedFile) {
+	pf, cur := from, ft
+
+	for range maxTypedefDepth {
+		if cur == nil || cur.Kind != syntax.TypeIdent {
+			return cur, pf
+		}
+
+		def, err := x.ResolveType(ctx, pf, cur)
+		if err != nil || def == nil || def.Parsed == nil {
+			return nil, pf
+		}
+
+		td, ok := def.Node.(*syntax.Typedef)
+		if !ok {
+			return cur, pf
+		}
+
+		pf, cur = def.Parsed, td.Type
+	}
+
+	return cur, pf
+}
+
+// maxTypedefDepth bounds typedef-chain following.
+const maxTypedefDepth = 32
+
 // resolveType resolves a non-basic type name in from, without memoization.
 func (x *Index) resolveType(ctx context.Context, from *cache.ParsedFile, name string) (*Resolved, error) {
 	_, identifier := parseIdent(from.URI(), from.AST().Includes(), name)
