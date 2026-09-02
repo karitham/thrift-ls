@@ -315,3 +315,10 @@ func TestServeStream(t *testing.T) {
 		t.Fatal("ServeStream did not return after exit")
 	}
 }
+
+func TestServeStdioTreatsEOFAsCleanShutdown(t *testing.T) {
+	var output bytes.Buffer
+
+	err := ServeStdio(t.Context(), &Options{}, bytes.NewReader(nil), &output)
+	require.NoError(t, err)
+}

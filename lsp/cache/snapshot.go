@@ -5,6 +5,7 @@ import (
 	"context"
 	"io/fs"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -31,7 +32,7 @@ func newResolver(includePaths []string, src FileSource) *Resolver {
 
 // IncludePaths returns the include paths configured for this resolver.
 func (r *Resolver) IncludePaths() []string {
-	return r.includePaths
+	return slices.Clone(r.includePaths)
 }
 
 // ResolveInclude resolves an include path to a file URI.

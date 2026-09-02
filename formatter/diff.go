@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package main
+package formatter
 
 import (
 	"bytes"
@@ -15,7 +15,7 @@ import (
 // It is typically a pair of line indexes.
 type pair struct{ x, y int }
 
-// Diff returns an anchored diff of the two texts old and new
+// diff returns an anchored diff of the two texts old and new
 // in the “unified diff” format. If old and new are identical,
 // Diff returns a nil slice (no output).
 //
@@ -43,7 +43,7 @@ type pair struct{ x, y int }
 // Second, the name is frequently interpreted as meaning that you have
 // to wait longer (to be patient) for the diff, meaning that it is a slower algorithm,
 // when in fact the algorithm is faster than the standard one.
-func Diff(oldName string, old []byte, newName string, new []byte) []byte {
+func diff(oldName string, old []byte, newName string, new []byte) []byte {
 	if bytes.Equal(old, new) {
 		return nil
 	}

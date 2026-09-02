@@ -110,7 +110,7 @@ func Test_CodeAction(t *testing.T) {
 
 			// Produce the report the server would publish, so code
 			// actions pair with the server's own diagnostics.
-			_, err = withFile(ctx, srv.session, fileURI, func(view *cache.View, _ cache.FileHandle) (struct{}, error) {
+			_, err = withFile(ctx, srv.session.ViewOf, fileURI, func(view *cache.View, _ cache.FileHandle) (struct{}, error) {
 				srv.diagnose(ctx, view, []uri.URI{fileURI})
 				return struct{}{}, nil
 			})
@@ -184,7 +184,7 @@ func TestCodeActionAddMissingInclude(t *testing.T) {
 			openDocument(t, srv, fileURI, content)
 
 			// Produce the report the server would publish.
-			_, err := withFile(t.Context(), srv.session, fileURI, func(view *cache.View, _ cache.FileHandle) (struct{}, error) {
+			_, err := withFile(t.Context(), srv.session.ViewOf, fileURI, func(view *cache.View, _ cache.FileHandle) (struct{}, error) {
 				srv.diagnose(t.Context(), view, []uri.URI{fileURI})
 				return struct{}{}, nil
 			})

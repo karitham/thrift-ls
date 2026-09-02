@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/options"
 )
 
 // TestConfigFileIncludePaths verifies that include paths from a workspace
@@ -30,9 +32,7 @@ func TestConfigFileIncludePaths(t *testing.T) {
 		writeConfig(t, dir, `{"includePaths": ["base"]}`)
 
 		srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
-		_, err := srv.Initialize(ctx, &protocol.InitializeParams{
-			WorkspaceFolders: protocol.NewNullable([]protocol.WorkspaceFolder{{URI: uri.File(dir)}}),
-		})
+		_, err := srv.Initialize(ctx, testInitializeParams([]protocol.WorkspaceFolder{{URI: uri.File(dir)}}))
 		require.NoError(t, err)
 		require.NoError(t, srv.Initialized(ctx, &protocol.InitializedParams{}))
 
@@ -52,6 +52,53 @@ func TestConfigFileIncludePaths(t *testing.T) {
 		// path finds it there.
 		resolved := view.Resolver().ResolveInclude(app, "shared.thrift")
 		assert.Equal(t, uri.File(shared), resolved)
+	})
+}
+
+func TestCustomProjectIncludePathsAreAuthoritative(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		dir := t.TempDir()
+		root := filepath.Join(dir, "project")
+		projectIncludes := filepath.Join(dir, "project-includes")
+		configIncludes := filepath.Join(dir, "config-includes")
+		cliIncludes := filepath.Join(dir, "cli-includes")
+		settingsIncludes := filepath.Join(dir, "settings-includes")
+		for _, path := range []string{root, projectIncludes, configIncludes, cliIncludes, settingsIncludes} {
+			require.NoError(t, os.MkdirAll(path, 0o755))
+		}
+
+		configPath := filepath.Join(root, "thrift-ls.json")
+		require.NoError(t, os.WriteFile(configPath, []byte(`{"includePaths":["`+configIncludes+`"]}`), 0o644))
+		target := uri.File(filepath.Join(root, "api.thrift"))
+		projectDependency := uri.File(filepath.Join(projectIncludes, "shared.thrift"))
+		loader := func(context.Context, uri.URI) (WorkspaceSnapshot, error) {
+			return WorkspaceSnapshot{Projects: []Project{{
+				ConfigURI:    uri.File(filepath.Join(root, "tbuild.yaml")),
+				RootURI:      uri.File(root),
+				TargetFiles:  []uri.URI{target},
+				IncludePaths: []string{projectIncludes},
+			}}}, nil
+		}
+		srv := NewServer(cache.NewMemFS(map[uri.URI][]byte{
+			target:            []byte(`include "shared.thrift"`),
+			projectDependency: []byte("struct Shared {}"),
+		}), nil, Options{
+			CLI:             options.Patch{IncludePaths: &[]string{cliIncludes}},
+			ConfigFinder:    func(string) (string, error) { return configPath, nil },
+			WorkspaceLoader: loader,
+		})
+		params := testInitializeParams([]protocol.WorkspaceFolder{{URI: uri.File(dir)}})
+		params.InitializationOptions = protocol.LSPAny([]byte(`{"includePaths":["` + settingsIncludes + `"]}`))
+
+		_, err := srv.Initialize(t.Context(), params)
+		require.NoError(t, err)
+		require.NoError(t, srv.Initialized(t.Context(), &protocol.InitializedParams{}))
+		synctest.Wait()
+
+		view, err := srv.session.ViewOf(target)
+		require.NoError(t, err)
+		assert.Equal(t, []string{projectIncludes}, view.Resolver().IncludePaths())
+		assert.Equal(t, projectDependency, view.Resolver().ResolveInclude(target, "shared.thrift"))
 	})
 }
 

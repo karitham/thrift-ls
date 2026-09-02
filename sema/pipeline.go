@@ -199,6 +199,14 @@ func New(cfg Config, analyzers []Analyzer) *Pipeline {
 	return &Pipeline{analyzers: analyzers, cfg: cfg}
 }
 
+// WithAnalyzers returns a copy of the pipeline with analyzers appended.
+func (p *Pipeline) WithAnalyzers(analyzers ...Analyzer) *Pipeline {
+	out := *p
+	out.analyzers = append(slices.Clone(p.analyzers), analyzers...)
+
+	return &out
+}
+
 // WithFixers returns a copy of the pipeline with the fixers added.
 func (p *Pipeline) WithFixers(fs ...Fixer) *Pipeline {
 	out := *p

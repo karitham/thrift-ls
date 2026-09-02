@@ -1,7 +1,7 @@
 {
   description = "thrift-ls: a Thrift language server and formatter";
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs";
+    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
   };
   outputs =
     { self, nixpkgs }:
@@ -14,7 +14,7 @@
         let
           version = "0.1.8";
         in
-        pkgs.buildGo127Module {
+        pkgs.buildGoModule {
           pname = "thrift-ls";
           inherit version;
           src = nixpkgs.lib.cleanSource ./.;
@@ -62,10 +62,10 @@
             packages =
               with pkgs;
               [
-                go_1_27
+                go
                 treefmt
                 golangci-lint
-                nodejs_22
+                nodejs
               ]
               ++ formatterTools pkgs;
           };

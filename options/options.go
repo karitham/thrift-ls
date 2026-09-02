@@ -166,18 +166,8 @@ func Load(path string) (*Patch, error) {
 // because relative include paths in the config anchor to it.
 func FindConfig(dir string) (string, error) {
 	path := os.Getenv("THRIFT_LS_CONFIG")
-
 	if path == "" {
-		var err error
-
-		path, err = findConfig(dir)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	if path == "" {
-		return "", nil
+		return FindNearestConfig(dir)
 	}
 
 	abs, err := filepath.Abs(path)
@@ -188,9 +178,16 @@ func FindConfig(dir string) (string, error) {
 	return abs, nil
 }
 
-// findConfig walks up from dir to the nearest thrift-ls.json.
-func findConfig(dir string) (string, error) {
-	for d := dir; ; d = filepath.Dir(d) {
+// FindNearestConfig returns the nearest thrift-ls.json found by walking from
+// dir toward the filesystem root. It returns an absolute path, or an empty
+// path when no config exists. It does not read THRIFT_LS_CONFIG.
+func FindNearestConfig(dir string) (string, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+
+	for d := abs; ; d = filepath.Dir(d) {
 		path := filepath.Join(d, ConfigFileName)
 		_, err := os.Stat(path)
 		if err == nil {

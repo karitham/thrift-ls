@@ -17,7 +17,7 @@ import (
 // fixes a reported diagnostic is also offered as a quickfix. Actions are
 // filtered to the kinds the client requested.
 func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionParams) ([]protocol.CommandOrCodeAction, error) {
-	return withFile(ctx, s.session, params.TextDocument.URI, func(view *cache.View, fh cache.FileHandle) ([]protocol.CommandOrCodeAction, error) {
+	return withFile(ctx, s.viewOf, params.TextDocument.URI, func(view *cache.View, fh cache.FileHandle) ([]protocol.CommandOrCodeAction, error) {
 		pf, err := view.Parse(ctx, params.TextDocument.URI)
 		if err != nil {
 			return nil, err
@@ -30,7 +30,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 
 		report := s.reportFor(params.TextDocument.URI)
 
-		actions := sema.DefaultPipeline(s.lintConfig(view)).
+		actions := s.pipeline(view).
 			CodeActions(ctx, view, params.TextDocument.URI, span, report)
 
 		proto := make([]protocol.CodeAction, 0, len(actions))

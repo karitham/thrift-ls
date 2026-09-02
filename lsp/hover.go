@@ -11,7 +11,7 @@ import (
 )
 
 func (s *Server) hover(ctx context.Context, params *protocol.HoverParams) (*protocol.Hover, error) {
-	return withView(s.session, params.TextDocument.URI, func(view *cache.View) (*protocol.Hover, error) {
+	return withView(s.viewOf, params.TextDocument.URI, func(view *cache.View) (*protocol.Hover, error) {
 		content, err := source.Hover(ctx, view, params.TextDocument.URI, params.Position)
 		if err != nil {
 			return nil, err

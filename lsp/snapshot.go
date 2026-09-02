@@ -8,10 +8,12 @@ import (
 	"github.com/karitham/thrift-ls/lsp/cache"
 )
 
+type viewResolver func(uri.URI) (*cache.View, error)
+
 // withView resolves file's view and runs fn with it. Every request handler
 // funnels through this helper so view routing lives in one place.
-func withView[T any](session *cache.Session, file uri.URI, fn func(*cache.View) (T, error)) (T, error) {
-	view, err := session.ViewOf(file)
+func withView[T any](resolve viewResolver, file uri.URI, fn func(*cache.View) (T, error)) (T, error) {
+	view, err := resolve(file)
 	if err != nil {
 		var zero T
 
@@ -22,8 +24,8 @@ func withView[T any](session *cache.Session, file uri.URI, fn func(*cache.View) 
 }
 
 // withFile is withView plus the file handle for file.
-func withFile[T any](ctx context.Context, session *cache.Session, file uri.URI, fn func(*cache.View, cache.FileHandle) (T, error)) (T, error) {
-	return withView(session, file, func(view *cache.View) (T, error) {
+func withFile[T any](ctx context.Context, resolve viewResolver, file uri.URI, fn func(*cache.View, cache.FileHandle) (T, error)) (T, error) {
+	return withView(resolve, file, func(view *cache.View) (T, error) {
 		fh, err := view.ReadFile(ctx, file)
 		if err != nil {
 			var zero T
@@ -33,4 +35,12 @@ func withFile[T any](ctx context.Context, session *cache.Session, file uri.URI, 
 
 		return fn(view, fh)
 	})
+}
+
+func (s *Server) viewOf(file uri.URI) (*cache.View, error) {
+	if s.workspace != nil {
+		return s.workspace.viewOf(file)
+	}
+
+	return s.session.ViewOf(file)
 }

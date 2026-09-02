@@ -29,7 +29,7 @@ func (s *Server) willRenameFiles(ctx context.Context, params *protocol.RenameFil
 			continue
 		}
 
-		view, err := s.session.ViewOf(oldURI)
+		view, err := s.viewOf(oldURI)
 		if err != nil {
 			continue
 		}
@@ -62,7 +62,7 @@ func (s *Server) didRenameFiles(ctx context.Context, params *protocol.RenameFile
 			continue
 		}
 
-		view, err := s.session.ViewOf(oldURI)
+		view, err := s.viewOf(oldURI)
 		if err != nil {
 			continue
 		}

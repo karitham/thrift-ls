@@ -25,9 +25,9 @@ type viewEntry struct {
 // graph between them, and the include configuration that applies to them.
 //
 // Concurrency: entries and edges are guarded by mu; reads share immutable
-// values, writes replace entries wholesale. gen bumps on every Update;
-// asynchronous work compares its captured generation against View.IsCurrent
-// to drop superseded results.
+// values, writes replace entries wholesale. gen bumps on every Update or
+// Evict; asynchronous work compares its captured generation against
+// View.IsCurrent to drop superseded results.
 type View struct {
 	// folder is the tree root: a workspace folder, or the opened file's
 	// directory in single-file mode.
@@ -45,11 +45,25 @@ type View struct {
 	gen atomic.Uint64
 }
 
+type generationContextKey struct{}
+
+// WithGeneration marks ctx as analysis work for generation. Parses performed
+// with the context are not cached after the view advances past that generation.
+func WithGeneration(ctx context.Context, generation uint64) context.Context {
+	return context.WithValue(ctx, generationContextKey{}, generation)
+}
+
+func generationOf(ctx context.Context) (uint64, bool) {
+	generation, ok := ctx.Value(generationContextKey{}).(uint64)
+
+	return generation, ok
+}
+
 func NewView(folder uri.URI, fs FileSource, includePaths []string) *View {
 	return &View{
 		folder:       folder,
 		fs:           fs,
-		includePaths: includePaths,
+		includePaths: slices.Clone(includePaths),
 		entries:      make(map[uri.URI]*viewEntry),
 		includes:     make(map[uri.URI][]uri.URI),
 		includers:    make(map[uri.URI][]uri.URI),
@@ -100,6 +114,9 @@ func (v *View) Parse(ctx context.Context, u uri.URI) (*ParsedFile, error) {
 		return pf, nil
 	}
 
+	generation, guarded := generationOf(ctx)
+	parseGeneration := v.gen.Load()
+
 	fh, err := v.ReadFile(ctx, u)
 	if err != nil {
 		return nil, err
@@ -117,7 +134,17 @@ func (v *View) Parse(ctx context.Context, u uri.URI) (*ParsedFile, error) {
 		includes = resolveIncludes(u, pf.AST().Includes(), v.Resolver().ResolveInclude)
 	}
 
-	v.setEntry(u, &viewEntry{fh: fh, parsed: pf}, includes)
+	v.mu.Lock()
+	if (!guarded || generation == parseGeneration) && v.gen.Load() == parseGeneration {
+		v.removeEdgesLocked(u)
+		v.entries[u] = &viewEntry{fh: fh, parsed: pf}
+
+		for _, inc := range includes {
+			v.includes[u] = append(v.includes[u], inc)
+			v.includers[inc] = append(v.includers[inc], u)
+		}
+	}
+	v.mu.Unlock()
 
 	return pf, nil
 }
@@ -294,6 +321,43 @@ func (v *View) Generation() uint64 {
 	return v.gen.Load()
 }
 
+// Evict removes files from the view and advances its generation. Advancing the
+// generation also invalidates asynchronous work that was started for the
+// evicted entries.
+func (v *View) Evict(files ...uri.URI) {
+	uris := make([]uri.URI, 0, len(files))
+	for _, file := range files {
+		uris = append(uris, file)
+	}
+
+	slices.Sort(uris)
+	uris = slices.Compact(uris)
+
+	v.mu.Lock()
+	for _, file := range uris {
+		v.removeEdgesLocked(file)
+		for _, includer := range v.includers[file] {
+			includes := v.includes[includer]
+			for i, include := range slices.Backward(includes) {
+				if include != file {
+					continue
+				}
+
+				includes = append(includes[:i], includes[i+1:]...)
+			}
+			if len(includes) == 0 {
+				delete(v.includes, includer)
+			} else {
+				v.includes[includer] = includes
+			}
+		}
+		delete(v.includers, file)
+		delete(v.entries, file)
+	}
+	v.gen.Add(1)
+	v.mu.Unlock()
+}
+
 // IsCurrent reports whether gen is still the view's latest generation.
 // Used by asynchronous work to drop results that a newer change superseded.
 func (v *View) IsCurrent(gen uint64) bool {
@@ -334,6 +398,7 @@ func (v *View) Update(ctx context.Context, changes ...*FileChange) ChangeResult 
 		// if the parse below fails, so routing and KnownFiles see it.
 		v.entries[u] = &viewEntry{}
 	}
+	generation := v.gen.Add(1)
 	v.mu.Unlock()
 
 	// Parse is lazy and cached, so requests racing ahead of this loop
@@ -346,7 +411,7 @@ func (v *View) Update(ctx context.Context, changes ...*FileChange) ChangeResult 
 
 	return ChangeResult{
 		Affected: v.affected(uris),
-		Gen:      v.gen.Add(1),
+		Gen:      generation,
 	}
 }
 

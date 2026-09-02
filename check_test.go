@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
 
+	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/sema"
 )
 
@@ -164,24 +165,28 @@ func diagsOnLine(diags []protocol.Diagnostic, line uint32) []protocol.Diagnostic
 }
 
 // Test_Check_LintConfig pins that thrift-ls.json lint settings reach the
-// check pipeline: a disabled analyzer produces no diagnostics and exits 0,
-// where it would otherwise warn and exit 1.
+// check pipeline: a disabled analyzer produces no diagnostics, while the
+// default configuration reports the unused include.
 func Test_Check_LintConfig(t *testing.T) {
 	folder := t.TempDir()
+	file := filepath.Join(folder, "user.thrift")
 	content := "include \"shared.thrift\"\nstruct S { 1: i32 a }\n"
-	require.NoError(t, os.WriteFile(filepath.Join(folder, "user.thrift"), []byte(content), 0o644))
+	require.NoError(t, os.WriteFile(file, []byte(content), 0o644))
+	t.Setenv("THRIFT_LS_CONFIG", "")
 
-	// The unused include is a warning: the check fails on it only via
-	// the config downgrade. Disable the analyzer entirely.
 	config := `{"lint": {"disabled": ["UnusedIncludeCheck"]}}`
-	require.NoError(t, os.WriteFile(filepath.Join(folder, "thrift-ls.json"), []byte(config), 0o644))
+	configPath := filepath.Join(folder, "thrift-ls.json")
+	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o644))
 
-	stdout, _, err := runCLI(t, "check", "--config", filepath.Join(folder, "thrift-ls.json"), filepath.Join(folder, "user.thrift"))
+	patch, err := loadConfig(configPath, folder)
 	require.NoError(t, err)
-	assert.Empty(t, strings.TrimSpace(stdout))
+
+	diags, err := checkFiles(t.Context(), []string{file}, folder, nil, lintConfigOf(options.Effective(patch).Lint))
+	require.NoError(t, err)
+	assert.Empty(t, diags[file])
 
 	// Without the config the warning fires.
-	stdout, _, err = runCLI(t, "check", filepath.Join(folder, "user.thrift"))
+	diags, err = checkFiles(t.Context(), []string{file}, folder, nil, sema.Config{})
 	require.NoError(t, err)
-	assert.Contains(t, stdout, "unused include")
+	assert.True(t, hasMessage(diags[file], "unused include"))
 }

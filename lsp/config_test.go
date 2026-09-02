@@ -52,10 +52,9 @@ func openAndFormat(t *testing.T, srv *Server, file string) string {
 func initWorkspace(t *testing.T, srv *Server, folders []uri.URI, initializationOptions []byte) {
 	t.Helper()
 
-	_, err := srv.Initialize(t.Context(), &protocol.InitializeParams{
-		WorkspaceFolders:      protocol.NewNullable(foldersFromURIs(folders)),
-		InitializationOptions: protocol.LSPAny(initializationOptions),
-	})
+	params := testInitializeParams(foldersFromURIs(folders))
+	params.InitializationOptions = protocol.LSPAny(initializationOptions)
+	_, err := srv.Initialize(t.Context(), params)
 	require.NoError(t, err)
 	require.NoError(t, srv.Initialized(t.Context(), &protocol.InitializedParams{}))
 

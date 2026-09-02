@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -23,23 +22,11 @@ import (
 	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/syntax"
 
-	"go.lsp.dev/jsonrpc2"
-	"go.lsp.dev/pkg/fakenet"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 )
 
-func main() {
-	cmd := rootCommand()
-
-	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		fmt.Fprintln(os.Stderr, "thrift-ls:", err)
-		os.Exit(1)
-	}
-}
-
-// rootCommand is the CLI: the default (no subcommand) is the language
-// server, with format, dump, and check as subcommands.
+// rootCommand returns the thrift-ls urfave command.
 func rootCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "thrift-ls",
@@ -47,13 +34,13 @@ func rootCommand() *cli.Command {
 		Version: lsp.ServerVersion,
 		Flags:   lspFlags(),
 		// No subcommand: run the language server.
-		Action: lspAction,
+		Action: runLSP,
 		Commands: []*cli.Command{
 			{
 				Name:   "lsp",
 				Usage:  "run the language server on stdio",
 				Flags:  lspFlags(),
-				Action: lspAction,
+				Action: runLSP,
 			},
 			{
 				Name:      "format",
@@ -62,39 +49,47 @@ func rootCommand() *cli.Command {
 				Flags:     formatFlags(),
 				Action:    formatAction,
 			},
-			{
-				Name:      "dump",
-				Usage:     "dump the parse tree and document IR of a thrift file",
-				ArgsUsage: "<file>",
-				Flags: []cli.Flag{
-					&cli.BoolFlag{
-						Name:  "ir",
-						Usage: "also dump the formatted document IR with layout decisions",
-					},
-					&cli.BoolFlag{
-						Name:  "ast",
-						Usage: "dump only the parse tree (tokens, trivia, node spans)",
-					},
-					&cli.BoolFlag{
-						Name:  "includes",
-						Usage: "show how each include resolves instead of dumping the tree",
-					},
-					&cli.IntFlag{
-						Name:  "printWidth",
-						Usage: "line width for the IR dump",
-						Value: 80,
-					},
-				},
-				Action: dumpAction,
+			dumpCommand(),
+			checkCommand(),
+		},
+	}
+}
+
+func dumpCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "dump",
+		Usage:     "dump the parse tree and document IR of a thrift file",
+		ArgsUsage: "<file>",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:  "ir",
+				Usage: "also dump the formatted document IR with layout decisions",
 			},
-			{
-				Name:      "check",
-				Usage:     "report parse, semantic, and lint diagnostics on thrift files",
-				ArgsUsage: "<file|folder>",
-				Flags:     lspFlags(),
-				Action:    checkAction,
+			&cli.BoolFlag{
+				Name:  "ast",
+				Usage: "dump only the parse tree (tokens, trivia, node spans)",
+			},
+			&cli.BoolFlag{
+				Name:  "includes",
+				Usage: "show how each include resolves instead of dumping the tree",
+			},
+			&cli.IntFlag{
+				Name:  "printWidth",
+				Usage: "line width for the IR dump",
+				Value: 80,
 			},
 		},
+		Action: dumpAction,
+	}
+}
+
+func checkCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "check",
+		Usage:     "report parse, semantic, and lint diagnostics on thrift files",
+		ArgsUsage: "<file|folder>",
+		Flags:     lspFlags(),
+		Action:    checkAction,
 	}
 }
 
@@ -180,8 +175,8 @@ func formatFlags() []cli.Flag {
 	return flags
 }
 
-// lspAction serves the language server on stdio.
-func lspAction(ctx context.Context, cmd *cli.Command) error {
+// runLSP serves the language server on stdio.
+func runLSP(ctx context.Context, cmd *cli.Command) error {
 	// Degrade, don't die: editors launch this process, so a broken
 	// thrift-ls.json here would kill every buffer's language server at
 	// startup. The reason goes to stderr (open before initialize) and
@@ -215,16 +210,7 @@ func lspAction(ctx context.Context, cmd *cli.Command) error {
 		CLI:        cliPatch,
 	}
 
-	ss := lsp.NewStreamServer(lspOpts)
-	stream := jsonrpc2.NewStream(fakenet.NewConn("stdio", os.Stdin, os.Stdout))
-	conn := jsonrpc2.NewConn(stream)
-
-	err = ss.ServeStream(ctx, conn)
-	if errors.Is(err, io.EOF) {
-		return nil
-	}
-
-	return err
+	return lsp.ServeStdio(ctx, lspOpts, os.Stdin, os.Stdout)
 }
 
 // formatAction formats a single thrift file.
@@ -236,7 +222,23 @@ func formatAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	return formatFile(file, cmd.Writer, cmd.Bool("w"), cmd.Bool("d"), cmd.String("config"), cliPatch)
+	return formatter.FormatFile(file, formatter.FileOptions{
+		Output:        cmd.Writer,
+		Write:         cmd.Bool("w"),
+		Diff:          cmd.Bool("d"),
+		ConfigPath:    cmd.String("config"),
+		Patch:         cliPatch.FormatPatch,
+		ResolveConfig: resolveFormatConfig,
+	})
+}
+
+func resolveFormatConfig(path, dir string) (formatter.FormatPatch, error) {
+	cfg, err := loadConfig(path, dir)
+	if err != nil {
+		return formatter.FormatPatch{}, err
+	}
+
+	return options.Effective(cfg).FormatPatch, nil
 }
 
 // dumpAction prints the parse tree, and optionally the formatted document
@@ -323,7 +325,10 @@ func dumpIncludes(ctx context.Context, file string, cmd *cli.Command) error {
 		return err
 	}
 
-	cfg := loadConfig(cmd.String("config"), filepath.Dir(abs))
+	cfg, err := loadConfig(cmd.String("config"), filepath.Dir(abs))
+	if err != nil {
+		return err
+	}
 	patch := options.Effective(cfg)
 
 	cliPatch, err := lspPatch(cmd)
@@ -417,7 +422,10 @@ func checkAction(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("no thrift files found in %s", path)
 	}
 
-	cfg := loadConfig(cmd.String("config"), ".")
+	cfg, err := loadConfig(cmd.String("config"), ".")
+	if err != nil {
+		return err
+	}
 	patch := options.Effective(cfg)
 
 	cliPatch, err := lspPatch(cmd)
@@ -649,30 +657,30 @@ func formatPatch(cmd *cli.Command) (options.Patch, error) {
 
 // loadConfig loads the explicit config path, or finds one walking up from
 // dir. A missing config is not an error.
-func loadConfig(path, dir string) *options.Patch {
+func loadConfig(path, dir string) (*options.Patch, error) {
 	if path == "" {
 		var err error
 
 		path, err = options.FindConfig(dir)
 		if err != nil {
-			fatal(err)
+			return nil, err
 		}
 	}
 
 	if path == "" {
-		return nil
+		return nil, nil
 	}
 
 	cfg, err := options.Load(path)
 	if err != nil {
-		fatal(err)
+		return nil, err
 	}
 
-	return cfg
+	return cfg, nil
 }
 
 // loadConfigLax is loadConfig for the language server: any failure degrades
-// to nil (defaults) after printing why, never os.Exit — see lspAction. The
+// to nil (defaults) after printing why, never os.Exit — see runLSP. The
 // strict variant stays for format/check, where a config typo should fail
 // fast rather than silently reformat against defaults.
 func loadConfigLax(path, dir string) *options.Patch {
@@ -705,71 +713,6 @@ func loadConfigLax(path, dir string) *options.Patch {
 	}
 
 	return cfg
-}
-
-func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "thrift-ls:", err)
-	os.Exit(1)
-}
-
-// formatFile formats a single file: read, parse, resolve options, format,
-// self-validate, and write, diff, or print to w.
-func formatFile(file string, w io.Writer, write, diffOut bool, configPath string, cli options.Patch) error {
-	if file == "" {
-		return errors.New("must specify a thrift file to format, e.g. thrift-ls format file.thrift")
-	}
-
-	src, err := os.ReadFile(file)
-	if err != nil {
-		return err
-	}
-
-	absFile, err := filepath.Abs(file)
-	if err != nil {
-		return err
-	}
-
-	cfg := loadConfig(configPath, filepath.Dir(absFile))
-	patch := options.Effective(cfg)
-	patch = cli.Apply(patch)
-
-	fopts, err := patch.FormatPatch.Options()
-	if err != nil {
-		return err
-	}
-
-	parsed, errs := syntax.Parse(src)
-	if parseErrors(errs) {
-		return fmt.Errorf("%s: file does not parse:\n%s", file, formatErrors(errs))
-	}
-
-	out, err := formatter.Format(parsed, fopts)
-	if err != nil {
-		return fmt.Errorf("%s: %w", file, err)
-	}
-
-	// Self-validation: the formatted output must parse cleanly.
-	if _, errs := syntax.Parse([]byte(out)); parseErrors(errs) {
-		return fmt.Errorf("%s: formatting produced invalid output", file)
-	}
-
-	switch {
-	case write:
-		perms := os.FileMode(0o644)
-		if info, err := os.Stat(file); err == nil {
-			perms = info.Mode()
-		}
-
-		return os.WriteFile(file, []byte(out), perms)
-	case diffOut:
-		fmt.Fprint(w, string(Diff("old", src, "new", []byte(out))))
-
-		return nil
-	default:
-		fmt.Fprint(w, out)
-
-		return nil
-	}
 }
 
 func parseErrors(errs []syntax.Error) bool {
@@ -821,4 +764,11 @@ func lintConfigOf(l *options.LintConfig) sema.Config {
 	}
 
 	return sema.ConfigFromLint(disabled, severity)
+}
+
+func main() {
+	if err := rootCommand().Run(context.Background(), os.Args); err != nil {
+		fmt.Fprintln(os.Stderr, "thrift-ls:", err)
+		os.Exit(1)
+	}
 }

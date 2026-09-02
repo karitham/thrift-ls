@@ -27,8 +27,10 @@ type Server struct {
 	// explicit is the startup configuration (defaults + startup config +
 	// CLI); every view uses it when configPath pins a file, otherwise each
 	// view resolves its own config from its folder.
-	explicit   options.Patch
-	configPath string
+	explicit     options.Patch
+	configPath   string
+	configFinder func(string) (string, error)
+	version      string
 
 	// cli is the CLI-only overlay, applied on top of every view's config.
 	cli options.Patch
@@ -47,6 +49,9 @@ type Server struct {
 	// walk starts on the Initialized notification so the initialize
 	// handshake never blocks on parsing the workspace.
 	folders []uri.URI
+
+	workspace *customWorkspace
+	analyzers []sema.Analyzer
 
 	// configs holds each view folder's resolved configuration. Views only
 	// carry what the store needs (include paths); formatting settings and
@@ -67,6 +72,9 @@ type Server struct {
 	workspaceWalkOnce sync.Once
 	dirWalkOnce       sync.Once
 
+	// analysisMu serializes analyzer instances shared by diagnostic workers.
+	analysisMu sync.Mutex
+
 	// lastReport remembers the diagnostics the server last published per
 	// file, so code actions can pair fixes with the diagnostics without a
 	// round trip through the client. Guarded by reportMu.
@@ -78,16 +86,33 @@ type Server struct {
 // are expected to validate; workspace settings overlay each view's config
 // at initialize time and on didChangeConfiguration.
 func NewServer(fs cache.FileSource, client protocol.Client, opts Options) *Server {
-	return &Server{
+	configFinder := opts.ConfigFinder
+	if configFinder == nil {
+		configFinder = options.FindConfig
+	}
+	version := opts.Version
+	if version == "" {
+		version = ServerVersion
+	}
+
+	server := &Server{
 		session:      cache.NewSession(fs),
 		client:       client,
 		explicit:     opts.Config,
 		configPath:   opts.ConfigPath,
+		configFinder: configFinder,
+		version:      version,
 		cli:          opts.CLI,
 		configs:      make(map[uri.URI]options.Patch),
 		configIssues: make(map[uri.URI]configIssue),
 		reports:      make(map[uri.URI]sema.Report),
+		analyzers:    slices.Clone(opts.Analyzers),
 	}
+	if opts.WorkspaceLoader != nil {
+		server.workspace = newCustomWorkspace(server, opts.WorkspaceLoader)
+	}
+
+	return server
 }
 
 // setWorkspaceSettings stores the workspace settings overlay; invalid
@@ -112,18 +137,36 @@ func (s *Server) setWorkspaceSettings(overlay options.Patch) {
 // what the store needs.
 func (s *Server) addFolderView(folder uri.URI) *cache.View {
 	cfg := s.viewConfig(folder)
-	s.applyLogLevel(cfg)
-
-	s.cfgMu.Lock()
-	s.configs[folder] = cfg
-	s.cfgMu.Unlock()
 
 	var includePaths []string
 	if cfg.IncludePaths != nil {
 		includePaths = *cfg.IncludePaths
 	}
 
+	return s.addView(folder, cfg, includePaths)
+}
+
+func (s *Server) addProjectView(project Project) *cache.View {
+	return s.addView(project.RootURI, s.viewConfig(project.RootURI), project.IncludePaths)
+}
+
+func (s *Server) addView(folder uri.URI, cfg options.Patch, includePaths []string) *cache.View {
+	s.applyLogLevel(cfg)
+
+	s.cfgMu.Lock()
+	s.configs[folder] = cfg
+	s.cfgMu.Unlock()
+
 	return s.session.AddView(folder, includePaths)
+}
+
+func (s *Server) removeView(folder uri.URI) {
+	s.session.RemoveView(folder)
+
+	s.cfgMu.Lock()
+	delete(s.configs, folder)
+	delete(s.configIssues, folder)
+	s.cfgMu.Unlock()
 }
 
 // folderConfig returns the resolved configuration of a view's folder.
@@ -151,7 +194,7 @@ func (s *Server) viewConfig(folder uri.URI) options.Patch {
 		return s.cli.Apply(s.explicit)
 	}
 
-	cfgPath, err := options.FindConfig(folder.FsPath())
+	cfgPath, err := s.configFinder(folder.FsPath())
 	if err != nil {
 		logError("config discovery failed", Expected(err), "dir", folder.FsPath())
 
@@ -319,10 +362,15 @@ func (s *Server) Initialized(ctx context.Context, params *protocol.InitializedPa
 	// or diagnostics any earlier violates the spec — Helix deadlocks on
 	// a client request that arrives before initialize is answered.
 	s.workspaceWalkOnce.Do(func() {
+		if s.workspace != nil {
+			s.workspace.start()
+
+			return
+		}
+
+		folders := slices.Clone(s.folders)
 		go func() {
-			for _, folder := range s.folders {
-				s.walkFoldersThriftFile(folder)
-			}
+			s.walkWorkspaceFolders(folders)
 		}()
 	})
 
@@ -332,6 +380,10 @@ func (s *Server) Initialized(ctx context.Context, params *protocol.InitializedPa
 }
 
 func (s *Server) Shutdown(ctx context.Context) (err error) {
+	if s.workspace != nil {
+		s.workspace.shutdown()
+	}
+
 	return nil
 }
 
@@ -428,13 +480,23 @@ func (s *Server) DidChangeWatchedFiles(ctx context.Context, params *protocol.Did
 }
 
 func (s *Server) DidChangeWorkspaceFolders(ctx context.Context, params *protocol.DidChangeWorkspaceFoldersParams) (err error) {
-	for _, folder := range params.Event.Removed {
-		s.session.RemoveView(folder.URI)
+	if s.workspace != nil {
+		added := make([]uri.URI, len(params.Event.Added))
+		for i, folder := range params.Event.Added {
+			added[i] = folder.URI
+		}
+		removed := make([]uri.URI, len(params.Event.Removed))
+		for i, folder := range params.Event.Removed {
+			removed[i] = folder.URI
+		}
 
-		s.cfgMu.Lock()
-		delete(s.configs, folder.URI)
-		delete(s.configIssues, folder.URI)
-		s.cfgMu.Unlock()
+		s.workspace.changeFolders(added, removed)
+
+		return nil
+	}
+
+	for _, folder := range params.Event.Removed {
+		s.removeStockView(ctx, folder.URI)
 	}
 
 	for _, folder := range params.Event.Added {
@@ -509,7 +571,7 @@ func (s *Server) Implementation(ctx context.Context, params *protocol.Implementa
 }
 
 func (s *Server) OnTypeFormatting(ctx context.Context, params *protocol.DocumentOnTypeFormattingParams) (result []protocol.TextEdit, err error) {
-	return withFile(ctx, s.session, params.TextDocument.URI, func(view *cache.View, fh cache.FileHandle) ([]protocol.TextEdit, error) {
+	return withFile(ctx, s.viewOf, params.TextDocument.URI, func(view *cache.View, fh cache.FileHandle) ([]protocol.TextEdit, error) {
 		return source.OnTypeFormat(ctx, view, fh, s.formatOptions(view), params.Position)
 	})
 }
@@ -554,7 +616,12 @@ func (s *Server) Symbols(ctx context.Context, params *protocol.WorkspaceSymbolPa
 	var res []protocol.SymbolInformation
 
 	for _, view := range views {
-		syms := source.WorkspaceSymbols(ctx, view, view.KnownFiles(), params.Query, maxResults-len(res))
+		files := view.KnownFiles()
+		if s.workspace != nil {
+			files = s.workspace.files(view)
+		}
+
+		syms := source.WorkspaceSymbols(ctx, view, files, params.Query, maxResults-len(res))
 
 		res = append(res, syms...)
 		if len(res) >= maxResults {

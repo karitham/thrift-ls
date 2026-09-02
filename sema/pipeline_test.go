@@ -11,6 +11,8 @@ import (
 	"github.com/karitham/thrift-ls/lsp/cache"
 )
 
+var _ func(Config) *Pipeline = DefaultPipeline
+
 // runOne runs a single analyzer over view and files: the shape check
 // tests use to pin one check's behavior in isolation.
 func runOne(t *testing.T, a Analyzer, view *cache.View, files ...uri.URI) Report {

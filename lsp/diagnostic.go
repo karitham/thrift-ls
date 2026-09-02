@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
@@ -48,16 +49,36 @@ func lintConfigOf(l options.LintConfig) sema.Config {
 	return sema.ConfigFromLint(disabled, severity)
 }
 
+func (s *Server) pipeline(view *cache.View) *sema.Pipeline {
+	return sema.DefaultPipeline(s.lintConfig(view)).WithAnalyzers(s.analyzers...)
+}
+
 // diagnose runs the analysis pipeline once over every affected file — one
 // run, one shared cross-file index — and publishes the findings per file.
 // The per-file findings are cached for code actions.
 func (s *Server) diagnose(ctx context.Context, view *cache.View, affected []uri.URI) {
+	s.diagnoseAt(ctx, view, affected, view.Generation())
+}
+
+func (s *Server) diagnoseAt(ctx context.Context, view *cache.View, affected []uri.URI, generation uint64) {
+	s.analysisMu.Lock()
+	defer s.analysisMu.Unlock()
+	ctx = cache.WithGeneration(ctx, generation)
+
 	slog.Debug("diagnose called", "files", len(affected))
 	defer slog.Debug("diagnose finished")
 
-	report, err := sema.DefaultPipeline(s.lintConfig(view)).Run(ctx, view, affected)
+	if !view.IsCurrent(generation) {
+		return
+	}
+
+	report, err := s.pipeline(view).Run(ctx, view, affected)
 	if err != nil {
 		logError("diagnostic failed", err)
+	}
+
+	if !view.IsCurrent(generation) {
+		return
 	}
 
 	// Cache the findings whether or not a client is attached: code
@@ -65,6 +86,11 @@ func (s *Server) diagnose(ctx context.Context, view *cache.View, affected []uri.
 	// no longer parses (deleted or unreadable) gets its cached report
 	// dropped instead, so the cache never pins stale findings.
 	s.reportMu.Lock()
+	defer s.reportMu.Unlock()
+	if !view.IsCurrent(generation) {
+		return
+	}
+
 	for _, file := range affected {
 		if _, err := view.Parse(ctx, file); err != nil {
 			delete(s.reports, file)
@@ -74,15 +100,22 @@ func (s *Server) diagnose(ctx context.Context, view *cache.View, affected []uri.
 
 		s.reports[file] = report
 	}
-	s.reportMu.Unlock()
 
 	if s.client == nil {
+		return
+	}
+
+	if !view.IsCurrent(generation) {
 		return
 	}
 
 	var errs []error
 
 	for _, file := range affected {
+		if !view.IsCurrent(generation) {
+			return
+		}
+
 		if _, err := view.Parse(ctx, file); err != nil {
 			continue
 		}
@@ -101,6 +134,10 @@ func (s *Server) diagnose(ctx context.Context, view *cache.View, affected []uri.
 
 		slog.Debug("publish diagnostics", "file", file, "count", len(res))
 
+		if !view.IsCurrent(generation) {
+			return
+		}
+
 		err = s.client.PublishDiagnostics(ctx, &protocol.PublishDiagnosticsParams{
 			URI:         file,
 			Diagnostics: res,
@@ -112,6 +149,29 @@ func (s *Server) diagnose(ctx context.Context, view *cache.View, affected []uri.
 
 	if err := errors.Join(errs...); err != nil {
 		logError("publish failed", err)
+	}
+}
+
+func (s *Server) clearDiagnostics(ctx context.Context, files ...uri.URI) {
+	slices.Sort(files)
+	files = slices.Compact(files)
+	ctx = context.WithoutCancel(ctx)
+	s.reportMu.Lock()
+	defer s.reportMu.Unlock()
+
+	for _, file := range files {
+		delete(s.reports, file)
+
+		if s.client == nil {
+			continue
+		}
+
+		if err := s.client.PublishDiagnostics(ctx, &protocol.PublishDiagnosticsParams{
+			URI:         file,
+			Diagnostics: []protocol.Diagnostic{},
+		}); err != nil {
+			logError("clear diagnostics failed", err, "uri", file)
+		}
 	}
 }
 

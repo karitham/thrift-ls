@@ -1,7 +1,6 @@
-// Package formatter turns a parsed thrift document into a doc IR document
-// and renders it. It is the pure core of the formatting pipeline: parsing
-// and file I/O happen in the caller (CLI, LSP), and the formatter never
-// touches the filesystem.
+// Package formatter formats parsed Thrift documents and files. Format is the
+// pure formatting core used by callers such as the CLI and LSP; FormatFile
+// owns the filesystem boundary for standalone file formatting.
 //
 // Layout decisions are width-driven: every construct is a group that stays
 // on one line when it fits and breaks otherwise, with nested groups

@@ -159,20 +159,7 @@ struct Test {
 			err = srv.DidOpen(ctx, openParams)
 			assert.NoError(t, err)
 
-			completionParams := &protocol.CompletionParams{
-				TextDocument: protocol.TextDocumentIdentifier{
-					URI: fileURI,
-				},
-				Position: protocol.Position{
-					Line:      tt.line,
-					Character: tt.character,
-				},
-				WorkDoneToken:      protocol.String(""),
-				PartialResultToken: protocol.String(""),
-				Context: protocol.CompletionContext{
-					TriggerKind: protocol.CompletionTriggerKindInvoked,
-				},
-			}
+			completionParams := testCompletionParams(fileURI, tt.line, tt.character)
 
 			completionResult, err := srv.Completion(ctx, completionParams)
 			assert.NoError(t, err)
@@ -252,20 +239,7 @@ struct Test {
 			err = srv.DidOpen(ctx, testParams)
 			assert.NoError(t, err)
 
-			completionParams := &protocol.CompletionParams{
-				TextDocument: protocol.TextDocumentIdentifier{
-					URI: testURI,
-				},
-				Position: protocol.Position{
-					Line:      5,
-					Character: 28,
-				},
-				WorkDoneToken:      protocol.String(""),
-				PartialResultToken: protocol.String(""),
-				Context: protocol.CompletionContext{
-					TriggerKind: protocol.CompletionTriggerKindInvoked,
-				},
-			}
+			completionParams := testCompletionParams(testURI, 5, 28)
 
 			completionResult, err := srv.Completion(ctx, completionParams)
 			assert.NoError(t, err)
@@ -354,20 +328,7 @@ struct Other {
 			completionURI, err := uri.Parse(tt.completionURI)
 			assert.NoError(t, err)
 
-			completionParams := &protocol.CompletionParams{
-				TextDocument: protocol.TextDocumentIdentifier{
-					URI: completionURI,
-				},
-				Position: protocol.Position{
-					Line:      5,
-					Character: 28,
-				},
-				WorkDoneToken:      protocol.String(""),
-				PartialResultToken: protocol.String(""),
-				Context: protocol.CompletionContext{
-					TriggerKind: protocol.CompletionTriggerKindInvoked,
-				},
-			}
+			completionParams := testCompletionParams(completionURI, 5, 28)
 
 			completionResult, err := srv.Completion(ctx, completionParams)
 			assert.NoError(t, err)
@@ -463,9 +424,7 @@ func Test_InitializeDefersTheWorkspaceWalk(t *testing.T) {
 
 		srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
 
-		_, err := srv.Initialize(t.Context(), &protocol.InitializeParams{
-			WorkspaceFolders: protocol.NewNullable([]protocol.WorkspaceFolder{{URI: uri.File(dir)}}),
-		})
+		_, err := srv.Initialize(t.Context(), testInitializeParams([]protocol.WorkspaceFolder{{URI: uri.File(dir)}}))
 		require.NoError(t, err)
 
 		// Nothing runs during the handshake: no views until the client
@@ -493,6 +452,79 @@ func Test_InitializeDefersTheWorkspaceWalk(t *testing.T) {
 		syms, ok := files.(protocol.SymbolInformationSlice)
 		require.True(t, ok)
 		assert.Equal(t, []string{"FromA", "FromB"}, symbolNames(syms))
+	})
+}
+
+func Test_InitializeNestedWorkspaceFoldersDoesNotDuplicateFiles(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		outer := uri.File("/workspace")
+		inner := uri.File("/workspace/service")
+		nested := uri.File("/workspace/service/api.thrift")
+
+		srv := NewServer(cache.NewMemFS(map[uri.URI][]byte{
+			nested: []byte("struct Nested {}"),
+		}), nil, Options{})
+
+		_, err := srv.Initialize(t.Context(), testInitializeParams([]protocol.WorkspaceFolder{{URI: outer}, {URI: inner}}))
+		require.NoError(t, err)
+		require.NoError(t, srv.Initialized(t.Context(), &protocol.InitializedParams{}))
+		synctest.Wait()
+
+		outerView, err := srv.session.ViewOf(uri.File("/workspace/root.thrift"))
+		require.NoError(t, err)
+		innerView, err := srv.session.ViewOf(nested)
+		require.NoError(t, err)
+		assert.Equal(t, outer, outerView.Folder())
+		assert.Equal(t, inner, innerView.Folder())
+		assert.False(t, outerView.FileKnown(nested), "the outer view must not retain a nested project's file")
+		assert.True(t, innerView.FileKnown(nested))
+
+		result, err := srv.Symbols(t.Context(), &protocol.WorkspaceSymbolParams{Query: ""})
+		require.NoError(t, err)
+		symbols, ok := result.(protocol.SymbolInformationSlice)
+		require.True(t, ok)
+		assert.Equal(t, []string{"Nested"}, symbolNames(symbols))
+	})
+}
+
+func Test_AddingNestedWorkspaceFolderEvictsOuterFiles(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		outer := uri.File("/workspace")
+		inner := uri.File("/workspace/service")
+		nested := uri.File("/workspace/service/api.thrift")
+
+		srv := NewServer(cache.NewMemFS(map[uri.URI][]byte{
+			nested: []byte("struct Nested {}"),
+		}), nil, Options{})
+
+		_, err := srv.Initialize(t.Context(), testInitializeParams([]protocol.WorkspaceFolder{{URI: outer}}))
+		require.NoError(t, err)
+		require.NoError(t, srv.Initialized(t.Context(), &protocol.InitializedParams{}))
+		synctest.Wait()
+
+		outerView, err := srv.session.ViewOf(nested)
+		require.NoError(t, err)
+		assert.Equal(t, outer, outerView.Folder())
+		assert.True(t, outerView.FileKnown(nested))
+
+		require.NoError(t, srv.DidChangeWorkspaceFolders(t.Context(), &protocol.DidChangeWorkspaceFoldersParams{
+			Event: protocol.WorkspaceFoldersChangeEvent{
+				Added: []protocol.WorkspaceFolder{{URI: inner}},
+			},
+		}))
+		synctest.Wait()
+
+		innerView, err := srv.session.ViewOf(nested)
+		require.NoError(t, err)
+		assert.Equal(t, inner, innerView.Folder())
+		assert.False(t, outerView.FileKnown(nested), "adding a specific folder must evict the old owner")
+		assert.True(t, innerView.FileKnown(nested))
+
+		result, err := srv.Symbols(t.Context(), &protocol.WorkspaceSymbolParams{Query: ""})
+		require.NoError(t, err)
+		symbols, ok := result.(protocol.SymbolInformationSlice)
+		require.True(t, ok)
+		assert.Equal(t, []string{"Nested"}, symbolNames(symbols))
 	})
 }
 
@@ -537,11 +569,7 @@ struct StrikeRouge {
 	}))
 
 	completion := func(line, character uint32) []string {
-		result, err := srv.Completion(ctx, &protocol.CompletionParams{
-			TextDocument: protocol.TextDocumentIdentifier{URI: testURI},
-			Position:     protocol.Position{Line: line, Character: character},
-			Context:      protocol.CompletionContext{TriggerKind: protocol.CompletionTriggerKindInvoked},
-		})
+		result, err := srv.Completion(ctx, testCompletionParams(testURI, line, character))
 		require.NoError(t, err)
 
 		list, ok := result.(*protocol.CompletionList)
@@ -595,11 +623,7 @@ struct StrikeRouge {
 			},
 		}))
 
-		result, err := srv.Completion(ctx, &protocol.CompletionParams{
-			TextDocument: protocol.TextDocumentIdentifier{URI: testURI},
-			Position:     protocol.Position{Line: 3, Character: 15},
-			Context:      protocol.CompletionContext{TriggerKind: protocol.CompletionTriggerKindInvoked},
-		})
+		result, err := srv.Completion(ctx, testCompletionParams(testURI, 3, 15))
 		require.NoError(t, err)
 
 		list, ok := result.(*protocol.CompletionList)

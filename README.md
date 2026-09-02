@@ -455,9 +455,10 @@ git tag v0.1.0 && git push origin v0.1.0
 go test ./...   # unit, golden, and fuzz regression tests
 ```
 
-The golden CLI tests under `cli_test.go` pin the formatter flag combinations
-(and the `check` lint corpus under `tests/made-in-abyss`) against committed
-outputs in `tests/e2e`. The formatter is fuzz-tested end to end:
+The formatter golden tests in `formatter/file_test.go` pin the formatter
+options against committed outputs in `tests/e2e`. The `check` lint corpus
+test in `check_test.go` covers `tests/made-in-abyss`. The formatter is
+fuzz-tested end to end:
 `FuzzFormat` checks that any clean document formats without errors, keeps
 every comment, is idempotent and deterministic across the whole option
 space. The lexer, parser, doc printer, LSP offset mapper, and range

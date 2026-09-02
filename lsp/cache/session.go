@@ -34,8 +34,6 @@ func NewSession(fs FileSource) *Session {
 }
 
 // AddView registers a view for the workspace folder, returning the
-// existing view when the folder is already tracked. includePaths and
-// AddView registers a view for the workspace folder, returning the
 // existing view when the folder is already tracked. includePaths is the
 // folder's resolved include configuration; the view fixes it at creation.
 func (s *Session) AddView(folder uri.URI, includePaths []string) *View {
@@ -50,13 +48,14 @@ func (s *Session) AddView(folder uri.URI, includePaths []string) *View {
 
 	view := NewView(folder, s.overlayFS, includePaths)
 	s.views = append(s.views, view)
+	clear(s.viewMap)
 
 	return view
 }
 
-// RemoveView drops the view for the workspace folder and forgets every
-// cached file-to-view mapping that pointed at it, so ViewOf re-resolves
-// against the remaining folders.
+// RemoveView drops the view for the workspace folder, invalidates its
+// asynchronous work, and forgets every cached file-to-view mapping that
+// pointed at it, so ViewOf re-resolves against the remaining folders.
 func (s *Session) RemoveView(folder uri.URI) {
 	s.viewMu.Lock()
 	defer s.viewMu.Unlock()
@@ -66,6 +65,7 @@ func (s *Session) RemoveView(folder uri.URI) {
 			continue
 		}
 
+		v.Evict(v.KnownFiles()...)
 		s.views = append(s.views[:i], s.views[i+1:]...)
 		for file, view := range s.viewMap {
 			if view == v {
@@ -97,12 +97,19 @@ func (s *Session) ViewOf(fileURI uri.URI) (*View, error) {
 		return nil, fmt.Errorf("views is nil")
 	}
 
-	for i := range s.views {
-		if s.views[i].ContainsFile(fileURI) {
-			s.viewMap[fileURI] = s.views[i]
-
-			return s.views[i], nil
+	var best *View
+	for _, view := range s.views {
+		if !view.ContainsFile(fileURI) {
+			continue
 		}
+		if best == nil || len(view.folder.Path()) > len(best.folder.Path()) {
+			best = view
+		}
+	}
+	if best != nil {
+		s.viewMap[fileURI] = best
+
+		return best, nil
 	}
 
 	for i := range s.views {

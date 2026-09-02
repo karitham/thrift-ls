@@ -30,85 +30,87 @@ func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocume
 		From:    cache.FileChangeTypeDidOpen,
 	}
 
-	s.dirWalkOnce.Do(func() {
-		file := change.URI
+	if s.workspace == nil {
+		s.dirWalkOnce.Do(func() {
+			file := change.URI
 
-		dirPos := strings.LastIndexByte(string(file), '/')
-		if dirPos == -1 {
-			return
-		}
+			dirPos := strings.LastIndexByte(string(file), '/')
+			if dirPos == -1 {
+				return
+			}
 
-		dir := file[0:dirPos]
-		s.walkFoldersThriftFile(dir)
-	})
-
-	return s.openFile(ctx, change)
-}
-
-func (s *Server) openFile(ctx context.Context, change *cache.FileChange) error {
-	if change.From != cache.FileChangeTypeInitialize {
-		if err := s.session.UpdateOverlayFS(ctx, []*cache.FileChange{change}); err != nil {
-			return err
-		}
+			dir := file[0:dirPos]
+			s.walkFoldersThriftFile(dir)
+		})
 	}
 
-	// The file's directory becomes the view when no workspace folder
-	// covers it (single-file mode); AddView dedups and is concurrency-safe.
-	view, err := s.session.ViewOf(change.URI)
-	if err != nil {
-		filename := change.URI.Path()
-		view = s.addFolderView(uri.File(path.Dir(filename)))
-	}
-
-	s.postDiagnostics(ctx, view, view.Update(ctx, change))
-
-	return nil
+	return s.applyChanges(ctx, []*cache.FileChange{change}, true)
 }
 
 func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDocumentParams) error {
-	changes := FileChangeFromLSPDidChange(params)
-	if err := s.session.UpdateOverlayFS(ctx, changes); err != nil {
-		return err
-	}
-
-	document := params.TextDocument
-	fileURI := document.URI
-
-	view, err := s.session.ViewOf(fileURI)
-	if err != nil {
-		return err
-	}
-
-	s.postDiagnostics(ctx, view, view.Update(ctx, changes...))
-
-	return nil
+	return s.applyChanges(ctx, FileChangeFromLSPDidChange(params), true)
 }
 
 func (s *Server) didClose(ctx context.Context, params *protocol.DidCloseTextDocumentParams) error {
 	fileURI := params.TextDocument.URI
-
-	view, err := s.session.ViewOf(fileURI)
-	if err != nil {
-		return err
-	}
-
 	change := &cache.FileChange{URI: fileURI, From: cache.FileChangeTypeDidClose}
 
-	if err := s.session.UpdateOverlayFS(ctx, []*cache.FileChange{change}); err != nil {
-		return err
+	return s.applyChanges(ctx, []*cache.FileChange{change}, true)
+}
+
+// applyChanges is the single path from file events to overlays and views.
+// Custom workspaces route only through snapshot ownership; stock sessions keep
+// their historical first-view fallback and create a view for a lone open file.
+func (s *Server) applyChanges(ctx context.Context, changes []*cache.FileChange, overlay bool) error {
+	if len(changes) == 0 {
+		return nil
 	}
 
-	s.forgetReport(fileURI)
+	for _, change := range changes {
+		if change.From == cache.FileChangeTypeDidClose {
+			s.forgetReport(change.URI)
+		}
+	}
 
-	s.postDiagnostics(ctx, view, view.Update(ctx, change))
+	if s.workspace != nil {
+		return s.workspace.applyChanges(ctx, changes, overlay)
+	}
+
+	if overlay {
+		if err := s.session.UpdateOverlayFS(ctx, changes); err != nil {
+			return err
+		}
+	}
+
+	byView := make(map[*cache.View][]*cache.FileChange)
+	for _, change := range changes {
+		view, err := s.session.ViewOf(change.URI)
+		if err != nil {
+			if change.From != cache.FileChangeTypeDidOpen {
+				return err
+			}
+
+			view = s.addFolderView(uri.File(path.Dir(change.URI.Path())))
+		}
+
+		byView[view] = append(byView[view], change)
+	}
+
+	for view, viewChanges := range byView {
+		s.postDiagnostics(ctx, view, view.Update(ctx, viewChanges...))
+	}
 
 	return nil
 }
 
 func (s *Server) didChangeWatchedFiles(ctx context.Context, params *protocol.DidChangeWatchedFilesParams) error {
-	byView := make(map[*cache.View][]*cache.FileChange)
+	var changes []*cache.FileChange
 
 	for _, event := range params.Changes {
+		if s.workspace != nil && !s.workspace.owns(event.URI) {
+			continue
+		}
+
 		if s.session.HasOverlay(event.URI) {
 			// The editor overlay is authoritative for open documents; disk
 			// events for them are ignored.
@@ -120,24 +122,10 @@ func (s *Server) didChangeWatchedFiles(ctx context.Context, params *protocol.Did
 			return err
 		}
 
-		// A watched file reported as closed is a deletion from disk.
-		if change.From == cache.FileChangeTypeDidClose {
-			s.forgetReport(event.URI)
-		}
-
-		view, err := s.session.ViewOf(event.URI)
-		if err != nil {
-			continue
-		}
-
-		byView[view] = append(byView[view], change)
+		changes = append(changes, change)
 	}
 
-	for view, changes := range byView {
-		s.postDiagnostics(ctx, view, view.Update(ctx, changes...))
-	}
-
-	return nil
+	return s.applyChanges(ctx, changes, false)
 }
 
 // watchedFileChange builds a FileChange from a disk event, reading the
@@ -191,12 +179,12 @@ func (s *Server) postDiagnostics(ctx context.Context, view *cache.View, res cach
 			return
 		}
 
-		s.diagnose(ctx, view, res.Affected)
+		s.diagnoseAt(ctx, view, res.Affected, res.Gen)
 	}()
 }
 
 func (s *Server) completion(ctx context.Context, params *protocol.CompletionParams) (*protocol.CompletionList, error) {
-	return withFile(ctx, s.session, params.TextDocument.URI, func(view *cache.View, fh cache.FileHandle) (*protocol.CompletionList, error) {
+	return withFile(ctx, s.viewOf, params.TextDocument.URI, func(view *cache.View, fh cache.FileHandle) (*protocol.CompletionList, error) {
 		items, rng, truncated, err := source.DefaultTokenCompletion.Completion(ctx, view, &source.CompletionRequest{
 			Pos: protocol.Position{
 				Line:      params.Position.Line,

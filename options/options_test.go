@@ -9,56 +9,65 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFindConfig(t *testing.T) {
+func TestFindNearestConfig(t *testing.T) {
 	dir := t.TempDir()
-
 	sub := filepath.Join(dir, "a", "b")
-	if err := os.MkdirAll(sub, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(sub, 0o755))
 
-	// No config anywhere.
-	got, err := FindConfig(sub)
-	if err != nil || got != "" {
-		t.Fatalf("FindConfig = %q, %v; want empty", got, err)
-	}
+	t.Setenv("THRIFT_LS_CONFIG", filepath.Join(dir, "hostile.json"))
 
-	// Config in an ancestor directory is found walking up.
+	got, err := FindNearestConfig(sub)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+
 	cfgPath := filepath.Join(dir, "thrift-ls.json")
-	if err := os.WriteFile(cfgPath, []byte("{}"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(cfgPath, []byte("{}"), 0o644))
 
-	got, err = FindConfig(sub)
-	if err != nil || got != cfgPath {
-		t.Fatalf("FindConfig = %q, %v; want %q", got, err, cfgPath)
-	}
+	got, err = FindNearestConfig(sub)
+	require.NoError(t, err)
+	assert.Equal(t, cfgPath, got)
+	assert.True(t, filepath.IsAbs(got))
 
-	// A nearer config wins.
 	near := filepath.Join(dir, "a", "thrift-ls.json")
-	if err := os.WriteFile(near, []byte("{}"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(near, []byte("{}"), 0o644))
 
-	got, err = FindConfig(sub)
-	if err != nil || got != near {
-		t.Fatalf("FindConfig = %q, %v; want %q", got, err, near)
-	}
+	got, err = FindNearestConfig(sub)
+	require.NoError(t, err)
+	assert.Equal(t, near, got)
+}
 
-	// Discovery from a relative dir must still return an absolute path.
+func TestFindNearestConfigReturnsAbsolutePathForRelativeDirectory(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ConfigFileName)
+	require.NoError(t, os.WriteFile(cfgPath, []byte("{}"), 0o644))
+
 	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
 	defer func() { _ = os.Chdir(wd) }()
 
-	got, err = FindConfig(".")
-	if err != nil || got != cfgPath {
-		t.Fatalf("FindConfig(\".\") = %q, %v; want absolute %q", got, err, cfgPath)
-	}
+	got, err := FindNearestConfig(".")
+	require.NoError(t, err)
+	assert.Equal(t, cfgPath, got)
+}
+
+func TestFindConfigHonorsEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	nearest := filepath.Join(dir, ConfigFileName)
+	environment := filepath.Join(dir, "environment.json")
+	require.NoError(t, os.WriteFile(nearest, []byte("{}"), 0o644))
+	require.NoError(t, os.WriteFile(environment, []byte("{}"), 0o644))
+	t.Setenv("THRIFT_LS_CONFIG", "")
+
+	got, err := FindConfig(dir)
+	require.NoError(t, err)
+	assert.Equal(t, nearest, got)
+
+	t.Setenv("THRIFT_LS_CONFIG", environment)
+
+	got, err = FindConfig(dir)
+	require.NoError(t, err)
+	assert.Equal(t, environment, got)
 }
 
 // A relative THRIFT_LS_CONFIG also comes back absolute.
