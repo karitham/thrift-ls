@@ -5,24 +5,21 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/karitham/thrift-ls/syntax"
 )
 
 // FileOptions controls file-level formatting. Output is required unless Write
-// is true. ResolveConfig receives ConfigPath and the file's absolute directory;
-// a non-empty ConfigPath requires a resolver. When ConfigPath is empty, a
-// resolver may discover a config. Patch overlays the resolved config, or the
-// default formatting config when ResolveConfig is nil.
+// is true. Base is the already-resolved file or project config (empty means
+// defaults); Override is the CLI patch applied on top of it. The caller owns
+// config discovery, so the formatter stays pure I/O plus layout.
 type FileOptions struct {
-	Output        io.Writer
-	Write         bool
-	Diff          bool
-	ConfigPath    string
-	Patch         FormatPatch
-	ResolveConfig func(path, dir string) (FormatPatch, error)
+	Output   io.Writer
+	Write    bool
+	Diff     bool
+	Base     FormatPatch
+	Override FormatPatch
 }
 
 // FormatFile reads and formats file. It writes formatted output to Output by
@@ -36,29 +33,13 @@ func FormatFile(file string, opts FileOptions) error {
 	if !opts.Write && opts.Output == nil {
 		return errors.New("formatter output is required when Write is false")
 	}
-	if opts.ConfigPath != "" && opts.ResolveConfig == nil {
-		return errors.New("formatter ConfigPath requires ResolveConfig")
-	}
 
 	src, err := os.ReadFile(file)
 	if err != nil {
 		return err
 	}
 
-	absFile, err := filepath.Abs(file)
-	if err != nil {
-		return err
-	}
-
-	patch := FormatPatch{}
-	if opts.ResolveConfig != nil {
-		patch, err = opts.ResolveConfig(opts.ConfigPath, filepath.Dir(absFile))
-		if err != nil {
-			return err
-		}
-	}
-
-	formatOptions, err := opts.Patch.Apply(patch).Options()
+	formatOptions, err := opts.Override.Apply(opts.Base).Options()
 	if err != nil {
 		return err
 	}

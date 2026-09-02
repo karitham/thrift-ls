@@ -24,16 +24,14 @@ type Server struct {
 
 	client protocol.Client
 
-	// explicit is the startup configuration (defaults + startup config +
-	// CLI); every view uses it when configPath pins a file, otherwise each
-	// view resolves its own config from its folder.
-	explicit     options.Patch
-	defaults     options.Patch
-	configPath   string
-	configFinder func(string) (string, error)
+	// defaults sits directly above the builtin defaults.
+	defaults options.Patch
+	// configSource resolves the config document per project root.
+	// Nil means file discovery through the server's Files.
+	configSource ConfigSource
 	version      string
 
-	// cli is the CLI-only overlay, applied on top of every view's config.
+	// cli overlays every view's config.
 	cli options.Patch
 
 	// workspaceOverlay is the last accepted workspace settings, overlaid
@@ -52,7 +50,7 @@ type Server struct {
 	folders []uri.URI
 
 	workspace *customWorkspace
-	analyzers []sema.Analyzer
+	analysis  Analysis
 
 	// configs holds each view folder's resolved configuration. Views only
 	// carry what the store needs (include paths); formatting settings and
@@ -76,6 +74,11 @@ type Server struct {
 	// analysisMu serializes analyzer instances shared by diagnostic workers.
 	analysisMu sync.Mutex
 
+	// diagSync runs diagnostics inline instead of in a background goroutine.
+	// It is a test hook: in-package tests drive requests synchronously and
+	// assert on reports without channels or virtual time.
+	diagSync bool
+
 	// lastReport remembers the diagnostics the server last published per
 	// file, so code actions can pair fixes with the diagnostics without a
 	// round trip through the client. Guarded by reportMu.
@@ -86,30 +89,36 @@ type Server struct {
 // NewServer returns a Server resolving configuration per view. The options
 // are expected to validate; workspace settings overlay each view's config
 // at initialize time and on didChangeConfiguration.
-func NewServer(fs cache.FileSource, client protocol.Client, opts Options) *Server {
-	configFinder := opts.ConfigFinder
-	if configFinder == nil {
-		configFinder = options.FindConfig
+func NewServer(client protocol.Client, opts Options) *Server {
+	fs := opts.Files
+	if fs == nil {
+		fs = cache.NewMemoizedFS()
+	}
+	configSource := opts.ConfigSource
+	if configSource == nil {
+		configSource = FileConfigSource(fs)
 	}
 	version := opts.Version
 	if version == "" {
 		version = ServerVersion
 	}
-	defaults := opts.ConfigDefaults.Apply(options.Default())
+	defaults := opts.Defaults.Apply(options.Default())
 
 	server := &Server{
 		session:      cache.NewSession(fs),
 		client:       client,
-		explicit:     opts.Config,
 		defaults:     defaults,
-		configPath:   opts.ConfigPath,
-		configFinder: configFinder,
+		configSource: configSource,
 		version:      version,
 		cli:          opts.CLI,
 		configs:      make(map[uri.URI]options.Patch),
 		configIssues: make(map[uri.URI]configIssue),
 		reports:      make(map[uri.URI]sema.Report),
-		analyzers:    slices.Clone(opts.Analyzers),
+		analysis: Analysis{
+			Analyzers: slices.Clone(opts.Analysis.Analyzers),
+			Fixers:    slices.Clone(opts.Analysis.Fixers),
+			Providers: slices.Clone(opts.Analysis.Providers),
+		},
 	}
 	if opts.WorkspaceLoader != nil {
 		server.workspace = newCustomWorkspace(server, opts.WorkspaceLoader)
@@ -141,16 +150,19 @@ func (s *Server) setWorkspaceSettings(overlay options.Patch) {
 func (s *Server) addFolderView(folder uri.URI) *cache.View {
 	cfg := s.viewConfig(folder)
 
-	var includePaths []string
-	if cfg.IncludePaths != nil {
-		includePaths = *cfg.IncludePaths
-	}
-
-	return s.addView(folder, cfg, includePaths)
+	return s.addView(folder, cfg, derefIncludePaths(cfg.IncludePaths))
 }
 
 func (s *Server) addProjectView(project Project) *cache.View {
-	return s.addView(project.RootURI, s.viewConfig(project.RootURI), project.IncludePaths)
+	cfg := s.projectViewConfig(project)
+	return s.addView(project.RootURI, cfg, derefIncludePaths(cfg.IncludePaths))
+}
+
+func derefIncludePaths(p *[]string) []string {
+	if p == nil {
+		return nil
+	}
+	return *p
 }
 
 func (s *Server) addView(folder uri.URI, cfg options.Patch, includePaths []string) *cache.View {
@@ -188,42 +200,63 @@ type configIssue struct {
 	err  error
 }
 
-// viewConfig resolves the config for a view rooted at folder: the pinned
-// --config file, or the nearest thrift-ls.json walking up, plus CLI flags.
-// A folder with no usable config formats with defaults; the reason is kept
-// and surfaced through notifyConfigIssue.
+// viewConfig resolves the config for a view rooted at folder:
+// defaults + ConfigSource document + CLI. A folder with no usable config
+// formats with defaults; the reason is kept and surfaced through
+// notifyConfigIssue.
 func (s *Server) viewConfig(folder uri.URI) options.Patch {
-	if s.configPath != "" {
-		return s.cli.Apply(s.explicit)
+	patch := s.loadFilePatch(folder)
+	if patch == nil {
+		return s.defaultConfig()
 	}
 
-	cfgPath, err := s.configFinder(folder.FsPath())
+	return s.cli.Apply(patch.Apply(s.defaults))
+}
+
+// projectViewConfig resolves the config for a loader-discovered project.
+// Format, lint and friends layer as defaults + document + Project.Config +
+// CLI, so flags keep working over build-system settings. Include paths are
+// the exception: a Project.Config that sets them is authoritative over the
+// file document and CLI, because the build system owns resolution and a
+// stray -I must not break it. A project without opinions (empty Config)
+// falls back to the file document, preserving thrift-ls.json behavior.
+func (s *Server) projectViewConfig(project Project) options.Patch {
+	filePatch := s.loadFilePatch(project.RootURI)
+	merged := s.defaults
+	if filePatch != nil {
+		merged = filePatch.Apply(merged)
+	}
+	merged = project.Config.Apply(merged)
+	merged = s.cli.Apply(merged)
+
+	if project.Config.IncludePaths != nil {
+		merged.IncludePaths = project.Config.IncludePaths
+	}
+
+	return merged
+}
+
+// loadFilePatch returns the ConfigSource document for root, or nil when
+// none applies. Failures are recorded as config issues and yield nil, so
+// callers fall back to defaults.
+func (s *Server) loadFilePatch(root uri.URI) *options.Patch {
+	res, err := s.configSource(root.FsPath())
 	if err != nil {
-		logError("config discovery failed", Expected(err), "dir", folder.FsPath())
-
-		s.recordConfigIssue(folder, configIssue{err: err})
-
-		return s.defaultConfig()
+		logError("config discovery failed", Expected(err), "dir", root.FsPath())
+		s.recordConfigIssue(root, configIssue{path: res.Path, err: err})
+		return nil
 	}
-
-	if cfgPath == "" {
-		s.clearConfigIssue(folder)
-
-		return s.defaultConfig()
+	if res.Patch == nil {
+		s.clearConfigIssue(root)
+		return nil
 	}
-
-	cfg, err := options.Load(cfgPath)
-	if err != nil {
-		logError("config file rejected", Expected(err), "path", cfgPath)
-
-		s.recordConfigIssue(folder, configIssue{path: cfgPath, err: err})
-
-		return s.defaultConfig()
+	if err := res.Patch.Validate(); err != nil {
+		logError("config file rejected", Expected(err), "path", res.Path, "dir", root.FsPath())
+		s.recordConfigIssue(root, configIssue{path: res.Path, err: err})
+		return nil
 	}
-
-	s.clearConfigIssue(folder)
-
-	return s.cli.Apply(cfg.Apply(s.defaults))
+	s.clearConfigIssue(root)
+	return res.Patch
 }
 
 // recordConfigIssue remembers and announces a rejected folder config. The

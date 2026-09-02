@@ -50,7 +50,10 @@ func lintConfigOf(l options.LintConfig) sema.Config {
 }
 
 func (s *Server) pipeline(view *cache.View) *sema.Pipeline {
-	return sema.DefaultPipeline(s.lintConfig(view)).WithAnalyzers(s.analyzers...)
+	return sema.DefaultPipeline(s.lintConfig(view)).
+		WithAnalyzers(s.analysis.Analyzers...).
+		WithFixers(s.analysis.Fixers...).
+		WithProviders(s.analysis.Providers...)
 }
 
 // diagnose runs the analysis pipeline once over every affected file — one

@@ -3,6 +3,7 @@ package lsp
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/options"
 )
 
 // WorkspaceLoader discovers the projects in one LSP workspace folder. A
@@ -35,8 +37,10 @@ type Project struct {
 	RootURI uri.URI
 	// TargetFiles are the Thrift files to index for the project.
 	TargetFiles []uri.URI
-	// IncludePaths are the project-specific include search paths.
-	IncludePaths []string
+	// Config is the project's full configuration patch (format, lint,
+	// include paths, ...). Empty means resolve via the server ConfigSource
+	// for the root, preserving the thrift-ls.json behavior.
+	Config options.Patch
 }
 
 // WorkspaceIssue is a non-fatal discovery problem publishable at URI.
@@ -102,11 +106,28 @@ func cloneWorkspaceSnapshot(snapshot WorkspaceSnapshot) WorkspaceSnapshot {
 
 	for i, project := range snapshot.Projects {
 		project.TargetFiles = slices.Clone(project.TargetFiles)
-		project.IncludePaths = slices.Clone(project.IncludePaths)
+		if project.Config.IncludePaths != nil {
+			ips := slices.Clone(*project.Config.IncludePaths)
+			project.Config.IncludePaths = &ips
+		}
 		out.Projects[i] = project
 	}
 
 	return out
+}
+
+// projectConfigEqual reports whether two project configs are identical.
+// A view is reused only when its project config is unchanged.
+func projectConfigEqual(a, b options.Patch) bool {
+	return reflect.DeepEqual(a, b)
+}
+
+// projectIncludePaths returns the include paths in effect for project.
+func projectIncludePaths(project Project) []string {
+	if project.Config.IncludePaths == nil {
+		return nil
+	}
+	return *project.Config.IncludePaths
 }
 
 func validateWorkspaceSnapshot(folder uri.URI, snapshot WorkspaceSnapshot) WorkspaceSnapshot {
@@ -147,6 +168,10 @@ func validateProject(project Project) error {
 		if err := validateProjectURI(fmt.Sprintf("target file %d", i), target); err != nil {
 			return err
 		}
+	}
+
+	if err := project.Config.Validate(); err != nil {
+		return fmt.Errorf("config: %w", err)
 	}
 
 	return nil
@@ -196,11 +221,11 @@ func workspaceModelOf(snapshots map[uri.URI]WorkspaceSnapshot) workspaceModel {
 		snapshot := snapshots[folder]
 		for _, project := range snapshot.Projects {
 			previous, exists := model.roots[project.RootURI]
-			if exists && !slices.Equal(previous.IncludePaths, project.IncludePaths) {
+			if exists && !projectConfigEqual(previous.Config, project.Config) {
 				model.issues[project.ConfigURI] = append(model.issues[project.ConfigURI], WorkspaceIssue{
 					URI: project.ConfigURI,
 					Message: fmt.Sprintf(
-						"project conflicts with %s: root %s has different include paths",
+						"project conflicts with %s: root %s has different configuration",
 						previous.ConfigURI, project.RootURI,
 					),
 				})
@@ -450,7 +475,7 @@ func (w *customWorkspace) reconcileLocked(ctx context.Context) {
 	for root := range w.views {
 		project, exists := next.roots[root]
 		previous := w.model.roots[root]
-		if exists && slices.Equal(previous.IncludePaths, project.IncludePaths) {
+		if exists && projectConfigEqual(previous.Config, project.Config) {
 			var lost []uri.URI
 			for _, file := range w.model.ownedFiles(root, w.documents) {
 				owner, owned := next.ownerOf(file, w.documents)

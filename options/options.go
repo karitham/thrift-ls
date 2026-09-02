@@ -122,7 +122,8 @@ func Parse(data []byte) (*Patch, error) {
 
 // Load reads and parses a config file. Unknown keys are rejected so that
 // typos and stale settings (e.g. the removed overrides feature) fail
-// loudly.
+// loudly. This is the CLI edge (plain disk I/O); the server discovers
+// through its FileSource instead (see lsp.FileConfigSource).
 func Load(path string) (*Patch, error) {
 	// Relative include paths anchor to the config's directory, so the
 	// config path must be absolute.
@@ -141,23 +142,29 @@ func Load(path string) (*Patch, error) {
 		return nil, fmt.Errorf("options: %s: %w", abs, err)
 	}
 
-	// Include paths are relative to the config file, not the process CWD,
-	// so resolution works the same for the CLI and the LSP no matter where
-	// the server is launched from.
-	if p.IncludePaths != nil {
-		anchored := make([]string, 0, len(*p.IncludePaths))
-		for _, ip := range *p.IncludePaths {
-			if filepath.IsAbs(ip) {
-				anchored = append(anchored, ip)
-			} else {
-				anchored = append(anchored, filepath.Join(filepath.Dir(abs), ip))
-			}
-		}
-
-		p.IncludePaths = &anchored
-	}
+	AnchorIncludes(p, filepath.Dir(abs))
 
 	return p, nil
+}
+
+// AnchorIncludes resolves relative include paths in p against dir (the
+// config file's directory), so resolution works the same no matter where
+// the process was launched from. Absolute paths pass through.
+func AnchorIncludes(p *Patch, dir string) {
+	if p.IncludePaths == nil {
+		return
+	}
+
+	anchored := make([]string, 0, len(*p.IncludePaths))
+	for _, ip := range *p.IncludePaths {
+		if filepath.IsAbs(ip) {
+			anchored = append(anchored, ip)
+		} else {
+			anchored = append(anchored, filepath.Join(dir, ip))
+		}
+	}
+
+	p.IncludePaths = &anchored
 }
 
 // FindConfig returns the absolute path of the config file for dir:
@@ -201,6 +208,32 @@ func FindNearestConfig(dir string) (string, error) {
 		if d == filepath.Dir(d) {
 			return "", nil
 		}
+	}
+}
+
+// Resolved is one config lookup: the patch plus where it came from. Path
+// is the source location for diagnostics (the thrift-ls.json path for file
+// discovery, "" for in-memory sources). A nil Patch means no config.
+type Resolved struct {
+	Patch *Patch
+	Path  string
+}
+
+// Source resolves the config patch for a directory. It returns the patch
+// plus its origin, so callers can pin diagnostics to the file. Frontends
+// backed by a build system serve in-memory patches with no path.
+//
+// Note the nil convention lives with the consumer: on lsp.Options a nil
+// Source means file discovery through the server Files, and only
+// options.PinnedSource(nil) disables it. A Source returning
+// (Resolved{}, nil) also means no config.
+type Source func(dir string) (Resolved, error)
+
+// PinnedSource always returns patch, skipping discovery. A nil patch means
+// defaults. An explicit --config flag builds one of these.
+func PinnedSource(patch *Patch) Source {
+	return func(string) (Resolved, error) {
+		return Resolved{Patch: patch}, nil
 	}
 }
 

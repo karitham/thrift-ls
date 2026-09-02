@@ -185,37 +185,34 @@ func formatFlags() []cli.Flag {
 
 // runLSP serves the language server on stdio.
 func runLSP(ctx context.Context, cmd *cli.Command) error {
-	// Degrade, don't die: editors launch this process, so a broken
-	// thrift-ls.json here would kill every buffer's language server at
-	// startup. The reason goes to stderr (open before initialize) and
-	// per-folder resolution announces it again via window/showMessage.
-	cfg := loadConfigLax(cmd.String("config"), ".")
-	patch := options.Effective(cfg)
-
 	cliPatch, err := lspPatch(cmd)
 	if err != nil {
 		return err
 	}
-
-	patch = cliPatch.Apply(patch)
-
-	logLevelValue := 3
-	if patch.LogLevel != nil {
-		logLevelValue = *patch.LogLevel
-	}
-
-	lsp.InitLogger(logLevelValue)
-
-	// Validate early: a broken --config or working-directory config must
-	// fail before serving; per-folder configs are re-resolved later.
-	if err := patch.Validate(); err != nil {
+	if err := cliPatch.Validate(); err != nil {
 		return err
 	}
 
+	logLevelValue := 3
+	if cliPatch.LogLevel != nil {
+		logLevelValue = *cliPatch.LogLevel
+	}
+	lsp.InitLogger(logLevelValue)
+
 	lspOpts := &lsp.Options{
-		Config:     patch,
-		ConfigPath: cmd.String("config"),
-		CLI:        cliPatch,
+		Files: cache.NewMemoizedFS(),
+		CLI:   cliPatch,
+	}
+	// An explicit --config pins one document for every view, skipping
+	// per-folder discovery. Without it, each view discovers its own
+	// thrift-ls.json (or none). The CWD config is deliberately not read
+	// here: it is meaningless to the workspace and must not leak into views.
+	if path := cmd.String("config"); path != "" {
+		cfg, err := options.Load(path)
+		if err != nil {
+			return err
+		}
+		lspOpts.ConfigSource = options.PinnedSource(cfg)
 	}
 
 	return lsp.ServeStdio(ctx, lspOpts, os.Stdin, os.Stdout)
@@ -230,14 +227,39 @@ func formatAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	return formatter.FormatFile(file, formatter.FileOptions{
-		Output:        cmd.Writer,
-		Write:         cmd.Bool("w"),
-		Diff:          cmd.Bool("d"),
-		ConfigPath:    cmd.String("config"),
-		Patch:         cliPatch.FormatPatch,
-		ResolveConfig: resolveFormatConfig,
+	// Usage and file errors beat config errors: a missing arg or unreadable
+	// file is reported as such even when discovery would also fail.
+	if file == "" {
+		return formatter.FormatFile("", formatter.FileOptions{Output: cmd.Writer})
+	}
+	if _, err := os.Stat(file); err != nil {
+		return err
+	}
+
+	base, err := resolveFormatConfig(cmd.String("config"), fileDir(file))
+	if err != nil {
+		return err
+	}
+
+	return formatter.FormatFile(file, formatter.FileOptions{Output: cmd.Writer,
+		Write:    cmd.Bool("w"),
+		Diff:     cmd.Bool("d"),
+		Base:     base,
+		Override: cliPatch.FormatPatch,
 	})
+}
+
+// fileDir returns the absolute directory of file, or "." when file has no
+// path yet (missing arg is reported by FormatFile).
+func fileDir(file string) string {
+	if file == "" {
+		return "."
+	}
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		return "."
+	}
+	return filepath.Dir(abs)
 }
 
 func resolveFormatConfig(path, dir string) (formatter.FormatPatch, error) {
@@ -767,42 +789,6 @@ func loadConfig(path, dir string) (*options.Patch, error) {
 	}
 
 	return cfg, nil
-}
-
-// loadConfigLax is loadConfig for the language server: any failure degrades
-// to nil (defaults) after printing why, never os.Exit — see runLSP. The
-// strict variant stays for format/check, where a config typo should fail
-// fast rather than silently reformat against defaults.
-func loadConfigLax(path, dir string) *options.Patch {
-	say := func(err error) {
-		fmt.Fprintf(os.Stderr, "thrift-ls: %v; continuing with defaults\n", err)
-	}
-
-	found := path
-
-	if found == "" {
-		var err error
-
-		found, err = options.FindConfig(dir)
-		if err != nil {
-			say(err)
-
-			return nil
-		}
-	}
-
-	if found == "" {
-		return nil
-	}
-
-	cfg, err := options.Load(found)
-	if err != nil {
-		say(err)
-
-		return nil
-	}
-
-	return cfg
 }
 
 func parseErrors(errs []syntax.Error) bool {

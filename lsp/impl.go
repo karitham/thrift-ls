@@ -160,6 +160,12 @@ func (s *Server) watchedFileChange(ctx context.Context, event protocol.FileEvent
 // the generation check drops the results — the newer change publishes its
 // own.
 func (s *Server) postDiagnostics(ctx context.Context, view *cache.View, res cache.ChangeResult) {
+	if s.diagSync {
+		s.diagnoseAt(context.WithoutCancel(ctx), view, res.Affected, res.Gen)
+
+		return
+	}
+
 	// The request context dies when the LSP request returns; the
 	// diagnostics goroutine outlives it.
 	ctx = context.WithoutCancel(ctx)

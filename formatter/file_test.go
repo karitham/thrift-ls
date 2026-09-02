@@ -10,29 +10,27 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/karitham/thrift-ls/formatter"
-	"github.com/karitham/thrift-ls/options"
 )
 
-func resolveConfig(path, dir string) (formatter.FormatPatch, error) {
-	if path == "" {
-		var err error
+const fileProbe = "struct API{1:i32 id}"
 
-		path, err = options.FindConfig(dir)
-		if err != nil {
-			return formatter.FormatPatch{}, err
-		}
-	}
+// writeProbe writes source into a fresh temp dir and returns the file path.
+func writeProbe(t *testing.T, source string) string {
+	t.Helper()
 
-	if path == "" {
-		return formatter.DefaultFormatPatch(), nil
-	}
+	file := filepath.Join(t.TempDir(), "api.thrift")
+	require.NoError(t, os.WriteFile(file, []byte(source), 0o640))
 
-	cfg, err := options.Load(path)
-	if err != nil {
-		return formatter.FormatPatch{}, err
-	}
+	return file
+}
 
-	return options.Effective(cfg).FormatPatch, nil
+func readProbe(t *testing.T, file string) string {
+	t.Helper()
+
+	content, err := os.ReadFile(file)
+	require.NoError(t, err)
+
+	return string(content)
 }
 
 func TestFormatOutputModes(t *testing.T) {
@@ -46,7 +44,7 @@ func TestFormatOutputModes(t *testing.T) {
 		{
 			name:       "formatted output",
 			wantOutput: "struct API { 1: i32 id }\n",
-			wantFile:   "struct API{1:i32 id}",
+			wantFile:   fileProbe,
 		},
 		{
 			name:     "write in place",
@@ -57,7 +55,7 @@ func TestFormatOutputModes(t *testing.T) {
 			name:       "diff output",
 			diff:       true,
 			wantOutput: "diff old new\n--- old\n+++ new\n@@ -1,1 +1,1 @@\n-struct API{1:i32 id}\n\\ No newline at end of file\n+struct API { 1: i32 id }\n",
-			wantFile:   "struct API{1:i32 id}",
+			wantFile:   fileProbe,
 		},
 		{
 			name:     "write takes precedence over diff",
@@ -69,22 +67,17 @@ func TestFormatOutputModes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			file := filepath.Join(t.TempDir(), "api.thrift")
-			require.NoError(t, os.WriteFile(file, []byte("struct API{1:i32 id}"), 0o640))
+			file := writeProbe(t, fileProbe)
 
 			var output bytes.Buffer
 			err := formatter.FormatFile(file, formatter.FileOptions{
-				Output:        &output,
-				Write:         tt.write,
-				Diff:          tt.diff,
-				ResolveConfig: resolveConfig,
+				Output: &output,
+				Write:  tt.write,
+				Diff:   tt.diff,
 			})
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantOutput, output.String())
-
-			content, err := os.ReadFile(file)
-			require.NoError(t, err)
-			assert.Equal(t, tt.wantFile, string(content))
+			assert.Equal(t, tt.wantFile, readProbe(t, file))
 
 			info, err := os.Stat(file)
 			require.NoError(t, err)
@@ -93,147 +86,87 @@ func TestFormatOutputModes(t *testing.T) {
 	}
 }
 
-func TestFormatFileRequiresOutputUnlessWriting(t *testing.T) {
-	tests := []struct {
-		name string
-		diff bool
+// TestFormatFileErrors folds every rejection path into one table: missing
+// output, invalid base or override patches, and unparseable input. Each
+// case leaves the file untouched.
+func TestFormatFileErrors(t *testing.T) {
+	bogusAlign := "bogus"
+	wideAlign := "wide"
+
+	for _, tt := range []struct {
+		name     string
+		source   string
+		base     *formatter.FormatPatch
+		override *formatter.FormatPatch
+		diff     bool
+		noOutput bool
+		write    bool
+		wantErr  string
 	}{
-		{name: "formatted output"},
-		{name: "diff output", diff: true},
-	}
-
-	for _, tt := range tests {
+		{name: "formatted output needs an output", source: fileProbe, noOutput: true, wantErr: "output"},
+		{name: "diff output needs an output", source: fileProbe, noOutput: true, diff: true, wantErr: "output"},
+		{name: "invalid override", source: fileProbe, override: &formatter.FormatPatch{Align: &bogusAlign}, wantErr: "align"},
+		{name: "invalid base", source: "struct API {}\n", base: &formatter.FormatPatch{Align: &wideAlign}, wantErr: "align"},
+		{name: "parse error writes nothing", source: "struct API {", write: true, wantErr: "file does not parse"},
+	} {
 		t.Run(tt.name, func(t *testing.T) {
-			file := filepath.Join(t.TempDir(), "api.thrift")
-			source := "struct API{1:i32 id}"
-			require.NoError(t, os.WriteFile(file, []byte(source), 0o640))
+			file := writeProbe(t, tt.source)
 
-			err := formatter.FormatFile(file, formatter.FileOptions{Diff: tt.diff})
+			var output bytes.Buffer
+			opts := formatter.FileOptions{Diff: tt.diff, Write: tt.write}
+			if !tt.noOutput {
+				opts.Output = &output
+			}
+			if tt.base != nil {
+				opts.Base = *tt.base
+			}
+			if tt.override != nil {
+				opts.Override = *tt.override
+			}
 
+			err := formatter.FormatFile(file, opts)
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), "output")
-			content, readErr := os.ReadFile(file)
-			require.NoError(t, readErr)
-			assert.Equal(t, source, string(content))
+			assert.Contains(t, err.Error(), tt.wantErr)
+			assert.Empty(t, output.String())
+			assert.Equal(t, tt.source, readProbe(t, file))
 		})
 	}
 }
 
-func TestFormatFileRequiresResolverForConfigPath(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "api.thrift")
-	source := "struct API{1:i32 id}"
-	require.NoError(t, os.WriteFile(file, []byte(source), 0o640))
-
-	var output bytes.Buffer
-	err := formatter.FormatFile(file, formatter.FileOptions{
-		Output:     &output,
-		ConfigPath: "thrift-ls.json",
-	})
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "ConfigPath")
-	assert.Contains(t, err.Error(), "ResolveConfig")
-	assert.Empty(t, output.String())
-	content, readErr := os.ReadFile(file)
-	require.NoError(t, readErr)
-	assert.Equal(t, source, string(content))
-}
-
-func TestFormatFileReturnsParseErrorsWithoutOutput(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "api.thrift")
-	source := "struct API {"
-	require.NoError(t, os.WriteFile(file, []byte(source), 0o644))
-
-	var output bytes.Buffer
-	err := formatter.FormatFile(file, formatter.FileOptions{Output: &output, Write: true})
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "file does not parse")
-	assert.Empty(t, output.String())
-
-	content, readErr := os.ReadFile(file)
-	require.NoError(t, readErr)
-	assert.Equal(t, source, string(content))
-}
-
-func TestFormatAppliesConfigAndPatch(t *testing.T) {
+// TestFormatFileConfig pins caller-resolved config layering: the Base patch
+// carries the resolved file config, the Override patch wins over it.
+func TestFormatFileConfig(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "api.thrift")
-	config := filepath.Join(dir, options.ConfigFileName)
 	require.NoError(t, os.WriteFile(file, []byte("struct API { 1: i32 id }"), 0o644))
-	require.NoError(t, os.WriteFile(config, []byte(`{"printWidth": 10}`), 0o644))
 
+	narrow := 10
+	base := formatter.FormatPatch{PrintWidth: &narrow}
 	width := 80
-	tests := []struct {
-		name  string
-		patch formatter.FormatPatch
-		want  string
+	for _, tt := range []struct {
+		name     string
+		override formatter.FormatPatch
+		want     string
 	}{
 		{
 			name: "discovered config",
 			want: "struct API {\n    1: i32 id\n}\n",
 		},
 		{
-			name:  "patch overrides config",
-			patch: formatter.FormatPatch{PrintWidth: &width},
-			want:  "struct API { 1: i32 id }\n",
+			name:     "patch overrides config",
+			override: formatter.FormatPatch{PrintWidth: &width},
+			want:     "struct API { 1: i32 id }\n",
 		},
-	}
-
-	for _, tt := range tests {
+	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var output bytes.Buffer
 			err := formatter.FormatFile(file, formatter.FileOptions{
-				Output:        &output,
-				Patch:         tt.patch,
-				ResolveConfig: resolveConfig,
+				Output:   &output,
+				Base:     base,
+				Override: tt.override,
 			})
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, output.String())
-		})
-	}
-}
-
-func TestFormatFileReturnsConfigErrors(t *testing.T) {
-	dir := t.TempDir()
-	file := filepath.Join(dir, "api.thrift")
-	require.NoError(t, os.WriteFile(file, []byte("struct API {}\n"), 0o644))
-
-	tests := []struct {
-		name       string
-		configPath string
-		config     string
-		want       string
-	}{
-		{
-			name:       "missing config",
-			configPath: filepath.Join(dir, "missing.json"),
-			want:       "missing.json",
-		},
-		{
-			name:       "malformed config",
-			configPath: filepath.Join(dir, "malformed.json"),
-			config:     `{ "printWidth": "wide" }`,
-			want:       "malformed.json",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.config != "" {
-				require.NoError(t, os.WriteFile(tt.configPath, []byte(tt.config), 0o644))
-			}
-
-			var output bytes.Buffer
-			err := formatter.FormatFile(file, formatter.FileOptions{
-				Output:        &output,
-				ConfigPath:    tt.configPath,
-				ResolveConfig: resolveConfig,
-			})
-
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), tt.want)
-			assert.Empty(t, output.String())
 		})
 	}
 }
@@ -336,8 +269,8 @@ func assertGoldenFile(t *testing.T, fixture, source, golden string, patch format
 
 	var output bytes.Buffer
 	err := formatter.FormatFile(filepath.Join("..", "tests", "e2e", fixture, source), formatter.FileOptions{
-		Output: &output,
-		Patch:  patch,
+		Output:   &output,
+		Override: patch,
 	})
 	require.NoError(t, err)
 

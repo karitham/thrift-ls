@@ -1,7 +1,6 @@
 package lsp
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,11 +14,11 @@ import (
 // delete/create events through), and the includer's include edge
 // re-resolves to the new location.
 func Test_DidRenameFiles_DropsState(t *testing.T) {
-	dir := t.TempDir()
-	libURI := uri.File(filepath.Join(dir, "lib.thrift"))
-	mainURI := uri.File(filepath.Join(dir, "main.thrift"))
+	dir := "/ws"
+	libURI := uri.File(dir + "/lib.thrift")
+	mainURI := uri.File(dir + "/main.thrift")
 
-	srv := newTestServer(&diagClient{})
+	srv := newTestServer(&testClient{})
 
 	openDocument(t, srv, libURI, "struct Lib {}\n")
 	openDocument(t, srv, mainURI, "include \"lib.thrift\"\nstruct M { 1: lib.L l }\n")
@@ -42,7 +41,7 @@ func Test_DidRenameFiles_DropsState(t *testing.T) {
 
 	require.NoError(t, srv.DidRenameFiles(t.Context(), &protocol.RenameFilesParams{
 		Files: []protocol.FileRename{
-			{OldURI: string(libURI), NewURI: string(uri.File(filepath.Join(dir, "lib2.thrift")))},
+			{OldURI: string(libURI), NewURI: string(uri.File(dir + "/lib2.thrift"))},
 		},
 	}))
 
@@ -53,7 +52,7 @@ func Test_DidRenameFiles_DropsState(t *testing.T) {
 
 	includes := view.Includes(mainURI)
 	require.Len(t, includes, 1)
-	assert.Equal(t, string(uri.File(filepath.Join(dir, "lib2.thrift"))), string(includes[0]),
+	assert.Equal(t, string(uri.File(dir+"/lib2.thrift")), string(includes[0]),
 		"the includer's edge must re-resolve to the new location")
 }
 
@@ -103,18 +102,18 @@ func Test_WillRenameFiles(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			srv := newTestServer(&diagClient{})
+			dir := "/ws"
+			srv := newTestServer(&testClient{})
 
 			for _, d := range tt.documents {
-				openDocument(t, srv, uri.File(filepath.Join(dir, d.name)), d.content)
+				openDocument(t, srv, uri.File(dir+"/"+d.name), d.content)
 			}
 
 			edit, err := srv.WillRenameFiles(t.Context(), &protocol.RenameFilesParams{
 				Files: []protocol.FileRename{
 					{
-						OldURI: string(uri.File(filepath.Join(dir, tt.oldName))),
-						NewURI: string(uri.File(filepath.Join(dir, tt.newName))),
+						OldURI: string(uri.File(dir + "/" + tt.oldName)),
+						NewURI: string(uri.File(dir + "/" + tt.newName)),
 					},
 				},
 			})
@@ -130,7 +129,7 @@ func Test_WillRenameFiles(t *testing.T) {
 			require.Len(t, edit.Changes, len(tt.wantEdits))
 
 			for name, want := range tt.wantEdits {
-				assert.Equal(t, want, edit.Changes[uri.File(filepath.Join(dir, name))])
+				assert.Equal(t, want, edit.Changes[uri.File(dir+"/"+name)])
 			}
 		})
 	}

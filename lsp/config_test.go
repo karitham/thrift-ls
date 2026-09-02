@@ -1,10 +1,9 @@
 package lsp
 
 import (
-	"os"
-	"path/filepath"
+	"context"
+	"slices"
 	"testing"
-	"testing/synctest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,7 +11,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/formatter"
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/options"
 )
 
@@ -24,202 +22,125 @@ const (
 	probeBroken  = "struct LongName {\n    1: string fieldNameThatIsQuiteLong\n}\n"
 )
 
-// openAndFormat opens a thrift document and returns its formatted text.
-func openAndFormat(t *testing.T, srv *Server, file string) string {
-	t.Helper()
-
-	require.NoError(t, srv.DidOpen(t.Context(), &protocol.DidOpenTextDocumentParams{
-		TextDocument: protocol.TextDocumentItem{
-			URI:        uri.File(file),
-			LanguageID: "thrift",
-			Version:    0,
-			Text:       probe,
-		},
-	}))
-
-	edits, err := srv.Formatting(t.Context(), &protocol.DocumentFormattingParams{
-		TextDocument: protocol.TextDocumentIdentifier{URI: uri.File(file)},
-	})
-	require.NoError(t, err)
-	require.Len(t, edits, 1)
-
-	return edits[0].NewText
-}
-
-// initWorkspace runs the initialize handshake for folders, waiting for the
-// async workspace walk (synctest.Wait) so the views — and their
-// per-folder configs — exist before any file opens. Callers must run
-// inside a synctest bubble.
-func initWorkspace(t *testing.T, srv *Server, folders []uri.URI, initializationOptions []byte) {
-	t.Helper()
-
-	params := testInitializeParams(foldersFromURIs(folders))
-	params.InitializationOptions = protocol.LSPAny(initializationOptions)
-	_, err := srv.Initialize(t.Context(), params)
-	require.NoError(t, err)
-	require.NoError(t, srv.Initialized(t.Context(), &protocol.InitializedParams{}))
-
-	synctest.Wait()
-}
-
-func foldersFromURIs(uris []uri.URI) []protocol.WorkspaceFolder {
-	folders := make([]protocol.WorkspaceFolder, 0, len(uris))
-	for _, u := range uris {
-		folders = append(folders, protocol.WorkspaceFolder{URI: u})
-	}
-
-	return folders
-}
-
 // TestConfigDiscoveryPerWorkspaceFolder verifies that each workspace
 // folder formats with its own thrift-ls.json: no single process-global
 // config baked in before the workspace was known.
 func TestConfigDiscoveryPerWorkspaceFolder(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		dirA := t.TempDir()
-		dirB := t.TempDir()
-		writeConfig(t, dirA, `{"printWidth": 30}`)
-		writeConfig(t, dirB, `{"printWidth": 100}`)
+	t.Setenv("THRIFT_LS_CONFIG", "")
 
-		srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
-		initWorkspace(t, srv, []uri.URI{uri.File(dirA), uri.File(dirB)}, nil)
-
-		// One server, two folders: each formats with its own config.
-		assert.Equal(t, probeBroken, openAndFormat(t, srv, filepath.Join(dirA, "a.thrift")), "folder A config: width 30 breaks")
-		assert.Equal(t, probeOneLine, openAndFormat(t, srv, filepath.Join(dirB, "b.thrift")), "folder B config: width 100 keeps one line")
+	dirA, dirB := "/ws/a", "/ws/b"
+	files := seedFiles(map[string]string{
+		"/ws/a/thrift-ls.json": `{"printWidth": 30}`,
+		"/ws/b/thrift-ls.json": `{"printWidth": 100}`,
 	})
+
+	srv := newSyncServerWithOptions(nil, files, Options{})
+	initWorkspace(t, srv, []uri.URI{uri.File(dirA), uri.File(dirB)}, nil)
+
+	assert.Equal(t, probeBroken, openAndFormat(t, srv, "/ws/a/a.thrift"), "folder A config: width 30 breaks")
+	assert.Equal(t, probeOneLine, openAndFormat(t, srv, "/ws/b/b.thrift"), "folder B config: width 100 keeps one line")
 }
 
-// TestConfigDiscoverySingleFileMode verifies that a session without
-// workspace folders discovers the config from the opened file's directory
-// at the first didOpen, like the CLI's per-file discovery.
-func TestConfigDiscoverySingleFileMode(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		dir := t.TempDir()
-		writeConfig(t, dir, `{"printWidth": 30}`)
+// TestConfigDiscovery folds the single-folder discovery cases into one
+// table: single-file mode, defaults without config or CWD leak, pinned
+// source bypass, invalid file keeps defaults, and nested walk-up. Each
+// case opens one file and asserts the formatted probe.
+func TestConfigDiscovery(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		// config is written to the target dir; empty means no config file.
+		config string
+		// pinned disables per-folder discovery entirely.
+		pinned bool
+		// nested opens a workspace folder below the config dir.
+		nested bool
+		// singleFile initializes with no folders (per-file discovery).
+		singleFile bool
+		want       string
+	}{
+		{name: "single file mode discovers from the file dir", config: `{"printWidth": 30}`, singleFile: true, want: probeBroken},
+		{name: "pinned source ignores the folder config", config: `{"printWidth": 30}`, pinned: true, want: probeOneLine},
+		{name: "no config formats with defaults, no CWD leak", want: probeOneLine},
+		{name: "invalid file keeps defaults", config: `{"printWidth": "wide"}`, want: probeOneLine},
+		{name: "nested folder walks up to the repo root", config: `{"printWidth": 30}`, nested: true, want: probeBroken},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("THRIFT_LS_CONFIG", "")
 
-		srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
-		initWorkspace(t, srv, nil, nil)
+			root := "/ws/root"
+			folder := root
+			if tt.nested {
+				folder = "/ws/root/packages/app"
+			}
 
-		assert.Equal(t, probeBroken, openAndFormat(t, srv, filepath.Join(dir, "app.thrift")))
-	})
-}
+			entries := map[string]string{}
+			if tt.config != "" {
+				entries["/ws/root/thrift-ls.json"] = tt.config
+			}
+			files := seedFiles(entries)
 
-// TestConfigDiscoveryExplicitPathPins verifies that an explicit --config
-// file disables per-folder discovery: every view formats with that file,
-// whatever the workspace folder contains.
-func TestConfigDiscoveryExplicitPathPins(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		dir := t.TempDir()
-		writeConfig(t, dir, `{"printWidth": 30}`)
+			var srv *Server
+			if tt.pinned {
+				srv = newSyncServerWithOptions(nil, files, Options{ConfigSource: options.PinnedSource(nil)})
+			} else {
+				srv = newSyncServerWithOptions(nil, files, Options{})
+			}
 
-		srv := NewServer(cache.NewMemoizedFS(), nil, Options{
-			Config:     options.Default(),
-			ConfigPath: "/pinned/thrift-ls.json",
+			var folders []uri.URI
+			if !tt.singleFile {
+				folders = []uri.URI{uri.File(folder)}
+			}
+			initWorkspace(t, srv, folders, nil)
+
+			assert.Equal(t, tt.want, openAndFormat(t, srv, folder+"/a.thrift"))
 		})
-		initWorkspace(t, srv, []uri.URI{uri.File(dir)}, nil)
-
-		assert.Equal(t, probeOneLine, openAndFormat(t, srv, filepath.Join(dir, "a.thrift")))
-	})
-}
-
-// TestConfigDiscoveryDefaultsWhenNoConfig verifies that a folder without a
-// config file formats with defaults, not with the startup working-directory
-// config (the launcher's, which is meaningless to the workspace).
-func TestConfigDiscoveryDefaultsWhenNoConfig(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		dir := t.TempDir()
-
-		// A startup CWD-style config must not leak into the view.
-		startup := options.Default()
-		width := 30
-		startup.PrintWidth = &width
-
-		srv := NewServer(cache.NewMemoizedFS(), nil, Options{Config: startup})
-		initWorkspace(t, srv, []uri.URI{uri.File(dir)}, nil)
-
-		assert.Equal(t, probeOneLine, openAndFormat(t, srv, filepath.Join(dir, "a.thrift")))
-	})
+	}
 }
 
 // TestConfigDiscoveryWorkspaceSettingsOverlay verifies the layering on a
 // discovered config: workspace settings (initializationOptions, then
 // didChangeConfiguration) sit on top of the folder's config file.
 func TestConfigDiscoveryWorkspaceSettingsOverlay(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		dir := t.TempDir()
-		writeConfig(t, dir, `{"printWidth": 30}`)
+	t.Setenv("THRIFT_LS_CONFIG", "")
 
-		srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
-		initWorkspace(t, srv, []uri.URI{uri.File(dir)}, []byte(`{"printWidth": 100}`))
+	dir := "/ws/proj"
+	files := seedFiles(map[string]string{"/ws/proj/thrift-ls.json": `{"printWidth": 30}`})
 
-		file := filepath.Join(dir, "a.thrift")
+	srv := newSyncServerWithOptions(nil, files, Options{})
+	initWorkspace(t, srv, []uri.URI{uri.File(dir)}, []byte(`{"printWidth": 100}`))
 
-		// The phases share one server: settings evolve sequentially, each
-		// on top of the previous state.
-		assert.Equal(t, probeOneLine, openAndFormat(t, srv, file), "initializationOptions width 100 wins over the config's 30")
+	file := "/ws/proj/a.thrift"
 
-		require.NoError(t, srv.DidChangeConfiguration(t.Context(), &protocol.DidChangeConfigurationParams{
-			Settings: protocol.LSPAny([]byte(`{"printWidth": 30}`)),
-		}))
-		assert.Equal(t, probeBroken, openAndFormat(t, srv, file), "didChangeConfiguration width 30 replaces the overlay")
+	assert.Equal(t, probeOneLine, openAndFormat(t, srv, file), "initializationOptions width 100 wins over the config's 30")
 
-		require.NoError(t, srv.DidChangeConfiguration(t.Context(), &protocol.DidChangeConfigurationParams{
-			Settings: protocol.LSPAny([]byte(`{"printWidth": 30, "align": "bogus"}`)),
-		}))
-		assert.Equal(t, probeBroken, openAndFormat(t, srv, file), "invalid settings are rejected: the previous overlay stays")
-	})
+	require.NoError(t, srv.DidChangeConfiguration(t.Context(), &protocol.DidChangeConfigurationParams{
+		Settings: protocol.LSPAny([]byte(`{"printWidth": 30}`)),
+	}))
+	assert.Equal(t, probeBroken, openAndFormat(t, srv, file), "didChangeConfiguration width 30 replaces the overlay")
+
+	require.NoError(t, srv.DidChangeConfiguration(t.Context(), &protocol.DidChangeConfigurationParams{
+		Settings: protocol.LSPAny([]byte(`{"printWidth": 30, "align": "bogus"}`)),
+	}))
+	assert.Equal(t, probeBroken, openAndFormat(t, srv, file), "invalid settings are rejected: the previous overlay stays")
 }
 
 // TestConfigDiscoveryLogLevel verifies that the first view's config sets
 // the process log level once the workspace is known.
 func TestConfigDiscoveryLogLevel(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		dir := t.TempDir()
-		writeConfig(t, dir, `{"logLevel": 5}`)
+	t.Setenv("THRIFT_LS_CONFIG", "")
 
-		srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
-		initWorkspace(t, srv, nil, nil)
+	dir := "/ws/proj"
+	files := seedFiles(map[string]string{"/ws/proj/thrift-ls.json": `{"logLevel": 5}`})
 
-		openAndFormat(t, srv, filepath.Join(dir, "app.thrift"))
+	srv := newSyncServerWithOptions(nil, files, Options{})
+	initWorkspace(t, srv, nil, nil)
 
-		srv.logLevelMu.Lock()
-		defer srv.logLevelMu.Unlock()
-		require.NotNil(t, srv.logLevel)
-		assert.Equal(t, 5, *srv.logLevel)
-	})
-}
+	openAndFormat(t, srv, dir+"/app.thrift")
 
-// TestConfigDiscoveryInvalidFileKeepsDefaults verifies that a malformed
-// config file is rejected with the defaults in effect, like invalid
-// workspace settings: it must not crash the server.
-func TestConfigDiscoveryInvalidFileKeepsDefaults(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		dir := t.TempDir()
-		writeConfig(t, dir, `{"printWidth": "wide"}`)
-
-		srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
-		initWorkspace(t, srv, []uri.URI{uri.File(dir)}, nil)
-
-		assert.Equal(t, probeOneLine, openAndFormat(t, srv, filepath.Join(dir, "a.thrift")))
-	})
-}
-
-// TestConfigDiscoveryNestedFolder verifies that discovery walks up from
-// the workspace folder: a config at the repo root applies to a workspace
-// folder nested inside it.
-func TestConfigDiscoveryNestedFolder(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		root := t.TempDir()
-		writeConfig(t, root, `{"printWidth": 30}`)
-		nested := filepath.Join(root, "packages", "app")
-		require.NoError(t, os.MkdirAll(nested, 0o755))
-
-		srv := NewServer(cache.NewMemoizedFS(), nil, Options{})
-		initWorkspace(t, srv, []uri.URI{uri.File(nested)}, nil)
-
-		assert.Equal(t, probeBroken, openAndFormat(t, srv, filepath.Join(nested, "a.thrift")))
-	})
+	srv.logLevelMu.Lock()
+	defer srv.logLevelMu.Unlock()
+	require.NotNil(t, srv.logLevel)
+	assert.Equal(t, 5, *srv.logLevel)
 }
 
 func TestConfigDiscoveryAppliesConfiguredDefaults(t *testing.T) {
@@ -245,15 +166,249 @@ func TestConfigDiscoveryAppliesConfiguredDefaults(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				dir := t.TempDir()
-				writeConfig(t, dir, tt.config)
+			t.Setenv("THRIFT_LS_CONFIG", "")
 
-				srv := NewServer(cache.NewMemoizedFS(), nil, Options{ConfigDefaults: defaults})
-				initWorkspace(t, srv, []uri.URI{uri.File(dir)}, nil)
+			files := seedFiles(map[string]string{"/ws/root/thrift-ls.json": tt.config})
+			srv := newSyncServerWithOptions(nil, files, Options{Defaults: defaults})
+			initWorkspace(t, srv, []uri.URI{uri.File("/ws/root")}, nil)
 
-				assert.Equal(t, tt.want, openAndFormat(t, srv, filepath.Join(dir, "a.thrift")))
-			})
+			assert.Equal(t, tt.want, openAndFormat(t, srv, "/ws/root/a.thrift"))
 		})
 	}
+}
+
+// TestProjectConfigLayering pins the loader-project precedence: the
+// project's format settings beat the file document, CLI flags beat the
+// project, and project include paths stay authoritative throughout.
+func TestProjectConfigLayering(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		file      int
+		project   int
+		cli       int
+		wantWidth int
+		wantText  string
+	}{
+		{name: "project beats file", file: 100, project: 30, wantWidth: 30, wantText: probeBroken},
+		{name: "cli beats project", file: 100, project: 30, cli: 100, wantWidth: 100, wantText: probeOneLine},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			root := uri.File("/workspace/proj")
+			target := uri.File("/workspace/proj/api.thrift")
+			fileWidth, projectWidth := tt.file, tt.project
+			fileDoc := &options.Patch{FormatPatch: formatter.FormatPatch{PrintWidth: &fileWidth}}
+			projectCfg := options.Patch{FormatPatch: formatter.FormatPatch{PrintWidth: &projectWidth}}
+			var cliPatch options.Patch
+			if tt.cli > 0 {
+				cliWidth := tt.cli
+				cliPatch = options.Patch{FormatPatch: formatter.FormatPatch{PrintWidth: &cliWidth}}
+			}
+			projectIncludes := []string{"/build/includes"}
+			fileDoc.IncludePaths = &[]string{"/file/includes"}
+			cliPatch.IncludePaths = &[]string{"/cli/includes"}
+			projectCfg.IncludePaths = &projectIncludes
+
+			srv := newSyncServerWithOptions(nil,
+				seedFiles(map[string]string{"/workspace/proj/api.thrift": "struct API {}"}),
+				Options{
+					ConfigSource: options.PinnedSource(fileDoc),
+					CLI:          cliPatch,
+				})
+			initCustomFolders(t, srv, []uri.URI{uri.File("/workspace")})
+			installSnapshot(t, srv, uri.File("/workspace"), WorkspaceSnapshot{Projects: []Project{{
+				ConfigURI:   uri.File("/workspace/proj.json"),
+				RootURI:     root,
+				TargetFiles: []uri.URI{target},
+				Config:      projectCfg,
+			}}})
+
+			cfg := srv.folderConfig(root)
+			require.NotNil(t, cfg.PrintWidth)
+			assert.Equal(t, tt.wantWidth, *cfg.PrintWidth)
+			require.NotNil(t, cfg.IncludePaths)
+			assert.Equal(t, projectIncludes, *cfg.IncludePaths)
+			assert.Equal(t, tt.wantText, openAndFormat(t, srv, target.FsPath()))
+		})
+	}
+}
+
+// TestWorkspaceLoaderUsesConfigSourcePerProjectRoot verifies the
+// ConfigSource is consulted once per project root, and each view formats
+// with its own document.
+func TestWorkspaceLoaderUsesConfigSourcePerProjectRoot(t *testing.T) {
+	roots := []string{"/ws/one", "/ws/two"}
+	widths := []int{91, 92}
+	patches := make(map[string]*options.Patch, len(roots))
+	projects := make([]Project, len(roots))
+	entries := map[string]string{}
+	for i, root := range roots {
+		width := widths[i]
+		patches[root] = &options.Patch{FormatPatch: formatter.FormatPatch{PrintWidth: &width}}
+		entries[root+"/api.thrift"] = "struct API {}"
+		projects[i] = Project{
+			ConfigURI:   uri.File(root + "/tbuild.yaml"),
+			RootURI:     uri.File(root),
+			TargetFiles: []uri.URI{uri.File(root + "/api.thrift")},
+		}
+	}
+
+	var calls []string
+	source := func(root string) (options.Resolved, error) {
+		calls = append(calls, root)
+
+		return options.Resolved{Patch: patches[root]}, nil
+	}
+	srv := newSyncServerWithOptions(nil, seedFiles(entries), Options{ConfigSource: source})
+	initCustomFolders(t, srv, []uri.URI{uri.File("/ws")})
+	installSnapshot(t, srv, uri.File("/ws"), WorkspaceSnapshot{Projects: projects})
+
+	slices.Sort(calls)
+	assert.Equal(t, roots, calls)
+	for i, root := range roots {
+		cfg := srv.folderConfig(uri.File(root))
+		require.NotNil(t, cfg.PrintWidth)
+		assert.Equal(t, widths[i], *cfg.PrintWidth)
+	}
+}
+
+// TestPinnedSourceBypassesDiscovery verifies a pinned document applies to
+// loader projects without consulting disk.
+func TestPinnedSourceBypassesDiscovery(t *testing.T) {
+	root := uri.File("/workspace/project")
+	target := uri.File("/workspace/project/api.thrift")
+	width := 97
+	pinned := options.Patch{FormatPatch: formatter.FormatPatch{PrintWidth: &width}}
+
+	srv := newSyncServerWithOptions(nil,
+		seedFiles(map[string]string{"/workspace/project/api.thrift": "struct API {}"}),
+		Options{ConfigSource: options.PinnedSource(&pinned)})
+	initCustomFolders(t, srv, []uri.URI{uri.File("/workspace")})
+	installSnapshot(t, srv, uri.File("/workspace"), WorkspaceSnapshot{Projects: []Project{{
+		ConfigURI:   uri.File("/workspace/project/tbuild.yaml"),
+		RootURI:     root,
+		TargetFiles: []uri.URI{target},
+	}}})
+
+	cfg := srv.folderConfig(root)
+	require.NotNil(t, cfg.PrintWidth)
+	assert.Equal(t, width, *cfg.PrintWidth)
+}
+
+// TestConfigFileIncludePaths verifies that include paths from a workspace
+// folder's thrift-ls.json flow through view creation into the snapshot's
+// resolver, resolved relative to the config file.
+func TestConfigFileIncludePaths(t *testing.T) {
+	t.Setenv("THRIFT_LS_CONFIG", "")
+
+	files := seedFiles(map[string]string{
+		"/ws/proj/thrift-ls.json":     `{"includePaths": ["base"]}`,
+		"/ws/proj/base/shared.thrift": "struct Shared {}",
+	})
+
+	srv := newSyncServerWithOptions(nil, files, Options{})
+	initWorkspace(t, srv, []uri.URI{uri.File("/ws/proj")}, nil)
+
+	app := uri.File("/ws/proj/app.thrift")
+	view, err := srv.session.ViewOf(app)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"/ws/proj/base"}, view.Resolver().IncludePaths())
+
+	resolved := view.Resolver().ResolveInclude(app, "shared.thrift")
+	assert.Equal(t, uri.File("/ws/proj/base/shared.thrift"), resolved)
+}
+
+// TestCustomProjectIncludePathsAreAuthoritative verifies a loader
+// project's include paths win over the file document, CLI, and workspace
+// settings.
+func TestCustomProjectIncludePathsAreAuthoritative(t *testing.T) {
+	root := uri.File("/ws/project")
+	target := uri.File("/ws/project/api.thrift")
+	projectIncludes := "/ws/project-includes"
+	configIncludes := "/ws/config-includes"
+	cliIncludes := "/ws/cli-includes"
+	settingsIncludes := "/ws/settings-includes"
+
+	fileDoc := &options.Patch{IncludePaths: &[]string{configIncludes}}
+	files := seedFiles(map[string]string{
+		"/ws/project/api.thrift":             `include "shared.thrift"`,
+		"/ws/project-includes/shared.thrift": "struct Shared {}",
+	})
+	srv := newSyncServerWithOptions(nil, files, Options{
+		CLI:          options.Patch{IncludePaths: &[]string{cliIncludes}},
+		ConfigSource: options.PinnedSource(fileDoc),
+	})
+	params := testInitializeParams([]protocol.WorkspaceFolder{{URI: uri.File("/ws")}})
+	params.InitializationOptions = protocol.LSPAny([]byte(`{"includePaths":["` + settingsIncludes + `"]}`))
+	_, err := srv.Initialize(t.Context(), params)
+	require.NoError(t, err)
+
+	installSnapshot(t, srv, uri.File("/ws"), WorkspaceSnapshot{Projects: []Project{{
+		ConfigURI:   uri.File("/ws/project/tbuild.yaml"),
+		RootURI:     root,
+		TargetFiles: []uri.URI{target},
+		Config:      options.Patch{IncludePaths: &[]string{projectIncludes}},
+	}}})
+
+	view, err := srv.session.ViewOf(target)
+	require.NoError(t, err)
+	assert.Equal(t, []string{projectIncludes}, view.Resolver().IncludePaths())
+	assert.Equal(t, uri.File("/ws/project-includes/shared.thrift"), view.Resolver().ResolveInclude(target, "shared.thrift"))
+
+	_ = context.Background
+}
+
+func TestLSPSettings(t *testing.T) {
+	t.Run("parses options and drops the path key", func(t *testing.T) {
+		patch, err := lspSettings([]byte(`{"path":"/usr/bin/thrift-ls","printWidth":30,"align":"assign"}`))
+		require.NoError(t, err)
+		require.NotNil(t, patch.PrintWidth)
+		assert.Equal(t, 30, *patch.PrintWidth)
+		assert.Equal(t, "assign", *patch.Align)
+	})
+
+	t.Run("rejects unknown keys", func(t *testing.T) {
+		_, err := lspSettings([]byte(`{"printWidth":30,"typoKey":1}`))
+		assert.Error(t, err)
+	})
+
+	t.Run("rejects invalid values", func(t *testing.T) {
+		_, err := lspSettings([]byte(`{"align":"bogus"}`))
+		assert.Error(t, err)
+	})
+}
+
+func TestWorkspaceSettings(t *testing.T) {
+	const file = "file:///tmp/settings.thrift"
+	content := "struct LongName{1: string fieldNameThatIsQuiteLong}\n"
+
+	ctx := t.Context()
+	srv := newMemServer(nil)
+
+	require.NoError(t, srv.DidOpen(ctx, &protocol.DidOpenTextDocumentParams{
+		TextDocument: protocol.TextDocumentItem{
+			URI:        file,
+			LanguageID: "thrift",
+			Version:    0,
+			Text:       content,
+		},
+	}))
+
+	assert.Equal(t, probeOneLine, formatText(t, srv, file))
+
+	_, err := srv.Initialize(ctx, &protocol.InitializeParams{
+		InitializationOptions: protocol.LSPAny([]byte(`{"printWidth":30}`)),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, probeBroken, formatText(t, srv, file))
+
+	require.NoError(t, srv.DidChangeConfiguration(ctx, &protocol.DidChangeConfigurationParams{
+		Settings: protocol.LSPAny([]byte(`{"printWidth":80}`)),
+	}))
+	assert.Equal(t, probeOneLine, formatText(t, srv, file))
+
+	require.NoError(t, srv.DidChangeConfiguration(ctx, &protocol.DidChangeConfigurationParams{
+		Settings: protocol.LSPAny([]byte(`{"printWidth":30,"align":"bogus"}`)),
+	}))
+	assert.Equal(t, probeOneLine, formatText(t, srv, file))
 }
