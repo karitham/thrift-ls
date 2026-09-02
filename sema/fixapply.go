@@ -206,12 +206,26 @@ func (p *Pipeline) FixAll(ctx context.Context, view *cache.View, targets []uri.U
 
 	changed := make(map[uri.URI]struct{}, len(targets))
 
+	// summary assembles the result on every exit path: a persist failure
+	// may leave earlier files of the same pass already mutated, and the
+	// caller must be able to report that.
+	summary := func() FixResult {
+		res.FixedFiles = make([]uri.URI, 0, len(changed))
+		for u := range changed {
+			res.FixedFiles = append(res.FixedFiles, u)
+		}
+
+		slices.Sort(res.FixedFiles)
+
+		return res
+	}
+
 	for pass := 0; pass < maxFixPasses; pass++ {
 		res.Passes++
 
 		report, err := p.Run(ctx, view, targets)
 		if err != nil {
-			return res, err
+			return summary(), err
 		}
 
 		res.Remaining = report
@@ -250,12 +264,12 @@ func (p *Pipeline) FixAll(ctx context.Context, view *cache.View, targets []uri.U
 
 			content, err := pf.Content()
 			if err != nil {
-				return res, err
+				return summary(), err
 			}
 
 			out, ok, skip, err := Apply(content, fixes)
 			if err != nil {
-				return res, fmt.Errorf("%s: %w", u.FsPath(), err)
+				return summary(), fmt.Errorf("%s: %w", u.FsPath(), err)
 			}
 
 			for _, fx := range skip {
@@ -266,13 +280,17 @@ func (p *Pipeline) FixAll(ctx context.Context, view *cache.View, targets []uri.U
 				continue
 			}
 
-			applied += len(ok)
-
+			// Count and record only after the content is durable: a
+			// failed persist leaves the file unmutated on disk, and the
+			// summary must report what actually landed.
 			if persist != nil {
 				if err := persist(ctx, u, out); err != nil {
-					return res, fmt.Errorf("%s: %w", u.FsPath(), err)
+					return summary(), fmt.Errorf("%s: %w", u.FsPath(), err)
 				}
 			}
+
+			applied += len(ok)
+			res.Applied += len(ok)
 
 			changes = append(changes, &cache.FileChange{URI: u, Version: pass + 1, Content: out, From: cache.FileChangeTypeDidChange})
 			changed[u] = struct{}{}
@@ -288,17 +306,8 @@ func (p *Pipeline) FixAll(ctx context.Context, view *cache.View, targets []uri.U
 			break
 		}
 
-		res.Applied += applied
-
 		view.Update(ctx, changes...)
 	}
 
-	res.FixedFiles = make([]uri.URI, 0, len(changed))
-	for u := range changed {
-		res.FixedFiles = append(res.FixedFiles, u)
-	}
-
-	slices.Sort(res.FixedFiles)
-
-	return res, nil
+	return summary(), nil
 }

@@ -41,10 +41,12 @@ func Test_CodeAction(t *testing.T) {
 		},
 		{
 			// The server's own reported diagnostic turns the enum
-			// refactor into the quickfix for it.
+			// refactor into the quickfix for it, and the member's
+			// inline fix joins it as the per-member quickfix.
 			name:    "enum quickfix",
 			content: "enum E { A, B = 1 }\n",
 			want: map[string]protocol.CodeActionKind{
+				"Add explicit value 0 to A": protocol.CodeActionKindQuickFix,
 				"Make enum values explicit": protocol.CodeActionKindQuickFix,
 			},
 		},
@@ -55,6 +57,7 @@ func Test_CodeAction(t *testing.T) {
 				Only: []protocol.CodeActionKind{protocol.CodeActionKindQuickFix},
 			},
 			want: map[string]protocol.CodeActionKind{
+				"Add explicit value 0 to A": protocol.CodeActionKindQuickFix,
 				"Make enum values explicit": protocol.CodeActionKindQuickFix,
 			},
 		},

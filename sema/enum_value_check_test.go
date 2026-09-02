@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
 )
@@ -92,4 +94,50 @@ func Test_EnumValueCheck_Diagnostic(t *testing.T) {
 			assert.Equal(t, tt.want, cmpAll(report["file:///tmp/user.thrift"]))
 		})
 	}
+}
+
+// Test_EnumValueCheck_InlineFix pins the inline quickfix: the member's name
+// is rewritten to carry the auto-incremented value the compiler resolves
+// for it.
+func Test_EnumValueCheck_InlineFix(t *testing.T) {
+	content := "enum Color {\n  RED,\n  GREEN = 2,\n  BLUE,\n}\n"
+	filePath := writeThrift(t, t.TempDir(), "user.thrift", content)
+
+	view := buildFolderSnapshotForTest(t, t.TempDir(), openChange(filePath, content))
+
+	report := runOne(t, EachFile(&EnumValueCheck{}), view, uri.File(filePath))
+	diags := report[uri.File(filePath)]
+	require.Len(t, diags, 2)
+
+	assert.Equal(t, "Add explicit value 0 to RED", diags[0].Fixes[0].Title)
+	assert.Equal(t, "enum Color {\n  RED = 0,\n  GREEN = 2,\n  BLUE,\n}\n",
+		applyEdits(t, content, diags[0].Fixes[0].Edits))
+
+	assert.Equal(t, "Add explicit value 3 to BLUE", diags[1].Fixes[0].Title)
+	assert.Equal(t, "enum Color {\n  RED,\n  GREEN = 2,\n  BLUE = 3,\n}\n",
+		applyEdits(t, content, diags[1].Fixes[0].Edits))
+}
+
+// Test_EnumValueCheck_UnknownValueNoFix pins the Known=false boundary: a
+// member whose implicit value cannot be computed (it follows an
+// unparseable constant) offers no fix — writing one would put a wrong
+// value in the source. A fixable sibling still gets its fix.
+func Test_EnumValueCheck_UnknownValueNoFix(t *testing.T) {
+	content := "enum E {\n  A = 08,\n  B,\n  C,\n}\n"
+	filePath := writeThrift(t, t.TempDir(), "user.thrift", content)
+
+	view := buildFolderSnapshotForTest(t, t.TempDir(), openChange(filePath, content))
+
+	report := runOne(t, EachFile(&EnumValueCheck{}), view, uri.File(filePath))
+	diags := report[uri.File(filePath)]
+	require.Len(t, diags, 2)
+
+	// B follows the broken constant: no computable value, no fix.
+	assert.Equal(t, "B has no explicit value", diags[0].Message)
+	assert.Empty(t, diags[0].Fixes)
+
+	// C's value is settled by the broken constant's absence: the chain
+	// stays unknown, so no fix here either.
+	assert.Equal(t, "C has no explicit value", diags[1].Message)
+	assert.Empty(t, diags[1].Fixes)
 }

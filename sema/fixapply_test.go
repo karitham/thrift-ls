@@ -2,6 +2,7 @@ package sema
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -250,4 +251,40 @@ func TestFixAllParseErrorGuard(t *testing.T) {
 		require.Equal(t, "file has parse errors", s.Reason)
 		require.Equal(t, broken, s.File)
 	}
+}
+
+// TestFixAllPersistFailure keeps the partial summary: fixes persisted
+// before the failure count as applied and their files are listed, so the
+// caller can report the mutations a failed run already made.
+func TestFixAllPersistFailure(t *testing.T) {
+	t.Parallel()
+
+	folder := t.TempDir()
+	files := map[uri.URI][]byte{
+		uri.File(folder + "/a.thrift"): []byte("struct Bar {\n  1: Foo f\n}\n"),
+		// Fixable (unused include), but its persist fails.
+		uri.File(folder + "/b.thrift"): []byte("include \"a.thrift\"\n\nstruct Other {}\n"),
+		uri.File(folder + "/c.thrift"): []byte("struct Foo {}\n"),
+	}
+
+	view := cache.NewView(uri.File(folder), cache.NewMemFS(files), nil)
+
+	persist := func(_ context.Context, u uri.URI, content []byte) error {
+		files[u] = content
+
+		if u.FsPath() == folder+"/b.thrift" {
+			return errors.New("disk full")
+		}
+
+		return nil
+	}
+
+	res, err := DefaultPipeline(Config{}).FixAll(t.Context(), view,
+		[]uri.URI{uri.File(folder + "/a.thrift"), uri.File(folder + "/b.thrift")}, persist)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "b.thrift")
+	require.Equal(t, 1, res.Applied, "a.thrift's fix persisted before the failure")
+	require.Equal(t, []uri.URI{uri.File(folder + "/a.thrift")}, res.FixedFiles)
+	require.Contains(t, string(files[uri.File(folder+"/a.thrift")]), "include \"c.thrift\"")
 }

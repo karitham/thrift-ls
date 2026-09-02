@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -111,4 +112,39 @@ func Test_UnusedIncludeCheck_InlineFix(t *testing.T) {
 	fix := diags[0].Fixes[0]
 	assert.Equal(t, `Remove unused include "shared.thrift"`, fix.Title)
 	assert.Equal(t, "struct S { 1: i32 a }\n", applyEdits(t, content, fix.Edits))
+}
+
+// TestFixAllEnumValues drives the whole fix loop over a file with implicit
+// enum members: every member ends up with the value the compiler would
+// auto-increment, and the fixed file passes the check on the next pass.
+func TestFixAllEnumValues(t *testing.T) {
+	t.Parallel()
+
+	folder := t.TempDir()
+	b := uri.File(folder + "/user.thrift")
+	files := map[uri.URI][]byte{
+		b: []byte("enum Color {\n  RED,\n  GREEN = 2,\n  BLUE,\n}\n"),
+	}
+
+	view := cache.NewView(uri.File(folder), cache.NewMemFS(files), nil)
+
+	var written []byte
+
+	res, err := DefaultPipeline(Config{}).FixAll(t.Context(), view, []uri.URI{b},
+		func(_ context.Context, u uri.URI, content []byte) error {
+			files[u] = content
+			written = content
+
+			return nil
+		})
+	require.NoError(t, err)
+
+	require.Equal(t, 2, res.Applied)
+	require.Empty(t, res.Skipped)
+
+	// Every implicit member gains its auto-incremented value.
+	require.Equal(t, []byte("enum Color {\n  RED = 0,\n  GREEN = 2,\n  BLUE = 3,\n}\n"), written)
+
+	// The fixed file passes the check on the next pass.
+	require.Empty(t, res.Remaining[b])
 }

@@ -48,12 +48,30 @@ func (c *EnumValueCheck) AnalyzeFile(ctx context.Context, f File) ([]Diagnostic,
 				msg = fmt.Sprintf("%s has no explicit value (implicitly %d)", mv.member.Name.Text, mv.value)
 			}
 
-			ret = append(ret, Diagnostic{
+			d := Diagnostic{
 				Span:     spanOfToken(enumValueNameToken(pf, mv.member)),
 				Severity: SeverityWarning,
 				Code:     CodeImplicitEnumValue,
 				Message:  msg,
-			})
+			}
+
+			// The fix writes the auto-incremented value into the source:
+			// " = N" right after the member's name. Only a member whose
+			// value is known is fixable; one after a broken constant has
+			// no computable value to write.
+			if mv.known {
+				insertAt := pf.AST().TokenEndPosition(mv.member.Name.TokStart())
+
+				d.Fixes = []Fix{{
+					Title: fmt.Sprintf("Add explicit value %d to %s", mv.value, mv.member.Name.Text),
+					Edits: []Edit{{
+						Span:    Span{Start: insertAt, End: insertAt},
+						NewText: " = " + strconv.FormatInt(mv.value, 10),
+					}},
+				}}
+			}
+
+			ret = append(ret, d)
 		}
 	}
 

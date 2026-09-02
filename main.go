@@ -537,6 +537,10 @@ func checkFix(ctx context.Context, cmd *cli.Command, files []string, folder stri
 	version := 0
 
 	persist := func(ctx context.Context, u uri.URI, content []byte) error {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("check canceled: %w", err)
+		}
+
 		version++
 
 		if err := sess.UpdateOverlayFS(ctx, []*cache.FileChange{
