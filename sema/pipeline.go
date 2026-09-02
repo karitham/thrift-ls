@@ -278,22 +278,18 @@ func (p *Pipeline) CodeActions(ctx context.Context, view *cache.View, file uri.U
 
 	f := File{URI: file, PF: pf, run: &Run{view: view, cfg: p.cfg, report: report}}
 
-	var out []Action
+	var overlapping []Diagnostic
 
 	for _, d := range report[file] {
-		if !d.Span.Overlaps(span) {
-			continue
+		if d.Span.Overlaps(span) {
+			overlapping = append(overlapping, d)
 		}
+	}
 
-		for _, fix := range d.Fixes {
-			out = append(out, Action{Title: fix.Title, Fix: true, File: file, Edits: fix.Edits})
-		}
+	var out []Action
 
-		for _, fx := range p.fixers {
-			for _, fix := range fx.Fix(ctx, f, d) {
-				out = append(out, Action{Title: fix.Title, Fix: true, File: file, Edits: fix.Edits})
-			}
-		}
+	for _, fix := range p.fixesFor(ctx, f, overlapping) {
+		out = append(out, Action{Title: fix.Title, Fix: true, File: file, Edits: fix.Edits})
 	}
 
 	for _, ap := range p.providers {

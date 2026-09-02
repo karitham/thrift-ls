@@ -88,7 +88,7 @@ func checkCommand() *cli.Command {
 		Name:      "check",
 		Usage:     "report parse, semantic, and lint diagnostics on thrift files",
 		ArgsUsage: "<file|folder>",
-		Flags:     lspFlags(),
+		Flags:     checkFlags(),
 		Action:    checkAction,
 	}
 }
@@ -109,6 +109,14 @@ func lspFlags() []cli.Flag {
 			Usage: "additional include path, like the thrift compiler (repeatable)",
 		},
 	}
+}
+
+// checkFlags are the flags of the check subcommand.
+func checkFlags() []cli.Flag {
+	return append(lspFlags(), &cli.BoolFlag{
+		Name:  "fix",
+		Usage: "apply the diagnostics' fixes to the checked files, re-running until nothing applies",
+	})
 }
 
 // constructFlags maps the per-construct format flag names to constructs.
@@ -450,6 +458,10 @@ func checkAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
+	if cmd.Bool("fix") {
+		return checkFix(ctx, cmd, files, rootAbs, derefStrings(patch.IncludePaths), lintConfigOf(patch.Lint))
+	}
+
 	diags, err := checkFiles(ctx, files, rootAbs, derefStrings(patch.IncludePaths), lintConfigOf(patch.Lint))
 	if err != nil {
 		return err
@@ -483,44 +495,22 @@ func checkAction(ctx context.Context, cmd *cli.Command) error {
 // semantic analysis, and lints — over files opened in a session rooted at
 // folder, and returns the diagnostics per file, keyed by absolute path.
 func checkFiles(ctx context.Context, files []string, folder string, includePaths []string, lint sema.Config) (map[string][]protocol.Diagnostic, error) {
-	fs := cache.NewMemoizedFS()
-	sess := cache.NewSession(fs)
-	sess.AddView(uri.File(folder), includePaths)
-
-	changes := make([]*cache.FileChange, 0, len(files))
-	uris := make([]uri.URI, 0, len(files))
-
-	for _, file := range files {
-		content, err := os.ReadFile(file)
-		if err != nil {
-			return nil, err
-		}
-
-		u := uri.File(file)
-		uris = append(uris, u)
-		changes = append(changes, &cache.FileChange{URI: u, Version: 0, Content: content, From: cache.FileChangeTypeDidOpen})
-	}
-
-	if err := sess.UpdateOverlayFS(ctx, changes); err != nil {
+	_, view, uris, err := openCheckSession(ctx, files, folder, includePaths)
+	if err != nil {
 		return nil, err
 	}
 
 	out := make(map[string][]protocol.Diagnostic, len(files))
 
-	v, err := sess.ViewOf(uris[0])
-	if err != nil {
-		return nil, err
-	}
-
 	// One pipeline run over the whole corpus: the shared index memoizes
 	// resolutions across files, so each name resolves once.
-	report, err := sema.DefaultPipeline(lint).Run(ctx, v, uris)
+	report, err := sema.DefaultPipeline(lint).Run(ctx, view, uris)
 	if err != nil {
 		return nil, err
 	}
 
 	for i := range files {
-		diags, err := source.ToProtocolDiagnostics(ctx, v, uris[i], report[uris[i]])
+		diags, err := source.ToProtocolDiagnostics(ctx, view, uris[i], report[uris[i]])
 		if err != nil {
 			return nil, err
 		}
@@ -529,6 +519,102 @@ func checkFiles(ctx context.Context, files []string, folder string, includePaths
 	}
 
 	return out, nil
+}
+
+// checkFix applies the diagnostics' fixes to the checked files and reports
+// what remains. Only the requested files are fixed — one file, or one
+// folder — while resolution reads the whole view, so fixing a greenfield
+// module resolves its types against the tree without touching the tree.
+func checkFix(ctx context.Context, cmd *cli.Command, files []string, folder string, includePaths []string, lint sema.Config) error {
+	sess, view, uris, err := openCheckSession(ctx, files, folder, includePaths)
+	if err != nil {
+		return err
+	}
+
+	// Fix passes land within the same mtime tick the memoized disk source
+	// may have cached, so the fixed content flows back through the
+	// session overlay: the next pass always re-parses what was written.
+	version := 0
+
+	persist := func(ctx context.Context, u uri.URI, content []byte) error {
+		version++
+
+		if err := sess.UpdateOverlayFS(ctx, []*cache.FileChange{
+			{URI: u, Version: version, Content: content, From: cache.FileChangeTypeDidChange},
+		}); err != nil {
+			return err
+		}
+
+		perms := os.FileMode(0o644)
+		if info, statErr := os.Stat(u.FsPath()); statErr == nil {
+			perms = info.Mode()
+		}
+
+		return os.WriteFile(u.FsPath(), content, perms)
+	}
+
+	res, err := sema.DefaultPipeline(lint).FixAll(ctx, view, uris, persist)
+	if err != nil {
+		return err
+	}
+
+	w := cmd.Writer
+
+	fmt.Fprintf(w, "applied %d fix(es) in %d file(s) over %d pass(es)\n", res.Applied, len(res.FixedFiles), res.Passes)
+
+	for _, s := range res.Skipped {
+		fmt.Fprintf(w, "skipped %s  %s  (%s)\n", relPath(s.File.FsPath()), s.Fix.Title, s.Reason)
+	}
+
+	errCount, warnCount := 0, 0
+
+	for i := range files {
+		for _, d := range res.Remaining[uris[i]] {
+			sev := "warning"
+			if d.Severity == sema.SeverityError {
+				sev = "error"
+				errCount++
+			} else {
+				warnCount++
+			}
+
+			fmt.Fprintf(w, "%s:%d:%d  %s  %s\n", relPath(uris[i].FsPath()), d.Span.Start.Line, d.Span.Start.Col, sev, d.Message)
+		}
+	}
+
+	if errCount > 0 {
+		return fmt.Errorf("%d error(s), %d warning(s) remain unfixed", errCount, warnCount)
+	}
+
+	return nil
+}
+
+// openCheckSession opens a session with the files open in the overlay of
+// a view rooted at folder, and returns the session (needed to push new
+// content into the overlay later), its view, and the files' URIs.
+func openCheckSession(ctx context.Context, files []string, folder string, includePaths []string) (*cache.Session, *cache.View, []uri.URI, error) {
+	sess := cache.NewSession(cache.NewMemoizedFS())
+	view := sess.AddView(uri.File(folder), includePaths)
+
+	changes := make([]*cache.FileChange, 0, len(files))
+	uris := make([]uri.URI, 0, len(files))
+
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		u := uri.File(file)
+		uris = append(uris, u)
+		changes = append(changes, &cache.FileChange{URI: u, Version: 0, Content: content, From: cache.FileChangeTypeDidOpen})
+	}
+
+	if err := sess.UpdateOverlayFS(ctx, changes); err != nil {
+		return nil, nil, nil, err
+	}
+
+	return sess, view, uris, nil
 }
 
 // collectThriftFiles returns the absolute paths of the thrift files under
