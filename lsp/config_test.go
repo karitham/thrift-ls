@@ -11,6 +11,7 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
+	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/options"
 )
@@ -219,4 +220,40 @@ func TestConfigDiscoveryNestedFolder(t *testing.T) {
 
 		assert.Equal(t, probeBroken, openAndFormat(t, srv, filepath.Join(nested, "a.thrift")))
 	})
+}
+
+func TestConfigDiscoveryAppliesConfiguredDefaults(t *testing.T) {
+	defaults := options.Patch{FormatPatch: formatter.FormatPatch{
+		Indent: &formatter.Indent{Value: "  ", Width: 2},
+		Break:  &formatter.Break{Structs: new(true)},
+	}}
+
+	for _, tt := range []struct {
+		name   string
+		config string
+		want   string
+	}{
+		{
+			name:   "discovered width retains the configured indentation",
+			config: `{"printWidth": 30}`,
+			want:   "struct LongName {\n  1: string fieldNameThatIsQuiteLong\n}\n",
+		},
+		{
+			name:   "discovered break setting overrides the configured default",
+			config: `{"break":{"structs":false}}`,
+			want:   probeOneLine,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				dir := t.TempDir()
+				writeConfig(t, dir, tt.config)
+
+				srv := NewServer(cache.NewMemoizedFS(), nil, Options{ConfigDefaults: defaults})
+				initWorkspace(t, srv, []uri.URI{uri.File(dir)}, nil)
+
+				assert.Equal(t, tt.want, openAndFormat(t, srv, filepath.Join(dir, "a.thrift")))
+			})
+		})
+	}
 }

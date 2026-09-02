@@ -46,7 +46,7 @@ func Test_CheckMadeInAbyss(t *testing.T) {
 	assert.Contains(t, cycleB[0].Message, "cycle dependency")
 	assert.Contains(t, cycleB[1].Message, "cycle dependency")
 
-	// The mistake showcase: 19 errors and 6 warnings.
+	// The mistake showcase: 18 errors and 7 warnings.
 	lints := diags[corpusAbs(t, "lints.thrift")]
 	require.Len(t, lints, 25)
 
@@ -59,8 +59,13 @@ func Test_CheckMadeInAbyss(t *testing.T) {
 			warns++
 		}
 	}
-	assert.Equal(t, 19, errs)
-	assert.Equal(t, 6, warns)
+	assert.Equal(t, 18, errs)
+	assert.Equal(t, 7, warns)
+	for _, d := range lints {
+		if strings.Contains(message(d), "map key must be a scalar type") {
+			assert.Equal(t, protocol.DiagnosticSeverityWarning, d.Severity)
+		}
+	}
 
 	// Every intentional mistake is reported.
 	for _, msg := range []string{

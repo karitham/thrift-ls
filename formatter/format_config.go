@@ -173,6 +173,9 @@ func overlayPerConstruct[T *E, E any](dst, src *PerConstruct[T]) *PerConstruct[T
 
 	if dst == nil {
 		dst = &PerConstruct[T]{}
+	} else {
+		copy := *dst
+		dst = &copy
 	}
 
 	for _, c := range AllConstructs {

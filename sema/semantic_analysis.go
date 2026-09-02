@@ -25,9 +25,9 @@ func (s *SemanticAnalysis) AnalyzeFile(ctx context.Context, f File) ([]Diagnosti
 // checkDefinitionExist reports undefined references in one document walk:
 // type references that resolve to no definition (fields, signatures,
 // consts, typedefs, nested container elements), constant-value identifiers
-// resolving to no enum value or const at any nesting depth, map keys that
-// are not scalar, and field defaults or const values whose kind — at any
-// literal depth — mismatches the declared type's underlying kind.
+// resolving to no enum value or const at any nesting depth, and field defaults
+// or const values whose kind — at any literal depth — mismatches the declared
+// type's underlying kind.
 func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, view *cache.View, ix *Index, pf *cache.ParsedFile) []Diagnostic {
 	res := make([]Diagnostic, 0)
 
@@ -35,12 +35,6 @@ func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, view *cache
 		switch v := n.(type) {
 		case *syntax.FieldType:
 			res = append(res, s.checkTypeExist(ctx, view, ix, pf, v)...)
-
-			if v.Kind == syntax.TypeMap && v.KeyType != nil {
-				if dig := s.checkMapKeyScalar(ctx, view, ix, pf, v.KeyType); dig != nil {
-					res = append(res, *dig)
-				}
-			}
 		case *syntax.Field:
 			if v.Value != nil {
 				res = append(res, s.checkValueType(ctx, ix, pf, pf, v.Type, v.Value)...)
@@ -420,81 +414,4 @@ func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, view *cache.View,
 		Code:     CodeUndefinedType,
 		Message:  "field type doesn't exist",
 	})
-}
-
-// checkMapKeyScalar returns an error when the map key type is not scalar:
-// thrift requires map keys to be a base type or an enum. Structs, unions,
-// exceptions, and containers cannot be keys; typedefs are followed.
-func (s *SemanticAnalysis) checkMapKeyScalar(ctx context.Context, view *cache.View, ix *Index, pf *cache.ParsedFile, key *syntax.FieldType) *Diagnostic {
-	kind := s.mapKeyKind(ctx, view, ix, pf, key, 0)
-	if kind == "" {
-		return nil
-	}
-
-	return &Diagnostic{
-		Span:     SpanOf(pf, key),
-		Severity: SeverityError,
-		Code:     CodeNonScalarMapKey,
-		Message:  fmt.Sprintf("map key must be a scalar type, found %s", kind),
-	}
-}
-
-// mapKeyKind reports why key is not a scalar map key: the container kind,
-// or the definition kind for struct-like types. "" means scalar: a base
-// type, an enum, or a typedef chain ending there.
-func (s *SemanticAnalysis) mapKeyKind(ctx context.Context, view *cache.View, ix *Index, pf *cache.ParsedFile, key *syntax.FieldType, depth int) string {
-	if key == nil {
-		return ""
-	}
-
-	switch key.Kind {
-	case syntax.TypeBase:
-		return ""
-	case syntax.TypeMap:
-		return "map"
-	case syntax.TypeList:
-		return "list"
-	case syntax.TypeSet:
-		return "set"
-	case syntax.TypeIdent:
-		name := TypeReferenceName(key)
-		if name == "" || IsBasicType(name) || depth > 8 {
-			return ""
-		}
-
-		def, err := ix.ResolveType(ctx, pf, key)
-		if err != nil || def == nil {
-			return ""
-		}
-
-		switch def.Kind {
-		case DefinitionEnum:
-			return ""
-		case DefinitionStruct, DefinitionUnion, DefinitionException:
-			return kindLabel(def.Kind)
-		case DefinitionTypedef:
-			td, ok := def.Node.(*syntax.Typedef)
-			if !ok {
-				return ""
-			}
-
-			return s.mapKeyKind(ctx, view, ix, def.Parsed, td.Type, depth+1)
-		}
-	}
-
-	return ""
-}
-
-// kindLabel is the message label of a definition kind.
-func kindLabel(k DefinitionKind) string {
-	switch k {
-	case DefinitionStruct:
-		return "struct"
-	case DefinitionUnion:
-		return "union"
-	case DefinitionException:
-		return "exception"
-	}
-
-	return "type"
 }

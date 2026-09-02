@@ -188,7 +188,7 @@ Output is one line per diagnostic:
 
 ```text
 lints.thrift:37:1  warning  unused include "unused.thrift"
-lints.thrift:132:10  error  map key must be a scalar type, found struct
+lints.thrift:132:10  warning  map key must be a scalar type, found struct
 ```
 
 The checks:
@@ -200,7 +200,7 @@ The checks:
 | `duplicate <kind> <name>`                                  | error    | duplicate struct/enum/typedef/const/service names, members, fields, arguments, functions |
 | `enum value N duplicates X`                                | error    | two enum members resolve to the same value                                               |
 | `duplicate map key` / `duplicate set value`                | error    | repeated constant keys/values                                                            |
-| `map key must be a scalar type`                            | error    | struct, union, exception, or container used as a map key                                 |
+| `map key must be a scalar type`                            | warning  | struct, union, exception, or container used as a map key                                 |
 | `field type doesn't exist` / `default value doesn't exist` | error    | unresolved reference                                                                     |
 | `expect X but got Y`                                       | error    | default value does not match the field type                                              |
 | `unused include "x.thrift"`                                | warning  | no reference in the file resolves into the include                                       |

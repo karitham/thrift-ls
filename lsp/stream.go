@@ -25,6 +25,9 @@ type StreamServer struct {
 // own config from its workspace folder at creation, with CLI overlaid.
 type Options struct {
 	Config options.Patch
+	// ConfigDefaults is applied below discovered folder configuration. An
+	// empty patch uses the package defaults.
+	ConfigDefaults options.Patch
 	// ConfigPath pins an explicit --config file, skipping per-folder
 	// discovery.
 	ConfigPath string

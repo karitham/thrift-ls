@@ -243,6 +243,7 @@ func Defaults() []Analyzer {
 		EachFile(&UnusedIncludeCheck{}),
 		EachFile(&IncludeShadowCheck{}),
 		EachFile(&SemanticAnalysis{}),
+		EachFile(&NonScalarMapKeyCheck{}),
 	}
 }
 

@@ -60,16 +60,6 @@ func cmpAll(ds []Diagnostic) []diagCmp {
 	return out
 }
 
-// msgs returns the messages of a file's diagnostics, in document order.
-func msgs(r Report, file uri.URI) []string {
-	out := make([]string, 0, len(r[file]))
-	for _, d := range r[file] {
-		out = append(out, d.Message)
-	}
-
-	return out
-}
-
 // buildFolderSnapshotForTest builds a snapshot whose view root is folder,
 // with the given files opened in the overlay.
 func buildFolderSnapshotForTest(t *testing.T, folder string, files []*cache.FileChange) *cache.View {

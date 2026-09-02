@@ -38,6 +38,23 @@ func TestFormatPatchOptions(t *testing.T) {
 	}
 }
 
+func TestFormatPatchApplyDoesNotMutateBase(t *testing.T) {
+	baseBreak := true
+	overlayBreak := false
+	base := FormatPatch{Break: &Break{Structs: &baseBreak}}
+	overlay := FormatPatch{Break: &Break{Structs: &overlayBreak}}
+
+	result := overlay.Apply(base)
+
+	if *result.Break.Structs != false {
+		t.Fatalf("result break.structs = %v, want false", *result.Break.Structs)
+	}
+
+	if *base.Break.Structs != true {
+		t.Fatalf("base break.structs = %v, want true", *base.Break.Structs)
+	}
+}
+
 // TestFormatPatchSeparatorModes maps every config value to the separator
 // modes, per construct.
 func TestFormatPatchSeparatorModes(t *testing.T) {

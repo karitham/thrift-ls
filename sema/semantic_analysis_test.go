@@ -176,7 +176,7 @@ struct TestUUID {
 	}
 }
 
-func Test_SemanticAnalysis_MapKeyScalar(t *testing.T) {
+func Test_NonScalarMapKeyCheck(t *testing.T) {
 	tests := []struct {
 		name    string
 		content string
@@ -235,7 +235,7 @@ func Test_SemanticAnalysis_MapKeyScalar(t *testing.T) {
 				},
 			})
 
-			got := analyzeOne(t, view, "file:///tmp/user.thrift")
+			got := runOne(t, EachFile(&NonScalarMapKeyCheck{}), view, "file:///tmp/user.thrift")["file:///tmp/user.thrift"]
 
 			var msgs []string
 			for _, d := range got {

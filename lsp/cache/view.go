@@ -326,9 +326,7 @@ func (v *View) Generation() uint64 {
 // evicted entries.
 func (v *View) Evict(files ...uri.URI) {
 	uris := make([]uri.URI, 0, len(files))
-	for _, file := range files {
-		uris = append(uris, file)
-	}
+	uris = append(uris, files...)
 
 	slices.Sort(uris)
 	uris = slices.Compact(uris)

@@ -28,6 +28,7 @@ type Server struct {
 	// CLI); every view uses it when configPath pins a file, otherwise each
 	// view resolves its own config from its folder.
 	explicit     options.Patch
+	defaults     options.Patch
 	configPath   string
 	configFinder func(string) (string, error)
 	version      string
@@ -94,11 +95,13 @@ func NewServer(fs cache.FileSource, client protocol.Client, opts Options) *Serve
 	if version == "" {
 		version = ServerVersion
 	}
+	defaults := opts.ConfigDefaults.Apply(options.Default())
 
 	server := &Server{
 		session:      cache.NewSession(fs),
 		client:       client,
 		explicit:     opts.Config,
+		defaults:     defaults,
 		configPath:   opts.ConfigPath,
 		configFinder: configFinder,
 		version:      version,
@@ -220,7 +223,7 @@ func (s *Server) viewConfig(folder uri.URI) options.Patch {
 
 	s.clearConfigIssue(folder)
 
-	return s.cli.Apply(options.Effective(cfg))
+	return s.cli.Apply(cfg.Apply(s.defaults))
 }
 
 // recordConfigIssue remembers and announces a rejected folder config. The
@@ -302,9 +305,9 @@ func (s *Server) notifyConfigIssue(folder uri.URI, issue configIssue) {
 }
 
 // defaultConfig is the fallback for a folder without a usable config
-// file: the defaults with the CLI overlay.
+// file: the configured defaults with the CLI overlay.
 func (s *Server) defaultConfig() options.Patch {
-	return s.cli.Apply(options.Default())
+	return s.cli.Apply(s.defaults)
 }
 
 // applyLogLevel applies the first view config's log level; the logger is
@@ -330,13 +333,13 @@ func (s *Server) formatOptions(view *cache.View) formatter.Options {
 	overlay := s.workspaceOverlay
 	s.optsMu.RUnlock()
 
-	fopts, err := overlay.Apply(s.folderConfig(view.Folder())).FormatPatch.Options()
+	fopts, err := overlay.Apply(s.folderConfig(view.Folder())).Options()
 	if err != nil {
 		// Both layers were validated when stored; this is unreachable
 		// unless a view config was corrupted.
 		logError("formatter options rejected", err)
 
-		fopts, _ = s.folderConfig(view.Folder()).FormatPatch.Options()
+		fopts, _ = s.folderConfig(view.Folder()).Options()
 	}
 
 	return fopts

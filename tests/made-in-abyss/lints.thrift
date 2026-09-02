@@ -26,7 +26,7 @@
 //                              exist"
 //   const CURSED_LOCATIONS     DuplicateCheck      — "duplicate map key
 //                              \"zone1\"", "duplicate set value 4"
-//   struct KeyedVault          SemanticAnalysis — "map key must be a
+//   struct KeyedVault          NonScalarMapKeyCheck — "map key must be a
 //                              scalar type, found struct" (the enum-key
 //                              map stays clean)
 //
@@ -122,7 +122,7 @@ const map<string, set<i32>> CURSED_LOCATIONS = {
   "zone1": [7, 8, 9],
 }
 
-// SemanticAnalysis — KeyStone is a struct, so it cannot be a map key; the
+// NonScalarMapKeyCheck — KeyStone is a struct, so it cannot be a map key; the
 // enum-keyed map on the second field is valid.
 struct KeyStone {
   1: i32 depth,
