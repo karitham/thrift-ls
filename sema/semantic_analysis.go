@@ -28,7 +28,7 @@ func (s *SemanticAnalysis) AnalyzeFile(ctx context.Context, f File) ([]Diagnosti
 // resolving to no enum value or const at any nesting depth, and field defaults
 // or const values whose kind — at any literal depth — mismatches the declared
 // type's underlying kind.
-func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, view *store.View, ix *Index, pf *store.ParsedFile) []Diagnostic {
+func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, view Graph, ix *Index, pf *store.ParsedFile) []Diagnostic {
 	res := make([]Diagnostic, 0)
 
 	syntax.Walk(pf.AST(), func(n syntax.Node) bool {
@@ -57,7 +57,7 @@ func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, view *store
 // resolves to no definition. Matching the upfluence compiler, the name of
 // a structured annotation must be a declared type: the compiler errors at
 // parse time ("Type %s does not exist"); here the semantic pass owns it.
-func (s *SemanticAnalysis) checkAnnotationTypeExist(ctx context.Context, view *store.View, ix *Index,
+func (s *SemanticAnalysis) checkAnnotationTypeExist(ctx context.Context, view Graph, ix *Index,
 	pf *store.ParsedFile, sa *syntax.StructuredAnnotation,
 ) (res []Diagnostic) {
 	if sa == nil || sa.Name == nil {
@@ -79,7 +79,7 @@ func (s *SemanticAnalysis) checkAnnotationTypeExist(ctx context.Context, view *s
 	})
 }
 
-func (s *SemanticAnalysis) checkConstValueExist(ctx context.Context, view *store.View, ix *Index,
+func (s *SemanticAnalysis) checkConstValueExist(ctx context.Context, view Graph, ix *Index,
 	pf *store.ParsedFile, cst *syntax.ConstValue,
 ) (res []Diagnostic) {
 	if cst == nil || cst.Kind != syntax.ValueIdent {
@@ -396,7 +396,7 @@ func mismatchDiagnostic(pf *store.ParsedFile, value *syntax.ConstValue, expect, 
 // checkTypeExist reports a single type reference that resolves to no
 // definition. The walk visits every FieldType individually — including
 // container element types — so this needs no recursion.
-func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, view *store.View, ix *Index,
+func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, view Graph, ix *Index,
 	pf *store.ParsedFile, ft *syntax.FieldType,
 ) (res []Diagnostic) {
 	if ft == nil || ft.Kind != syntax.TypeIdent {

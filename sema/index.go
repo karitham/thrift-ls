@@ -21,18 +21,18 @@ import (
 // are memoized per (file, name), so a request resolving the same name in
 // the same file repeatedly (references, diagnostics) resolves it once.
 type Index struct {
-	view *store.View
+	view Graph
 
 	resolved map[resolveKey]*Resolved
 }
 
 // NewIndex returns an Index over the view's store.
-func NewIndex(view *store.View) *Index {
+func NewIndex(view Graph) *Index {
 	return &Index{view: view}
 }
 
 // View returns the store view the index reads from.
-func (x *Index) View() *store.View {
+func (x *Index) View() Graph {
 	return x.view
 }
 
@@ -75,7 +75,7 @@ func (x *Index) memoize(file uri.URI, name string, kind resolveKind, def *Resolv
 // AST). It returns nil when the file cannot be read at all — an unresolved
 // include is a normal, reported condition, not a failure of the feature
 // answering a request.
-func parseDefinitionFile(ctx context.Context, view *store.View, file uri.URI) *store.ParsedFile {
+func parseDefinitionFile(ctx context.Context, view Graph, file uri.URI) *store.ParsedFile {
 	pf, err := view.Parse(ctx, file)
 	if err != nil {
 		slog.Debug("definition file unreadable", "file", file, "err", err)

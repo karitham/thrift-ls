@@ -8,6 +8,7 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
+	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
@@ -137,7 +138,7 @@ func jump(file uri.URI, pf *store.ParsedFile, node syntax.Node) protocol.Locatio
 // file's AST. Use this for nodes resolved from a different file than the
 // one under the cursor: the node's token indices are only meaningful in its
 // own document's token stream.
-func jumpInFile(ctx context.Context, view *store.View, file uri.URI, node syntax.Node) (protocol.Location, error) {
+func jumpInFile(ctx context.Context, view sema.Graph, file uri.URI, node syntax.Node) (protocol.Location, error) {
 	pf, err := view.Parse(ctx, file)
 	if err != nil {
 		return protocol.Location{}, err

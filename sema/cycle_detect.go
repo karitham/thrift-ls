@@ -68,7 +68,7 @@ type Include struct {
 // include edges of every file reachable from file, parsed through the
 // view so the ParsedFiles (and the include edges parsing records) are
 // shared with the rest of the analysis.
-func getIncludes(ctx context.Context, view *store.View, file uri.URI, includesMap *map[uri.URI][]Include) error {
+func getIncludes(ctx context.Context, view Graph, file uri.URI, includesMap *map[uri.URI][]Include) error {
 	pf, err := view.Parse(ctx, file)
 	if err != nil {
 		return err

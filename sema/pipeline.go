@@ -20,7 +20,7 @@ type File struct {
 }
 
 // View returns the run's view (include resolver, dependency graph).
-func (f File) View() *store.View {
+func (f File) View() Graph {
 	return f.run.view
 }
 
@@ -90,7 +90,7 @@ func (fa fileAnalyzer) Analyze(ctx context.Context, run *Run) error {
 
 // Run is one analysis pass. Analyzers add findings to it.
 type Run struct {
-	view   *store.View
+	view   Graph
 	files  []uri.URI
 	ix     *Index
 	report Report
@@ -249,7 +249,7 @@ func Defaults() []Analyzer {
 
 // Run analyzes changed over view: one run, one shared Index across all
 // changed files and all analyzers.
-func (p *Pipeline) Run(ctx context.Context, view *store.View, changed []uri.URI) (Report, error) {
+func (p *Pipeline) Run(ctx context.Context, view Graph, changed []uri.URI) (Report, error) {
 	run := &Run{view: view, files: changed, report: Report{}, cfg: p.cfg}
 
 	var errs []error
@@ -270,7 +270,7 @@ func (p *Pipeline) Run(ctx context.Context, view *store.View, changed []uri.URI)
 // CodeActions returns the actions for span in file: quickfixes from the
 // report's diagnostics overlapping span (inline fixes first, then the
 // fixers), then the action providers' refactors.
-func (p *Pipeline) CodeActions(ctx context.Context, view *store.View, file uri.URI, span Span, report Report) []Action {
+func (p *Pipeline) CodeActions(ctx context.Context, view Graph, file uri.URI, span Span, report Report) []Action {
 	pf, err := view.Parse(ctx, file)
 	if err != nil || pf.AST() == nil {
 		return nil
