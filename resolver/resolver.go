@@ -17,39 +17,6 @@ type Checker interface {
 	Exists(ctx context.Context, path string) bool
 }
 
-// absFS adapts an fs.FS so absolute names work: os.DirFS rejects paths
-// starting with "/" (fs.ValidPath), but the resolver works with absolute
-// paths.
-type absFS struct{ fsys fs.FS }
-
-// isWindowsPath reports whether name is a native Windows path (drive letter
-// or backslash separators). Such names cannot go through an fs.FS, which
-// only accepts slash-separated relative names; the underlying fs is the
-// real filesystem anyway (tests use POSIX names), so go straight to the OS.
-func isWindowsPath(name string) bool {
-	return strings.Contains(name, `\`) ||
-		(len(name) >= 2 && name[1] == ':' && (name[0]|0x20) >= 'a' && (name[0]|0x20) <= 'z')
-}
-
-func (a absFS) Open(name string) (fs.File, error) {
-	if isWindowsPath(name) {
-		return os.Open(name)
-	}
-
-	return a.fsys.Open(strings.TrimPrefix(name, "/"))
-}
-
-func (a absFS) Stat(name string) (fs.FileInfo, error) {
-	if isWindowsPath(name) {
-		return os.Stat(name)
-	}
-
-	return fs.Stat(a.fsys, strings.TrimPrefix(name, "/"))
-}
-
-// FS returns an fs.FS over the real filesystem that accepts absolute paths.
-func FS() fs.FS { return absFS{os.DirFS("/")} }
-
 // Resolver resolves include paths for Thrift files.
 // It provides a centralized, pure implementation that can be used
 // by both CLI and LSP components.
