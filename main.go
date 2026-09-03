@@ -21,8 +21,6 @@ import (
 	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 	"github.com/karitham/thrift-ls/vfs"
-
-	"go.lsp.dev/uri"
 )
 
 // rootCommand returns the thrift-ls urfave command.
@@ -349,11 +347,6 @@ func dumpIncludes(ctx context.Context, file string, cmd *cli.Command) error {
 		return err
 	}
 
-	content, err := os.ReadFile(abs)
-	if err != nil {
-		return err
-	}
-
 	cfg, err := loadConfig(cmd.String("config"), filepath.Dir(abs))
 	if err != nil {
 		return err
@@ -367,23 +360,12 @@ func dumpIncludes(ctx context.Context, file string, cmd *cli.Command) error {
 
 	patch = cliPatch.Apply(patch)
 
-	fs := vfs.NewMemoizedFS()
-	sess := store.NewSession(fs)
-	sess.AddView(uri.File(filepath.Dir(abs)), derefStrings(patch.IncludePaths))
-
-	u := uri.File(abs)
-
-	err = sess.Update(ctx, []*vfs.FileChange{
-		{URI: u, Version: 0, Content: content, From: vfs.FileChangeTypeDidOpen},
-	})
+	_, view, uris, err := store.OpenDisk(ctx, []string{abs}, filepath.Dir(abs), derefStrings(patch.IncludePaths))
 	if err != nil {
 		return err
 	}
 
-	view, err := sess.ViewOf(u)
-	if err != nil {
-		return err
-	}
+	u := uris[0]
 
 	pf, err := view.Parse(ctx, u)
 	if err != nil {

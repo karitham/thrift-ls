@@ -133,7 +133,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 // semantic analysis, and lints — over files opened in a session rooted at
 // folder, and returns the diagnostics per file, keyed by absolute path.
 func runDiagnostics(ctx context.Context, files []string, folder string, includePaths []string, lint sema.Config, analyzers []sema.Analyzer) (map[string][]Diagnostic, error) {
-	_, view, uris, err := openSession(ctx, files, folder, includePaths)
+	_, view, uris, err := store.OpenDisk(ctx, files, folder, includePaths)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +164,7 @@ func runDiagnostics(ctx context.Context, files []string, folder string, includeP
 // folder — while resolution reads the whole view, so fixing a greenfield
 // module resolves its types against the tree without touching the tree.
 func runFix(ctx context.Context, files []string, folder string, includePaths []string, lint sema.Config, analyzers []sema.Analyzer) (Result, error) {
-	sess, view, uris, err := openSession(ctx, files, folder, includePaths)
+	sess, view, uris, err := store.OpenDisk(ctx, files, folder, includePaths)
 	if err != nil {
 		return Result{}, err
 	}
@@ -291,32 +291,4 @@ func toSeverity(s sema.Severity) Severity {
 	default:
 		return SeverityWarning
 	}
-}
-
-// openSession opens a session with the files open in the overlay of
-// a view rooted at folder, and returns the session (needed to push new
-// content into the overlay later), its view, and the files' URIs.
-func openSession(ctx context.Context, files []string, folder string, includePaths []string) (*store.Session, *store.View, []uri.URI, error) {
-	sess := store.NewSession(vfs.NewMemoizedFS())
-	view := sess.AddView(uri.File(folder), includePaths)
-
-	changes := make([]*vfs.FileChange, 0, len(files))
-	uris := make([]uri.URI, 0, len(files))
-
-	for _, file := range files {
-		content, err := os.ReadFile(file)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
-		u := uri.File(file)
-		uris = append(uris, u)
-		changes = append(changes, &vfs.FileChange{URI: u, Version: 0, Content: content, From: vfs.FileChangeTypeDidOpen})
-	}
-
-	if err := sess.Update(ctx, changes); err != nil {
-		return nil, nil, nil, err
-	}
-
-	return sess, view, uris, nil
 }
