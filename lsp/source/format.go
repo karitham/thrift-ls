@@ -8,7 +8,7 @@ import (
 	"go.lsp.dev/protocol"
 
 	"github.com/karitham/thrift-ls/formatter"
-	"github.com/karitham/thrift-ls/lsp/mapper"
+	"github.com/karitham/thrift-ls/mapper"
 	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/vfs"
 )

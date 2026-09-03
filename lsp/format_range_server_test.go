@@ -8,7 +8,7 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/mapper"
+	"github.com/karitham/thrift-ls/mapper"
 )
 
 func TestServerRangeFormatting(t *testing.T) {

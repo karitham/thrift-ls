@@ -4,7 +4,7 @@ package lsptest
 // tests need to aim cursors at code. Tests see these plain types only;
 // translation from protocol types happens at the harness boundary.
 // Anything with real semantics, such as UTF-16 position math or edit
-// application, is reused from lsp/mapper rather than reimplemented here.
+// application, is reused from mapper rather than reimplemented here.
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ import (
 
 	"go.lsp.dev/protocol"
 
-	"github.com/karitham/thrift-ls/lsp/mapper"
+	"github.com/karitham/thrift-ls/mapper"
 )
 
 // Position is a zero-based line/character position; character counts UTF-16

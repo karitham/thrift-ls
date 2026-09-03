@@ -7,7 +7,7 @@ import (
 
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/mapper"
+	"github.com/karitham/thrift-ls/mapper"
 	"github.com/karitham/thrift-ls/syntax"
 	"github.com/karitham/thrift-ls/vfs"
 )

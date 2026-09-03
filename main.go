@@ -347,6 +347,11 @@ func dumpIncludes(ctx context.Context, file string, cmd *cli.Command) error {
 		return err
 	}
 
+	// Usage and file errors beat config errors, mirroring formatAction.
+	if _, err := os.Stat(abs); err != nil {
+		return err
+	}
+
 	cfg, err := loadConfig(cmd.String("config"), filepath.Dir(abs))
 	if err != nil {
 		return err
