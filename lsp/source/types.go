@@ -3,12 +3,12 @@ package source
 import (
 	"go.lsp.dev/protocol"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 type CompletionRequest struct {
 	Pos protocol.Position
-	Fh  cache.FileHandle
+	Fh  vfs.FileHandle
 }
 
 type CompletionItem struct {

@@ -1,4 +1,4 @@
-package cache
+package store
 
 import (
 	"context"
@@ -6,28 +6,30 @@ import (
 	"sync"
 
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 type Session struct {
 	// fs is the underlying file source (disk in production, in-memory in
-	// tests); the embedded overlayFS serves open-editor content over it.
-	fs FileSource
+	// tests); the embedded OverlayFS serves open-editor content over it.
+	fs vfs.FileSource
 
 	viewMu  sync.Mutex
 	views   []*View
 	viewMap map[uri.URI]*View // map of URI->best view
 
-	// The session owns the overlayFS: open-editor content lives here, and
+	// The session owns the OverlayFS: open-editor content lives here, and
 	// views read through it.
-	*overlayFS
+	*vfs.OverlayFS
 }
 
-func NewSession(fs FileSource) *Session {
+func NewSession(fs vfs.FileSource) *Session {
 	sess := &Session{
 		fs:        fs,
 		views:     make([]*View, 0),
 		viewMap:   make(map[uri.URI]*View),
-		overlayFS: NewOverlayFS(fs),
+		OverlayFS: vfs.NewOverlayFS(fs),
 	}
 
 	return sess
@@ -46,7 +48,7 @@ func (s *Session) AddView(folder uri.URI, includePaths []string) *View {
 		}
 	}
 
-	view := NewView(folder, s.overlayFS, includePaths)
+	view := NewView(folder, s.OverlayFS, includePaths)
 	s.views = append(s.views, view)
 	clear(s.viewMap)
 
@@ -128,5 +130,5 @@ func (s *Session) ViewOf(fileURI uri.URI) (*View, error) {
 }
 
 func (s *Session) WalkFiles(ctx context.Context, root uri.URI, fn func(uri.URI) error) error {
-	return s.overlayFS.WalkFiles(ctx, root, fn)
+	return s.OverlayFS.WalkFiles(ctx, root, fn)
 }

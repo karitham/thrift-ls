@@ -10,7 +10,8 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // Test_StructuredAnnotationNavigation covers the cursor features on
@@ -29,12 +30,12 @@ struct S {
 }
 `
 
-	view := cache.BuildViewForTest([]*cache.FileChange{
+	view := store.BuildViewForTest([]*vfs.FileChange{
 		{
 			URI:     "file:///tmp/anno.thrift",
 			Version: 0,
 			Content: []byte(content),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		},
 	})
 
@@ -49,7 +50,7 @@ struct S {
 	t.Run("locations", func(t *testing.T) {
 		tests := []struct {
 			name  string
-			probe func(context.Context, *cache.View, uri.URI, protocol.Position) ([]protocol.Location, error)
+			probe func(context.Context, *store.View, uri.URI, protocol.Position) ([]protocol.Location, error)
 			pos   protocol.Position
 			want  []protocol.Location
 		}{

@@ -9,7 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 func Test_IncludeShadowCheck(t *testing.T) {
@@ -50,15 +51,15 @@ func Test_IncludeShadowCheck(t *testing.T) {
 			require.NoError(t, os.MkdirAll(filepath.Join(folder, "camp"), 0o755))
 			filePath := writeThrift(t, folder, filepath.Join("camp", "main.thrift"), content)
 
-			view := cache.BuildViewForTestWithPaths([]string{
+			view := store.BuildViewForTestWithPaths([]string{
 				filepath.Join(folder, "laios"),
 				filepath.Join(folder, "senshi"),
-			}, []*cache.FileChange{
+			}, []*vfs.FileChange{
 				{
 					URI:     uri.File(filePath),
 					Version: 0,
 					Content: []byte(content),
-					From:    cache.FileChangeTypeDidOpen,
+					From:    vfs.FileChangeTypeDidOpen,
 				},
 			})
 

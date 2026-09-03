@@ -10,17 +10,18 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
-func buildSnapshotForTest(t *testing.T, files []*cache.FileChange) *cache.View {
+func buildSnapshotForTest(t *testing.T, files []*vfs.FileChange) *store.View {
 	t.Helper()
 
-	c := cache.NewMemoizedFS()
-	fs := cache.NewOverlayFS(c)
+	c := vfs.NewMemoizedFS()
+	fs := vfs.NewOverlayFS(c)
 	_ = fs.Update(t.Context(), files)
 
-	view := cache.NewView("file:///tmp", fs, nil)
+	view := store.NewView("file:///tmp", fs, nil)
 
 	for _, f := range files {
 		_, _ = view.Parse(t.Context(), f.URI)
@@ -74,13 +75,13 @@ func runCycleCheck(t *testing.T, files map[string]string, root string) []cyclePa
 
 	names := slices.Sorted(maps.Keys(files))
 
-	changes := make([]*cache.FileChange, 0, len(files))
+	changes := make([]*vfs.FileChange, 0, len(files))
 	for _, name := range names {
-		changes = append(changes, &cache.FileChange{
+		changes = append(changes, &vfs.FileChange{
 			URI:     uri.URI("file:///tmp/" + name),
 			Version: 0,
 			Content: []byte(files[name]),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		})
 	}
 
@@ -227,30 +228,30 @@ include "./test/address.thrift"`
 	file2 := `include "../user.thrift"`
 	file3 := `include "../user.thrift"`
 
-	view := buildSnapshotForTest(t, []*cache.FileChange{
+	view := buildSnapshotForTest(t, []*vfs.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
 			Content: []byte(file1),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		},
 		{
 			URI:     "file:///tmp/test/goods.thrift",
 			Version: 0,
 			Content: []byte(file2),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		},
 		{
 			URI:     "file:///tmp/test/address.thrift",
 			Version: 0,
 			Content: []byte(file3),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		},
 	})
 
 	// Expected includes, parsed through the same snapshot so the ParsedFile
 	// pointers match the ones getIncludes stores.
-	pfFor := func(uriStr string) *cache.ParsedFile {
+	pfFor := func(uriStr string) *store.ParsedFile {
 		pf, err := view.Parse(t.Context(), uri.URI(uriStr))
 		require.NoError(t, err)
 

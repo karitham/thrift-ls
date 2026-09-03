@@ -5,18 +5,18 @@ import (
 
 	"go.lsp.dev/protocol"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/lsp/source"
+	"github.com/karitham/thrift-ls/store"
 )
 
 func (s *Server) prepareRename(ctx context.Context, params *protocol.PrepareRenameParams) (*protocol.Range, error) {
-	return withView(s.viewOf, params.TextDocument.URI, func(view *cache.View) (*protocol.Range, error) {
+	return withView(s.viewOf, params.TextDocument.URI, func(view *store.View) (*protocol.Range, error) {
 		return source.PrepareRename(ctx, view, params.TextDocument.URI, params.Position)
 	})
 }
 
 func (s *Server) rename(ctx context.Context, params *protocol.RenameParams) (*protocol.WorkspaceEdit, error) {
-	return withView(s.viewOf, params.TextDocument.URI, func(view *cache.View) (*protocol.WorkspaceEdit, error) {
+	return withView(s.viewOf, params.TextDocument.URI, func(view *store.View) (*protocol.WorkspaceEdit, error) {
 		return source.Rename(ctx, view, params.TextDocument.URI, params.Position, params.NewName)
 	})
 }

@@ -20,16 +20,17 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/sema"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // utf16Snapshot parses src as htt.thrift.
-func utf16Snapshot(t *testing.T, src string) *cache.View {
+func utf16Snapshot(t *testing.T, src string) *store.View {
 	t.Helper()
 
-	return cache.BuildViewForTest([]*cache.FileChange{
-		{URI: "file:///tmp/htt.thrift", Version: 0, Content: []byte(src), From: cache.FileChangeTypeDidOpen},
+	return store.BuildViewForTest([]*vfs.FileChange{
+		{URI: "file:///tmp/htt.thrift", Version: 0, Content: []byte(src), From: vfs.FileChangeTypeDidOpen},
 	})
 }
 
@@ -40,9 +41,9 @@ func utf16Snapshot(t *testing.T, src string) *cache.View {
 func TestDefinitionUTF16(t *testing.T) {
 	// htt.thrift declares HTT after an emoji comment; sakuragaoka.thrift
 	// references it. The returned definition range must use UTF-16 columns.
-	view := cache.BuildViewForTest([]*cache.FileChange{
-		{URI: "file:///tmp/htt.thrift", Version: 0, Content: []byte("/* 😀 */ struct HTT {}"), From: cache.FileChangeTypeDidOpen},
-		{URI: "file:///tmp/sakuragaoka.thrift", Version: 0, Content: []byte("include \"htt.thrift\"\nstruct LightMusicClub {\n  1: required HTT band\n}"), From: cache.FileChangeTypeDidOpen},
+	view := store.BuildViewForTest([]*vfs.FileChange{
+		{URI: "file:///tmp/htt.thrift", Version: 0, Content: []byte("/* 😀 */ struct HTT {}"), From: vfs.FileChangeTypeDidOpen},
+		{URI: "file:///tmp/sakuragaoka.thrift", Version: 0, Content: []byte("include \"htt.thrift\"\nstruct LightMusicClub {\n  1: required HTT band\n}"), From: vfs.FileChangeTypeDidOpen},
 	})
 
 	locs, err := Definition(t.Context(), view, "file:///tmp/sakuragaoka.thrift", protocol.Position{
@@ -127,9 +128,9 @@ func TestFoldingUTF16(t *testing.T) {
 // TestRenameUTF16 exercises the same path as Definition through rename:
 // the workspace edit for the definition file must use UTF-16 columns.
 func TestRenameUTF16(t *testing.T) {
-	view := cache.BuildViewForTest([]*cache.FileChange{
-		{URI: "file:///tmp/htt.thrift", Version: 0, Content: []byte("/* 😀 */ struct HTT {}"), From: cache.FileChangeTypeDidOpen},
-		{URI: "file:///tmp/sakuragaoka.thrift", Version: 0, Content: []byte("include \"htt.thrift\"\nstruct LightMusicClub {\n  1: required HTT band\n}"), From: cache.FileChangeTypeDidOpen},
+	view := store.BuildViewForTest([]*vfs.FileChange{
+		{URI: "file:///tmp/htt.thrift", Version: 0, Content: []byte("/* 😀 */ struct HTT {}"), From: vfs.FileChangeTypeDidOpen},
+		{URI: "file:///tmp/sakuragaoka.thrift", Version: 0, Content: []byte("include \"htt.thrift\"\nstruct LightMusicClub {\n  1: required HTT band\n}"), From: vfs.FileChangeTypeDidOpen},
 	})
 
 	edit, err := Rename(t.Context(), view, "file:///tmp/sakuragaoka.thrift", protocol.Position{

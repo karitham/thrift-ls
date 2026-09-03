@@ -12,10 +12,11 @@ import (
 
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/sema"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // Request is one check run over materialized files.
@@ -87,7 +88,7 @@ type Result struct {
 	Fix         *FixSummary
 }
 
-// Run checks req.Files through the same cache and checker pipeline the LSP
+// Run checks req.Files through the same store and checker pipeline the LSP
 // uses, and returns the diagnostics per file. It exits no process and
 // prints nothing; severity gating (failing CI on errors) belongs to the
 // caller.
@@ -180,8 +181,8 @@ func runFix(ctx context.Context, files []string, folder string, includePaths []s
 
 		version++
 
-		if err := sess.Update(ctx, []*cache.FileChange{
-			{URI: u, Version: version, Content: content, From: cache.FileChangeTypeDidChange},
+		if err := sess.Update(ctx, []*vfs.FileChange{
+			{URI: u, Version: version, Content: content, From: vfs.FileChangeTypeDidChange},
 		}); err != nil {
 			return err
 		}
@@ -240,7 +241,7 @@ func runFix(ctx context.Context, files []string, folder string, includePaths []s
 // toDiagnostics translates one file's pipeline findings into printable
 // diagnostics: spans map through the file's mapper to 1-based UTF-16
 // columns.
-func toDiagnostics(ctx context.Context, view *cache.View, file uri.URI, diags []sema.Diagnostic) ([]Diagnostic, error) {
+func toDiagnostics(ctx context.Context, view *store.View, file uri.URI, diags []sema.Diagnostic) ([]Diagnostic, error) {
 	pf, err := view.Parse(ctx, file)
 	if err != nil {
 		return nil, err
@@ -267,7 +268,7 @@ func toDiagnostics(ctx context.Context, view *cache.View, file uri.URI, diags []
 // position maps a parser offset to 1-based file coordinates with UTF-16
 // columns. When the offset does not map, the parser's own 1-based
 // coordinates pass through.
-func position(pf *cache.ParsedFile, pos syntax.Position) (line, col int) {
+func position(pf *store.ParsedFile, pos syntax.Position) (line, col int) {
 	p, err := pf.Mapper().OffsetToLSPPosition(pos.Offset)
 	if err != nil {
 		return pos.Line, pos.Col
@@ -295,11 +296,11 @@ func toSeverity(s sema.Severity) Severity {
 // openSession opens a session with the files open in the overlay of
 // a view rooted at folder, and returns the session (needed to push new
 // content into the overlay later), its view, and the files' URIs.
-func openSession(ctx context.Context, files []string, folder string, includePaths []string) (*cache.Session, *cache.View, []uri.URI, error) {
-	sess := cache.NewSession(cache.NewMemoizedFS())
+func openSession(ctx context.Context, files []string, folder string, includePaths []string) (*store.Session, *store.View, []uri.URI, error) {
+	sess := store.NewSession(vfs.NewMemoizedFS())
 	view := sess.AddView(uri.File(folder), includePaths)
 
-	changes := make([]*cache.FileChange, 0, len(files))
+	changes := make([]*vfs.FileChange, 0, len(files))
 	uris := make([]uri.URI, 0, len(files))
 
 	for _, file := range files {
@@ -310,7 +311,7 @@ func openSession(ctx context.Context, files []string, folder string, includePath
 
 		u := uri.File(file)
 		uris = append(uris, u)
-		changes = append(changes, &cache.FileChange{URI: u, Version: 0, Content: content, From: cache.FileChangeTypeDidOpen})
+		changes = append(changes, &vfs.FileChange{URI: u, Version: 0, Content: content, From: vfs.FileChangeTypeDidOpen})
 	}
 
 	if err := sess.Update(ctx, changes); err != nil {

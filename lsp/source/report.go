@@ -6,15 +6,15 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/sema"
+	"github.com/karitham/thrift-ls/store"
 )
 
 // ToProtocolDiagnostics translates one file's pipeline findings into LSP
 // wire diagnostics: spans map through the file's mapper to UTF-16
 // columns, severities map onto the protocol scale, and the Source field
 // is set here — it is LSP presentation, not core data.
-func ToProtocolDiagnostics(ctx context.Context, view *cache.View, file uri.URI, diags []sema.Diagnostic) ([]protocol.Diagnostic, error) {
+func ToProtocolDiagnostics(ctx context.Context, view *store.View, file uri.URI, diags []sema.Diagnostic) ([]protocol.Diagnostic, error) {
 	pf, err := view.Parse(ctx, file)
 	if err != nil {
 		return nil, err

@@ -9,23 +9,23 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/sema"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
 // highlightKind maps a reference kind to the highlight type.
-var highlightKind = map[cache.RefKind]protocol.DocumentHighlightKind{
-	cache.RefFieldType:      protocol.DocumentHighlightKindText,
-	cache.RefSignatureType:  protocol.DocumentHighlightKindText,
-	cache.RefAnnotationType: protocol.DocumentHighlightKindText,
-	cache.RefConstValue:     protocol.DocumentHighlightKindRead,
-	cache.RefServiceExtends: protocol.DocumentHighlightKindText,
+var highlightKind = map[store.RefKind]protocol.DocumentHighlightKind{
+	store.RefFieldType:      protocol.DocumentHighlightKindText,
+	store.RefSignatureType:  protocol.DocumentHighlightKindText,
+	store.RefAnnotationType: protocol.DocumentHighlightKindText,
+	store.RefConstValue:     protocol.DocumentHighlightKindRead,
+	store.RefServiceExtends: protocol.DocumentHighlightKindText,
 }
 
 // Reference returns every usage of the symbol at pos, including usage
 // in files that include the definition.
-func Reference(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Position) ([]protocol.Location, error) {
+func Reference(ctx context.Context, view *store.View, file uri.URI, pos protocol.Position) ([]protocol.Location, error) {
 	refs, err := searchReferences(ctx, view, file, pos)
 	if err != nil {
 		return nil, err
@@ -44,7 +44,7 @@ func Reference(ctx context.Context, view *cache.View, file uri.URI, pos protocol
 }
 
 // Highlight returns the document highlight ranges for the symbol at pos.
-func Highlight(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Position) ([]protocol.DocumentHighlight, error) {
+func Highlight(ctx context.Context, view *store.View, file uri.URI, pos protocol.Position) ([]protocol.DocumentHighlight, error) {
 	pf, target, err := resolveTarget(ctx, view, file, pos)
 	if err != nil {
 		return nil, err
@@ -95,7 +95,7 @@ func Highlight(ctx context.Context, view *cache.View, file uri.URI, pos protocol
 }
 
 // searchReferences dispatches to the reference search for the target kind.
-func searchReferences(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Position) ([]indexHit, error) {
+func searchReferences(ctx context.Context, view *store.View, file uri.URI, pos protocol.Position) ([]indexHit, error) {
 	pf, target, err := resolveTarget(ctx, view, file, pos)
 	if err != nil {
 		return nil, err
@@ -118,7 +118,7 @@ func searchReferences(ctx context.Context, view *cache.View, file uri.URI, pos p
 }
 
 // searchTypeNameRefs resolves the type reference and finds all usages.
-func searchTypeNameRefs(ctx context.Context, ix *sema.Index, view *cache.View, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
+func searchTypeNameRefs(ctx context.Context, ix *sema.Index, view *store.View, pf *store.ParsedFile, target *target) ([]indexHit, error) {
 	ft := target.fieldType()
 	if ft == nil {
 		return nil, nil
@@ -143,7 +143,7 @@ func searchTypeNameRefs(ctx context.Context, ix *sema.Index, view *cache.View, p
 		return nil, err
 	}
 
-	hits := []indexHit{{loc: loc, text: def.Name.Text, kind: cache.RefFieldType}}
+	hits := []indexHit{{loc: loc, text: def.Name.Text, kind: store.RefFieldType}}
 
 	refs, err := ix.ReferencesTo(ctx, def, sema.RefKindsFor(def.Kind)...)
 	if err != nil {
@@ -159,7 +159,7 @@ func searchTypeNameRefs(ctx context.Context, ix *sema.Index, view *cache.View, p
 }
 
 // searchConstValueRefs resolves a const-value or enum-value reference.
-func searchConstValueRefs(ctx context.Context, ix *sema.Index, view *cache.View, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
+func searchConstValueRefs(ctx context.Context, ix *sema.Index, view *store.View, pf *store.ParsedFile, target *target) ([]indexHit, error) {
 	value := target.node.(*syntax.ConstValue)
 
 	def, err := ix.ResolveValue(ctx, pf, value)
@@ -176,9 +176,9 @@ func searchConstValueRefs(ctx context.Context, ix *sema.Index, view *cache.View,
 		return nil, err
 	}
 
-	hits := []indexHit{{loc: loc, text: def.Name.Text, kind: cache.RefConstValue}}
+	hits := []indexHit{{loc: loc, text: def.Name.Text, kind: store.RefConstValue}}
 
-	refs, err := ix.ReferencesTo(ctx, def, cache.RefConstValue)
+	refs, err := ix.ReferencesTo(ctx, def, store.RefConstValue)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +192,7 @@ func searchConstValueRefs(ctx context.Context, ix *sema.Index, view *cache.View,
 }
 
 // searchServiceRefs finds the includes and extends referencing a service.
-func searchServiceRefs(ctx context.Context, ix *sema.Index, view *cache.View, file uri.URI, svcName string) ([]indexHit, error) {
+func searchServiceRefs(ctx context.Context, ix *sema.Index, view *store.View, file uri.URI, svcName string) ([]indexHit, error) {
 	pf, err := view.Parse(ctx, file)
 	if err != nil || pf.AST() == nil {
 		return nil, err
@@ -203,7 +203,7 @@ func searchServiceRefs(ctx context.Context, ix *sema.Index, view *cache.View, fi
 		return nil, nil
 	}
 
-	refs, err := ix.ReferencesTo(ctx, def, cache.RefServiceExtends)
+	refs, err := ix.ReferencesTo(ctx, def, store.RefServiceExtends)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +213,7 @@ func searchServiceRefs(ctx context.Context, ix *sema.Index, view *cache.View, fi
 
 // searchDefRefs handles references from a definition name: struct, union,
 // exception, enum, typedef, const, enum value, and service names.
-func searchDefRefs(ctx context.Context, ix *sema.Index, view *cache.View, file uri.URI, pf *cache.ParsedFile, target *target) ([]indexHit, error) {
+func searchDefRefs(ctx context.Context, ix *sema.Index, view *store.View, file uri.URI, pf *store.ParsedFile, target *target) ([]indexHit, error) {
 	id := target.identifier()
 	if id == nil {
 		return nil, nil
@@ -222,15 +222,15 @@ func searchDefRefs(ctx context.Context, ix *sema.Index, view *cache.View, file u
 	parent := target.parent
 
 	var def *sema.Resolved
-	var kinds []cache.RefKind
+	var kinds []store.RefKind
 
 	switch parent.(type) {
 	case *syntax.Const:
 		def = sema.DefFromNode(pf, parent)
-		kinds = []cache.RefKind{cache.RefConstValue}
+		kinds = []store.RefKind{store.RefConstValue}
 	case *syntax.EnumValue:
 		def = sema.DefFromNode(pf, id)
-		kinds = []cache.RefKind{cache.RefConstValue}
+		kinds = []store.RefKind{store.RefConstValue}
 	case *syntax.Service:
 		svcName := id.Text
 		if strings.Contains(svcName, ".") {
@@ -261,7 +261,7 @@ func searchDefRefs(ctx context.Context, ix *sema.Index, view *cache.View, file u
 		// Renaming an enum definition also touches value positions
 		// qualified with the enum name ("Color.RED").
 		if kind == sema.DefinitionEnum {
-			kinds = append(kinds, cache.RefConstValue)
+			kinds = append(kinds, store.RefConstValue)
 		}
 	}
 
@@ -300,7 +300,7 @@ func definitionKindOf(n syntax.Node) (sema.DefinitionKind, bool) {
 
 // hitLocs translates sema hits to LSP locations: each hit's parser-
 // coordinate span maps through its own file's mapper.
-func hitLocs(ctx context.Context, view *cache.View, hits []sema.Hit) ([]indexHit, error) {
+func hitLocs(ctx context.Context, view *store.View, hits []sema.Hit) ([]indexHit, error) {
 	out := make([]indexHit, 0, len(hits))
 
 	for _, h := range hits {
@@ -317,7 +317,7 @@ func hitLocs(ctx context.Context, view *cache.View, hits []sema.Hit) ([]indexHit
 
 // hitLoc translates one hit's parser-coordinate span to an LSP location
 // through the hit file's mapper.
-func hitLoc(ctx context.Context, view *cache.View, h sema.Hit) (protocol.Location, error) {
+func hitLoc(ctx context.Context, view *store.View, h sema.Hit) (protocol.Location, error) {
 	pf, err := view.Parse(ctx, h.File)
 	if err != nil {
 		return protocol.Location{}, err
@@ -331,7 +331,7 @@ func hitLoc(ctx context.Context, view *cache.View, h sema.Hit) (protocol.Locatio
 type indexHit struct {
 	loc  protocol.Location
 	text string
-	kind cache.RefKind
+	kind store.RefKind
 }
 
 // validReferenceDefinitionType lists definition kinds that can have type

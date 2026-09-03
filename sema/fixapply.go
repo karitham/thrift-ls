@@ -8,8 +8,9 @@ import (
 
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // maxFixPasses bounds FixAll's fixpoint loop. One pass may unlock another
@@ -21,7 +22,7 @@ const maxFixPasses = 10
 // fixes of the report's diagnostics for it, then the fixers' output for
 // each diagnostic. Fixes are edits in parser coordinates on the file's
 // current content.
-func (p *Pipeline) FixesForFile(ctx context.Context, view *cache.View, file uri.URI, report Report) []Fix {
+func (p *Pipeline) FixesForFile(ctx context.Context, view *store.View, file uri.URI, report Report) []Fix {
 	pf, err := view.Parse(ctx, file)
 	if err != nil || pf.AST() == nil {
 		return nil
@@ -198,7 +199,7 @@ type FixResult struct {
 // content durable (write to disk, update the editor overlay) and visible
 // to view's file source before returning. FixAll drives view.Update
 // itself, so persist must not.
-func (p *Pipeline) FixAll(ctx context.Context, view *cache.View, targets []uri.URI, persist func(context.Context, uri.URI, []byte) error) (FixResult, error) {
+func (p *Pipeline) FixAll(ctx context.Context, view *store.View, targets []uri.URI, persist func(context.Context, uri.URI, []byte) error) (FixResult, error) {
 	var res FixResult
 
 	targets = slices.Clone(targets)
@@ -230,7 +231,7 @@ func (p *Pipeline) FixAll(ctx context.Context, view *cache.View, targets []uri.U
 
 		res.Remaining = report
 
-		changes := make([]*cache.FileChange, 0, len(targets))
+		changes := make([]*vfs.FileChange, 0, len(targets))
 		passSkipped := make([]SkippedFix, 0, len(res.Skipped))
 		applied := 0
 
@@ -292,7 +293,7 @@ func (p *Pipeline) FixAll(ctx context.Context, view *cache.View, targets []uri.U
 			applied += len(ok)
 			res.Applied += len(ok)
 
-			changes = append(changes, &cache.FileChange{URI: u, Version: pass + 1, Content: out, From: cache.FileChangeTypeDidChange})
+			changes = append(changes, &vfs.FileChange{URI: u, Version: pass + 1, Content: out, From: vfs.FileChangeTypeDidChange})
 			changed[u] = struct{}{}
 		}
 

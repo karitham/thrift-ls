@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -40,7 +40,7 @@ func (c *NonScalarMapKeyCheck) AnalyzeFile(ctx context.Context, f File) ([]Diagn
 	return res, nil
 }
 
-func (c *NonScalarMapKeyCheck) checkMapKeyScalar(ctx context.Context, view *cache.View, ix *Index, pf *cache.ParsedFile, key *syntax.FieldType) *Diagnostic {
+func (c *NonScalarMapKeyCheck) checkMapKeyScalar(ctx context.Context, view *store.View, ix *Index, pf *store.ParsedFile, key *syntax.FieldType) *Diagnostic {
 	kind := c.mapKeyKind(ctx, view, ix, pf, key, 0)
 	if kind == "" {
 		return nil
@@ -57,7 +57,7 @@ func (c *NonScalarMapKeyCheck) checkMapKeyScalar(ctx context.Context, view *cach
 // mapKeyKind reports why key is not a scalar map key: the container kind,
 // or the definition kind for struct-like types. "" means scalar: a base
 // type, an enum, or a typedef chain ending there.
-func (c *NonScalarMapKeyCheck) mapKeyKind(ctx context.Context, view *cache.View, ix *Index, pf *cache.ParsedFile, key *syntax.FieldType, depth int) string {
+func (c *NonScalarMapKeyCheck) mapKeyKind(ctx context.Context, view *store.View, ix *Index, pf *store.ParsedFile, key *syntax.FieldType, depth int) string {
 	if key == nil {
 		return ""
 	}

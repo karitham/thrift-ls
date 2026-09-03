@@ -1,4 +1,4 @@
-package cache
+package store
 
 import (
 	"testing"
@@ -8,6 +8,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/resolver/resolvertest"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 func TestSessionViews(t *testing.T) {
@@ -60,7 +61,7 @@ func TestSessionViews(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := NewSession(NewMemoizedFS())
+			s := NewSession(vfs.NewMemoizedFS())
 			tt.setup(s)
 
 			views := s.Views()
@@ -76,7 +77,7 @@ func TestSessionViews(t *testing.T) {
 }
 
 func TestSessionAddViewDedups(t *testing.T) {
-	s := NewSession(NewMemoizedFS())
+	s := NewSession(vfs.NewMemoizedFS())
 
 	folder := uri.File("/tmp/a")
 	first := s.AddView(folder, nil)
@@ -87,7 +88,7 @@ func TestSessionAddViewDedups(t *testing.T) {
 }
 
 func TestSessionRemoveViewForgetsMappings(t *testing.T) {
-	s := NewSession(NewMemoizedFS())
+	s := NewSession(vfs.NewMemoizedFS())
 
 	folder := uri.File("/tmp/a")
 	other := uri.File("/tmp/b")
@@ -170,7 +171,7 @@ func TestSessionViewOf(t *testing.T) {
 			setup: func(s *Session) {
 				s.AddView(outer, nil)
 				view := s.AddView(inner, nil)
-				view.Update(t.Context(), &FileChange{URI: externalFile, From: FileChangeTypeInitialize})
+				view.Update(t.Context(), &vfs.FileChange{URI: externalFile, From: vfs.FileChangeTypeInitialize})
 			},
 			file: externalFile,
 			want: inner,
@@ -188,7 +189,7 @@ func TestSessionViewOf(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := NewSession(NewMemFS(resolvertest.Map{
+			s := NewSession(vfs.NewMemFS(resolvertest.Map{
 				"/dependencies/shared.thrift": []byte("struct Shared {}"),
 			}.URIs()))
 			tt.setup(s)

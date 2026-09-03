@@ -6,7 +6,7 @@ import (
 
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -30,7 +30,7 @@ const (
 // unqualified name searches the current file first, then every file
 // transitively included, so a type visible through a multi-hop include
 // chain (A includes B includes C) is found.
-func definitionFiles(ctx context.Context, view *cache.View, file uri.URI, ast *syntax.Document, name string) []uri.URI {
+func definitionFiles(ctx context.Context, view *store.View, file uri.URI, ast *syntax.Document, name string) []uri.URI {
 	include, _ := ParseIdent(file, ast.Includes(), name)
 	if include != "" {
 		resolver := view.Resolver()

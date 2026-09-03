@@ -8,7 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 func Test_FieldIDCheck_Diagnostic(t *testing.T) {
@@ -39,18 +40,18 @@ service Demo {
 }
 `
 
-	view := buildSnapshotForTest(t, []*cache.FileChange{
+	view := buildSnapshotForTest(t, []*vfs.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
 			Content: []byte(file1),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		},
 	})
 
 	type args struct {
 		ctx         context.Context
-		view        *cache.View
+		view        *store.View
 		changeFiles []uri.URI
 	}
 

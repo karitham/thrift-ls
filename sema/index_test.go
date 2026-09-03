@@ -7,8 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 func TestIndex_ResolveType_SameFile(t *testing.T) {
@@ -85,7 +86,7 @@ func TestIndex_References_Type(t *testing.T) {
 	view := snap(t, "/t.thrift", "struct User {}\nstruct Foo { 1: User user, 2: list<User> users, }\nservice Svc { User get(1: i32 id); }")
 	_ = parseOne(t, view, fu("/t.thrift"))
 
-	hits, err := NewIndex(view).References(ctx, fu("/t.thrift"), "User", cache.RefFieldType, cache.RefSignatureType)
+	hits, err := NewIndex(view).References(ctx, fu("/t.thrift"), "User", store.RefFieldType, store.RefSignatureType)
 	require.NoError(t, err)
 	require.Len(t, hits, 3)
 }
@@ -95,7 +96,7 @@ func TestIndex_References_ExceptionRule(t *testing.T) {
 	view := snap(t, "/t.thrift", "exception Bad {}\nstruct Foo { 1: Bad bad, }\nservice Svc { void f() throws (1: Bad e); }")
 	_ = parseOne(t, view, fu("/t.thrift"))
 
-	hits, err := NewIndex(view).References(ctx, fu("/t.thrift"), "Bad", cache.RefSignatureType)
+	hits, err := NewIndex(view).References(ctx, fu("/t.thrift"), "Bad", store.RefSignatureType)
 	require.NoError(t, err)
 	require.Len(t, hits, 1)
 	assert.Equal(t, "Bad", hits[0].Text)
@@ -106,7 +107,7 @@ func TestIndex_References_ConstValue(t *testing.T) {
 	view := snap(t, "/t.thrift", "const i32 MAX = 10\nstruct Foo { 1: i32 id = MAX, }")
 	_ = parseOne(t, view, fu("/t.thrift"))
 
-	hits, err := NewIndex(view).References(ctx, fu("/t.thrift"), "MAX", cache.RefConstValue)
+	hits, err := NewIndex(view).References(ctx, fu("/t.thrift"), "MAX", store.RefConstValue)
 	require.NoError(t, err)
 	require.Len(t, hits, 1)
 }
@@ -120,7 +121,7 @@ func TestIndex_ReferencesToEnumValues(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, def)
 
-	hits, err := NewIndex(view).ReferencesTo(ctx, def, cache.RefFieldType, cache.RefSignatureType, cache.RefConstValue)
+	hits, err := NewIndex(view).ReferencesTo(ctx, def, store.RefFieldType, store.RefSignatureType, store.RefConstValue)
 	require.NoError(t, err)
 	require.Len(t, hits, 2)
 	for _, h := range hits {
@@ -163,35 +164,35 @@ func TestIndex_FindInWorkspace(t *testing.T) {
 }
 
 func TestRefKindsFor(t *testing.T) {
-	assert.Equal(t, []cache.RefKind{cache.RefSignatureType, cache.RefAnnotationType}, RefKindsFor(DefinitionException))
-	assert.Equal(t, []cache.RefKind{cache.RefFieldType, cache.RefSignatureType, cache.RefAnnotationType}, RefKindsFor(DefinitionStruct))
-	assert.Equal(t, []cache.RefKind{cache.RefServiceExtends}, RefKindsFor(DefinitionService))
-	assert.Equal(t, []cache.RefKind{cache.RefConstValue}, RefKindsFor(DefinitionConst))
+	assert.Equal(t, []store.RefKind{store.RefSignatureType, store.RefAnnotationType}, RefKindsFor(DefinitionException))
+	assert.Equal(t, []store.RefKind{store.RefFieldType, store.RefSignatureType, store.RefAnnotationType}, RefKindsFor(DefinitionStruct))
+	assert.Equal(t, []store.RefKind{store.RefServiceExtends}, RefKindsFor(DefinitionService))
+	assert.Equal(t, []store.RefKind{store.RefConstValue}, RefKindsFor(DefinitionConst))
 }
 
 // --- helpers ---
 
-func snap(t *testing.T, file, content string) *cache.View {
+func snap(t *testing.T, file, content string) *store.View {
 	t.Helper()
-	return cache.BuildViewForTest([]*cache.FileChange{{
-		URI: fu(file), Version: 0, Content: []byte(content), From: cache.FileChangeTypeDidOpen,
+	return store.BuildViewForTest([]*vfs.FileChange{{
+		URI: fu(file), Version: 0, Content: []byte(content), From: vfs.FileChangeTypeDidOpen,
 	}})
 }
 
 // crossSnap builds a snapshot with two files, parsed in dependency order
 // (includes first), so the include graph resolves correctly.
-func crossSnap(t *testing.T, fa, ca, fb, cb string) *cache.View {
+func crossSnap(t *testing.T, fa, ca, fb, cb string) *store.View {
 	t.Helper()
-	view := cache.BuildViewForTest([]*cache.FileChange{
-		{URI: fu(fb), Version: 0, Content: []byte(cb), From: cache.FileChangeTypeDidOpen},
-		{URI: fu(fa), Version: 0, Content: []byte(ca), From: cache.FileChangeTypeDidOpen},
+	view := store.BuildViewForTest([]*vfs.FileChange{
+		{URI: fu(fb), Version: 0, Content: []byte(cb), From: vfs.FileChangeTypeDidOpen},
+		{URI: fu(fa), Version: 0, Content: []byte(ca), From: vfs.FileChangeTypeDidOpen},
 	})
 	return view
 }
 
 func fu(p string) uri.URI { u, _ := uri.Parse("file://" + p); return u }
 
-func parseOne(t *testing.T, view *cache.View, u uri.URI) *cache.ParsedFile {
+func parseOne(t *testing.T, view *store.View, u uri.URI) *store.ParsedFile {
 	t.Helper()
 	pf, err := view.Parse(t.Context(), u)
 	require.NoError(t, err)

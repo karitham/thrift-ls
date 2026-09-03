@@ -7,14 +7,14 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/formatter"
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/sema"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
 // Hover returns the formatted definition under the cursor: a type
 // reference, a constant value identifier, or a service reference.
-func Hover(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Position) (res string, err error) {
+func Hover(ctx context.Context, view *store.View, file uri.URI, pos protocol.Position) (res string, err error) {
 	pf, target, err := resolveTarget(ctx, view, file, pos)
 	if err != nil {
 		return res, err
@@ -39,7 +39,7 @@ func formatNode(doc *syntax.Document, node syntax.Node) (string, error) {
 	return formatter.FormatNode(doc, node, formatter.DefaultOptions())
 }
 
-func hoverService(ctx context.Context, ix *sema.Index, pf *cache.ParsedFile, target *target) (string, error) {
+func hoverService(ctx context.Context, ix *sema.Index, pf *store.ParsedFile, target *target) (string, error) {
 	def, err := ix.ResolveService(ctx, pf, target.identifier())
 	if err != nil || def == nil {
 		return "", err
@@ -53,7 +53,7 @@ func hoverService(ctx context.Context, ix *sema.Index, pf *cache.ParsedFile, tar
 	return formatNode(def.Parsed.AST(), svc)
 }
 
-func hoverDefinition(ctx context.Context, ix *sema.Index, pf *cache.ParsedFile, target *target) (string, error) {
+func hoverDefinition(ctx context.Context, ix *sema.Index, pf *store.ParsedFile, target *target) (string, error) {
 	ft := target.fieldType()
 	if ft == nil {
 		return "", nil
@@ -71,7 +71,7 @@ func hoverDefinition(ctx context.Context, ix *sema.Index, pf *cache.ParsedFile, 
 	return formatNode(def.Parsed.AST(), def.Node)
 }
 
-func hoverConstValue(ctx context.Context, ix *sema.Index, pf *cache.ParsedFile, target *target) (string, error) {
+func hoverConstValue(ctx context.Context, ix *sema.Index, pf *store.ParsedFile, target *target) (string, error) {
 	def, err := ix.ResolveValue(ctx, pf, target.node.(*syntax.ConstValue))
 	if err != nil || def == nil {
 		return "", err

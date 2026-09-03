@@ -12,8 +12,9 @@ import (
 
 	"go.lsp.dev/protocol"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/lsp/source"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocumentParams) error {
@@ -23,11 +24,11 @@ func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocume
 	}
 
 	fileURI := document.URI
-	change := &cache.FileChange{
+	change := &vfs.FileChange{
 		URI:     fileURI,
 		Version: int(document.Version),
 		Content: []byte(document.Text),
-		From:    cache.FileChangeTypeDidOpen,
+		From:    vfs.FileChangeTypeDidOpen,
 	}
 
 	// Opening a file no project owns loads its directory as a folder, so
@@ -39,7 +40,7 @@ func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocume
 		s.workspace.loadSync(ctx, []uri.URI{uri.File(filepath.Dir(fileURI.FsPath()))})
 	}
 
-	return s.applyChanges(ctx, []*cache.FileChange{change}, true)
+	return s.applyChanges(ctx, []*vfs.FileChange{change}, true)
 }
 
 func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDocumentParams) error {
@@ -48,21 +49,21 @@ func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDo
 
 func (s *Server) didClose(ctx context.Context, params *protocol.DidCloseTextDocumentParams) error {
 	fileURI := params.TextDocument.URI
-	change := &cache.FileChange{URI: fileURI, From: cache.FileChangeTypeDidClose}
+	change := &vfs.FileChange{URI: fileURI, From: vfs.FileChangeTypeDidClose}
 
-	return s.applyChanges(ctx, []*cache.FileChange{change}, true)
+	return s.applyChanges(ctx, []*vfs.FileChange{change}, true)
 }
 
 // applyChanges is the single path from file events to overlays and views.
 // Files route only through snapshot ownership: unowned files update the
 // overlay but reach no view.
-func (s *Server) applyChanges(ctx context.Context, changes []*cache.FileChange, overlay bool) error {
+func (s *Server) applyChanges(ctx context.Context, changes []*vfs.FileChange, overlay bool) error {
 	if len(changes) == 0 {
 		return nil
 	}
 
 	for _, change := range changes {
-		if change.From == cache.FileChangeTypeDidClose {
+		if change.From == vfs.FileChangeTypeDidClose {
 			s.forgetReport(change.URI)
 		}
 	}
@@ -71,7 +72,7 @@ func (s *Server) applyChanges(ctx context.Context, changes []*cache.FileChange, 
 }
 
 func (s *Server) didChangeWatchedFiles(ctx context.Context, params *protocol.DidChangeWatchedFilesParams) error {
-	var changes []*cache.FileChange
+	var changes []*vfs.FileChange
 
 	for _, event := range params.Changes {
 		if !s.workspace.owns(event.URI) {
@@ -98,9 +99,9 @@ func (s *Server) didChangeWatchedFiles(ctx context.Context, params *protocol.Did
 // watchedFileChange builds a FileChange from a disk event, reading the
 // current content through the memoized file source. Deleted files are
 // reported as a close change.
-func (s *Server) watchedFileChange(ctx context.Context, event protocol.FileEvent) (*cache.FileChange, error) {
+func (s *Server) watchedFileChange(ctx context.Context, event protocol.FileEvent) (*vfs.FileChange, error) {
 	if event.Type == protocol.FileChangeTypeDeleted {
-		return &cache.FileChange{URI: event.URI, From: cache.FileChangeTypeDidClose}, nil
+		return &vfs.FileChange{URI: event.URI, From: vfs.FileChangeTypeDidClose}, nil
 	}
 
 	fh, err := s.session.ReadFile(ctx, event.URI)
@@ -113,11 +114,11 @@ func (s *Server) watchedFileChange(ctx context.Context, event protocol.FileEvent
 		return nil, err
 	}
 
-	return &cache.FileChange{
+	return &vfs.FileChange{
 		URI:     event.URI,
 		Version: int(fh.Version()),
 		Content: content,
-		From:    cache.FileChangeTypeDidChange,
+		From:    vfs.FileChangeTypeDidChange,
 	}, nil
 }
 
@@ -126,7 +127,7 @@ func (s *Server) watchedFileChange(ctx context.Context, event protocol.FileEvent
 // editor request thread. If a newer change lands while the analysis runs,
 // the generation check drops the results — the newer change publishes its
 // own.
-func (s *Server) postDiagnostics(ctx context.Context, view *cache.View, res cache.ChangeResult) {
+func (s *Server) postDiagnostics(ctx context.Context, view *store.View, res store.ChangeResult) {
 	if s.diagSync {
 		s.diagnoseAt(context.WithoutCancel(ctx), view, res.Affected, res.Gen)
 
@@ -157,7 +158,7 @@ func (s *Server) postDiagnostics(ctx context.Context, view *cache.View, res cach
 }
 
 func (s *Server) completion(ctx context.Context, params *protocol.CompletionParams) (*protocol.CompletionList, error) {
-	return withFile(ctx, s.viewOf, params.TextDocument.URI, func(view *cache.View, fh cache.FileHandle) (*protocol.CompletionList, error) {
+	return withFile(ctx, s.viewOf, params.TextDocument.URI, func(view *store.View, fh vfs.FileHandle) (*protocol.CompletionList, error) {
 		items, rng, truncated, err := source.DefaultTokenCompletion.Completion(ctx, view, &source.CompletionRequest{
 			Pos: protocol.Position{
 				Line:      params.Position.Line,

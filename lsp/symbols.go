@@ -5,12 +5,12 @@ import (
 
 	"go.lsp.dev/protocol"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/lsp/source"
+	"github.com/karitham/thrift-ls/store"
 )
 
 func (s *Server) documentSymbol(ctx context.Context, params *protocol.DocumentSymbolParams) (result protocol.DocumentSymbolSlice, err error) {
-	return withView(s.viewOf, params.TextDocument.URI, func(view *cache.View) (protocol.DocumentSymbolSlice, error) {
+	return withView(s.viewOf, params.TextDocument.URI, func(view *store.View) (protocol.DocumentSymbolSlice, error) {
 		syms := source.DocumentSymbols(ctx, view, params.TextDocument.URI)
 
 		result := make(protocol.DocumentSymbolSlice, 0, len(syms))

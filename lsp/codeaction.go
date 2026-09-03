@@ -7,8 +7,9 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/sema"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // codeAction returns the code actions for the document: quickfixes for the
@@ -17,7 +18,7 @@ import (
 // fixes a reported diagnostic is also offered as a quickfix. Actions are
 // filtered to the kinds the client requested.
 func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionParams) ([]protocol.CommandOrCodeAction, error) {
-	return withFile(ctx, s.viewOf, params.TextDocument.URI, func(view *cache.View, fh cache.FileHandle) ([]protocol.CommandOrCodeAction, error) {
+	return withFile(ctx, s.viewOf, params.TextDocument.URI, func(view *store.View, fh vfs.FileHandle) ([]protocol.CommandOrCodeAction, error) {
 		pf, err := view.Parse(ctx, params.TextDocument.URI)
 		if err != nil {
 			return nil, err
@@ -51,7 +52,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 
 // toSemaSpan converts an LSP range to the pipeline's parser-coordinate
 // span through the file's mapper.
-func toSemaSpan(pf *cache.ParsedFile, rng protocol.Range) (sema.Span, error) {
+func toSemaSpan(pf *store.ParsedFile, rng protocol.Range) (sema.Span, error) {
 	m := pf.Mapper()
 
 	start, err := m.LSPPosToParserPosition(rng.Start)
@@ -68,7 +69,7 @@ func toSemaSpan(pf *cache.ParsedFile, rng protocol.Range) (sema.Span, error) {
 }
 
 // toProtocolCodeAction translates a pipeline action to the wire type.
-func toProtocolCodeAction(pf *cache.ParsedFile, a sema.Action) protocol.CodeAction {
+func toProtocolCodeAction(pf *store.ParsedFile, a sema.Action) protocol.CodeAction {
 	kind := protocol.CodeActionKindRefactorRewrite
 	if a.Fix {
 		kind = protocol.CodeActionKindQuickFix

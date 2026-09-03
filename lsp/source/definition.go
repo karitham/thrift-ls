@@ -6,14 +6,14 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/sema"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
 // Definition returns the locations of the definition under the cursor:
 // a type reference, a constant value identifier, or a service reference.
-func Definition(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Position) (res []protocol.Location, err error) {
+func Definition(ctx context.Context, view *store.View, file uri.URI, pos protocol.Position) (res []protocol.Location, err error) {
 	res = make([]protocol.Location, 0)
 
 	pf, target, err := resolveTarget(ctx, view, file, pos)
@@ -33,7 +33,7 @@ func Definition(ctx context.Context, view *cache.View, file uri.URI, pos protoco
 	return res, err
 }
 
-func typeNameDefinition(ctx context.Context, ix *sema.Index, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
+func typeNameDefinition(ctx context.Context, ix *sema.Index, pf *store.ParsedFile, target *target) ([]protocol.Location, error) {
 	ft := target.fieldType()
 	if ft == nil {
 		return nil, nil
@@ -52,7 +52,7 @@ func typeNameDefinition(ctx context.Context, ix *sema.Index, pf *cache.ParsedFil
 	return []protocol.Location{loc}, nil
 }
 
-func constValueDefinition(ctx context.Context, ix *sema.Index, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
+func constValueDefinition(ctx context.Context, ix *sema.Index, pf *store.ParsedFile, target *target) ([]protocol.Location, error) {
 	def, err := ix.ResolveValue(ctx, pf, target.node.(*syntax.ConstValue))
 	if err != nil || def == nil {
 		return nil, err
@@ -66,7 +66,7 @@ func constValueDefinition(ctx context.Context, ix *sema.Index, pf *cache.ParsedF
 	return []protocol.Location{loc}, nil
 }
 
-func serviceDefinition(ctx context.Context, ix *sema.Index, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
+func serviceDefinition(ctx context.Context, ix *sema.Index, pf *store.ParsedFile, target *target) ([]protocol.Location, error) {
 	def, err := ix.ResolveService(ctx, pf, target.identifier())
 	if err != nil || def == nil {
 		return nil, err

@@ -6,8 +6,8 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/sema"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -15,7 +15,7 @@ import (
 // under the cursor: for a type reference, the type's definition; for a
 // field, function, typedef, or const name, the definition of its declared
 // type.
-func TypeDefinition(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Position) (res []protocol.Location, err error) {
+func TypeDefinition(ctx context.Context, view *store.View, file uri.URI, pos protocol.Position) (res []protocol.Location, err error) {
 	res = make([]protocol.Location, 0)
 
 	pf, target, err := resolveTarget(ctx, view, file, pos)
@@ -39,7 +39,7 @@ func TypeDefinition(ctx context.Context, view *cache.View, file uri.URI, pos pro
 
 // declarationTypeDefinition jumps to the definition of the declared type of
 // a field, typedef, function, or const under the cursor.
-func declarationTypeDefinition(ctx context.Context, ix *sema.Index, pf *cache.ParsedFile, target *target) ([]protocol.Location, error) {
+func declarationTypeDefinition(ctx context.Context, ix *sema.Index, pf *store.ParsedFile, target *target) ([]protocol.Location, error) {
 	var ft *syntax.FieldType
 
 	switch parent := target.parent.(type) {

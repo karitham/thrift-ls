@@ -8,7 +8,7 @@ import (
 
 	"go.lsp.dev/protocol"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 )
 
 var DefaultTokenCompletion Interface = &TokenCompletion{}
@@ -58,7 +58,7 @@ type Candidate struct {
 // Completion resolves the grammar slot at the cursor and returns the
 // candidates for that slot, the edit range, and whether the list was
 // truncated by the cap.
-func (c *TokenCompletion) Completion(ctx context.Context, view *cache.View, cmp *CompletionRequest) ([]*CompletionItem, protocol.Range, bool, error) {
+func (c *TokenCompletion) Completion(ctx context.Context, view *store.View, cmp *CompletionRequest) ([]*CompletionItem, protocol.Range, bool, error) {
 	parsedFile, err := view.Parse(ctx, cmp.Fh.URI())
 	if err != nil {
 		return nil, protocol.Range{}, false, err

@@ -6,7 +6,7 @@ import (
 
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -28,7 +28,7 @@ func (c *UnusedIncludeCheck) AnalyzeFile(ctx context.Context, f File) ([]Diagnos
 // name, a constant value identifier, or a service extends clause, used
 // qualified ("base.Type") or unqualified (resolving through the include
 // chain).
-func unusedIncludeDiagnostics(ctx context.Context, f File, pf *cache.ParsedFile) []Diagnostic {
+func unusedIncludeDiagnostics(ctx context.Context, f File, pf *store.ParsedFile) []Diagnostic {
 	includes := pf.AST().Includes()
 	if len(includes) == 0 {
 		return nil
@@ -94,7 +94,7 @@ func lineSpan(content []byte, pos syntax.Position) Span {
 // document resolves into. Resolution goes through the run's shared
 // cross-file index, which handles both qualified ("base.Type") and
 // unqualified names that resolve through the include chain.
-func usedIncludes(ctx context.Context, f File, pf *cache.ParsedFile) map[*syntax.Include]bool {
+func usedIncludes(ctx context.Context, f File, pf *store.ParsedFile) map[*syntax.Include]bool {
 	resolver := f.View().Resolver()
 	includeByFile := make(map[uri.URI]*syntax.Include)
 
@@ -127,12 +127,12 @@ func usedIncludes(ctx context.Context, f File, pf *cache.ParsedFile) map[*syntax
 // resolveReferenceFile returns the file the reference resolves to, or
 // false when it resolves nowhere or into the current file. Type, const
 // value, and service references resolve through their own finder.
-func resolveReferenceFile(ctx context.Context, ix *Index, pf *cache.ParsedFile, ref cache.Reference) (uri.URI, bool) {
+func resolveReferenceFile(ctx context.Context, ix *Index, pf *store.ParsedFile, ref store.Reference) (uri.URI, bool) {
 	var def *Resolved
 	var err error
 
 	switch ref.Kind {
-	case cache.RefFieldType, cache.RefSignatureType, cache.RefAnnotationType:
+	case store.RefFieldType, store.RefSignatureType, store.RefAnnotationType:
 		id, ok := ref.Node.(*syntax.Identifier)
 		if !ok {
 			return "", false
@@ -140,14 +140,14 @@ func resolveReferenceFile(ctx context.Context, ix *Index, pf *cache.ParsedFile, 
 
 		ft := &syntax.FieldType{Kind: syntax.TypeIdent, Ident: id}
 		def, err = ix.ResolveType(ctx, pf, ft)
-	case cache.RefConstValue:
+	case store.RefConstValue:
 		cv, ok := ref.Node.(*syntax.ConstValue)
 		if !ok {
 			return "", false
 		}
 
 		def, err = ix.ResolveValue(ctx, pf, cv)
-	case cache.RefServiceExtends:
+	case store.RefServiceExtends:
 		id, ok := ref.Node.(*syntax.Identifier)
 		if !ok {
 			return "", false

@@ -8,7 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 func Test_SemanticAnalysis_Diagnostic(t *testing.T) {
@@ -52,18 +53,18 @@ struct TestUUID {
 	1: required uuid id
 }
 `
-	view := buildSnapshotForTest(t, []*cache.FileChange{
+	view := buildSnapshotForTest(t, []*vfs.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
 			Content: []byte(file1),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		},
 	})
 
 	type args struct {
 		ctx         context.Context
-		view        *cache.View
+		view        *store.View
 		changeFiles []uri.URI
 	}
 
@@ -226,12 +227,12 @@ func Test_NonScalarMapKeyCheck(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*cache.FileChange{
+			view := buildSnapshotForTest(t, []*vfs.FileChange{
 				{
 					URI:     "file:///tmp/user.thrift",
 					Version: 0,
 					Content: []byte(tt.content),
-					From:    cache.FileChangeTypeDidOpen,
+					From:    vfs.FileChangeTypeDidOpen,
 				},
 			})
 
@@ -287,12 +288,12 @@ func Test_SemanticAnalysis_StructuredAnnotations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*cache.FileChange{
+			view := buildSnapshotForTest(t, []*vfs.FileChange{
 				{
 					URI:     "file:///tmp/user.thrift",
 					Version: 0,
 					Content: []byte(tt.content),
-					From:    cache.FileChangeTypeDidOpen,
+					From:    vfs.FileChangeTypeDidOpen,
 				},
 			})
 
@@ -353,12 +354,12 @@ func Test_SemanticAnalysis_WalkCoverage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*cache.FileChange{
+			view := buildSnapshotForTest(t, []*vfs.FileChange{
 				{
 					URI:     "file:///tmp/user.thrift",
 					Version: 0,
 					Content: []byte(tt.content),
-					From:    cache.FileChangeTypeDidOpen,
+					From:    vfs.FileChangeTypeDidOpen,
 				},
 			})
 
@@ -492,12 +493,12 @@ func Test_SemanticAnalysis_ConstValueType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*cache.FileChange{
+			view := buildSnapshotForTest(t, []*vfs.FileChange{
 				{
 					URI:     "file:///tmp/orth.thrift",
 					Version: 0,
 					Content: []byte(tt.content),
-					From:    cache.FileChangeTypeDidOpen,
+					From:    vfs.FileChangeTypeDidOpen,
 				},
 			})
 

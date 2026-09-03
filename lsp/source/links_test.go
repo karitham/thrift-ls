@@ -7,15 +7,16 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // buildSnapshot parses src as the file at URI and returns the snapshot.
-func buildLinksSnapshot(t *testing.T, file uri.URI, src string) *cache.View {
+func buildLinksSnapshot(t *testing.T, file uri.URI, src string) *store.View {
 	t.Helper()
 
-	view := cache.BuildViewForTest([]*cache.FileChange{
-		{URI: file, Version: 0, Content: []byte(src), From: cache.FileChangeTypeDidOpen},
+	view := store.BuildViewForTest([]*vfs.FileChange{
+		{URI: file, Version: 0, Content: []byte(src), From: vfs.FileChangeTypeDidOpen},
 	})
 
 	return view

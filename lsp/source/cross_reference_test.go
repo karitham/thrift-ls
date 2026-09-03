@@ -7,7 +7,8 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // TestReferenceBareCrossFile covers find-references across an include when
@@ -25,9 +26,9 @@ struct StrikeRouge {
 	1: required string Name
 }`
 
-	view := cache.BuildViewForTest([]*cache.FileChange{
-		{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte(gundamFile), From: cache.FileChangeTypeDidOpen},
-		{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(mainFile), From: cache.FileChangeTypeDidOpen},
+	view := store.BuildViewForTest([]*vfs.FileChange{
+		{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte(gundamFile), From: vfs.FileChangeTypeDidOpen},
+		{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(mainFile), From: vfs.FileChangeTypeDidOpen},
 	})
 
 	// Cursor on "Gundam" (the definition name) in federation.gundam.thrift.
@@ -55,9 +56,9 @@ struct StrikeRouge {
 	1: required string Name
 }`
 
-	view := cache.BuildViewForTest([]*cache.FileChange{
-		{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte(gundamFile), From: cache.FileChangeTypeDidOpen},
-		{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(mainFile), From: cache.FileChangeTypeDidOpen},
+	view := store.BuildViewForTest([]*vfs.FileChange{
+		{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte(gundamFile), From: vfs.FileChangeTypeDidOpen},
+		{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(mainFile), From: vfs.FileChangeTypeDidOpen},
 	})
 
 	locations, err := Reference(t.Context(), view, "file:///tmp/federation.gundam.thrift", protocol.Position{Line: 0, Character: 7})
@@ -92,10 +93,10 @@ struct Gundam {
 	1: required string Model
 }`
 
-	view := cache.BuildViewForTest([]*cache.FileChange{
-		{URI: "file:///tmp/mobile_suit.zeon.thrift", Version: 0, Content: []byte(zeonFile), From: cache.FileChangeTypeDidOpen},
-		{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte(federationFile), From: cache.FileChangeTypeDidOpen},
-		{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(mainFile), From: cache.FileChangeTypeDidOpen},
+	view := store.BuildViewForTest([]*vfs.FileChange{
+		{URI: "file:///tmp/mobile_suit.zeon.thrift", Version: 0, Content: []byte(zeonFile), From: vfs.FileChangeTypeDidOpen},
+		{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte(federationFile), From: vfs.FileChangeTypeDidOpen},
+		{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(mainFile), From: vfs.FileChangeTypeDidOpen},
 	})
 
 	// Cursor on "Zaku" in main.thrift (line 3, character 13: the type of

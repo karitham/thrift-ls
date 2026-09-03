@@ -8,7 +8,8 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 func TestDefinition(t *testing.T) {
@@ -58,36 +59,36 @@ struct Person {
   2: required user.Test field2,
 }`
 
-	view := cache.BuildViewForTest([]*cache.FileChange{
+	view := store.BuildViewForTest([]*vfs.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
 			Content: []byte(file1),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		},
 		{
 			URI:     "file:///tmp/api.thrift",
 			Version: 0,
 			Content: []byte(file2),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		},
 		{
 			URI:     "file:///tmp/user.extra.thrift",
 			Version: 0,
 			Content: []byte(file3),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		},
 		{
 			URI:     "file:///tmp/app.thrift",
 			Version: 0,
 			Content: []byte(file4),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		},
 	})
 
 	type args struct {
 		ctx  context.Context
-		view *cache.View
+		view *store.View
 		file uri.URI
 		pos  protocol.Position
 	}

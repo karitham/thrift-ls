@@ -6,7 +6,7 @@ package sema
 import (
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -18,7 +18,7 @@ type Span struct {
 }
 
 // SpanOf returns the source span of a node in the parsed file.
-func SpanOf(pf *cache.ParsedFile, node syntax.Node) Span {
+func SpanOf(pf *store.ParsedFile, node syntax.Node) Span {
 	start, end := pf.AST().Range(node)
 
 	return Span{Start: start, End: end}

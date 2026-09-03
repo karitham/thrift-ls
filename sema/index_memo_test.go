@@ -7,8 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // TestIndexResolutionMemo pins that Index resolutions are memoized per
@@ -16,18 +17,18 @@ import (
 // identical, unresolved names stay unresolved, and the same name resolved
 // as a type versus a value does not collide.
 func TestIndexResolutionMemo(t *testing.T) {
-	view := cache.BuildViewForTest([]*cache.FileChange{
+	view := store.BuildViewForTest([]*vfs.FileChange{
 		{
 			URI:     "file:///base.thrift",
 			Version: 0,
 			Content: []byte("struct User { 1: i32 id }\nenum Color { RED = 1 }\nconst i32 MAX = 10\nservice Svc {}\n"),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		},
 		{
 			URI:     "file:///app.thrift",
 			Version: 0,
 			Content: []byte("include \"base.thrift\"\nstruct User { 1: string name }\nstruct S { 1: base.User u, 2: i32 x = base.Color.RED }\n"),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		},
 	})
 
@@ -123,24 +124,24 @@ func TestIndexResolutionMemo(t *testing.T) {
 // resolved from different files never collides, and neither do different
 // names from the same file.
 func TestIndexMemoKeyIsolation(t *testing.T) {
-	view := cache.BuildViewForTest([]*cache.FileChange{
+	view := store.BuildViewForTest([]*vfs.FileChange{
 		{
 			URI:     "file:///a.thrift",
 			Version: 0,
 			Content: []byte("struct User { 1: i32 id }\n"),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		},
 		{
 			URI:     "file:///b.thrift",
 			Version: 0,
 			Content: []byte("struct User { 1: string name }\n"),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		},
 		{
 			URI:     "file:///main.thrift",
 			Version: 0,
 			Content: []byte("include \"a.thrift\"\ninclude \"b.thrift\"\nstruct S { 1: a.User x, 2: b.User y }\n"),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		},
 	})
 
@@ -150,7 +151,7 @@ func TestIndexMemoKeyIsolation(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		from     *cache.ParsedFile
+		from     *store.ParsedFile
 		text     string
 		wantFile string
 	}{
@@ -188,12 +189,12 @@ func TestSemanticAnalysisSkipsBrokenFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := cache.BuildViewForTest([]*cache.FileChange{
+			view := store.BuildViewForTest([]*vfs.FileChange{
 				{
 					URI:     "file:///f.thrift",
 					Version: 0,
 					Content: []byte(tt.content),
-					From:    cache.FileChangeTypeDidOpen,
+					From:    vfs.FileChangeTypeDidOpen,
 				},
 			})
 

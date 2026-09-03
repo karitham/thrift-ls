@@ -1,4 +1,4 @@
-package cache
+package store
 
 import (
 	"fmt"
@@ -171,7 +171,7 @@ func (w *indexWalker) visit(n syntax.Node) {
 	case *syntax.Include, *syntax.CPPInclude:
 		// Headers bind no names and hold no references.
 	default:
-		panic(fmt.Sprintf("cache: indexWalker missing case for %T", n))
+		panic(fmt.Sprintf("store: indexWalker missing case for %T", n))
 	}
 }
 

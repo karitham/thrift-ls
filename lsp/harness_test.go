@@ -12,7 +12,8 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // testClient records everything the server pushes: diagnostics per URI,
@@ -151,7 +152,7 @@ func symbolNames(syms protocol.SymbolInformationSlice) []string {
 
 // newTestServer returns an in-memory server with synchronous diagnostics.
 func newTestServer(client protocol.Client) *Server {
-	srv := NewServer(client, Options{Files: cache.NewMemFS(nil)})
+	srv := NewServer(client, Options{Files: vfs.NewMemFS(nil)})
 	srv.diagSync = true
 
 	return srv
@@ -159,7 +160,7 @@ func newTestServer(client protocol.Client) *Server {
 
 // newMemServer returns an in-memory server seeded with files.
 func newMemServer(files map[uri.URI][]byte) *Server {
-	srv := NewServer(nil, Options{Files: cache.NewMemFS(files)})
+	srv := NewServer(nil, Options{Files: vfs.NewMemFS(files)})
 	srv.diagSync = true
 
 	return srv
@@ -168,7 +169,7 @@ func newMemServer(files map[uri.URI][]byte) *Server {
 // newSyncServerWithOptions builds a synchronous server over a MemFS seed.
 // opts.Files is always the MemFS; other fields carry through.
 func newSyncServerWithOptions(client protocol.Client, files map[uri.URI][]byte, opts Options) *Server {
-	opts.Files = cache.NewMemFS(files)
+	opts.Files = vfs.NewMemFS(files)
 	srv := NewServer(client, opts)
 	srv.diagSync = true
 
@@ -313,7 +314,7 @@ func formatText(t *testing.T, srv *Server, file uri.URI) string {
 func diagnosePair(t *testing.T, srv *Server, file uri.URI) {
 	t.Helper()
 
-	_, err := withFile(t.Context(), srv.session.ViewOf, file, func(view *cache.View, _ cache.FileHandle) (struct{}, error) {
+	_, err := withFile(t.Context(), srv.session.ViewOf, file, func(view *store.View, _ vfs.FileHandle) (struct{}, error) {
 		srv.diagnose(t.Context(), view, []uri.URI{file})
 
 		return struct{}{}, nil

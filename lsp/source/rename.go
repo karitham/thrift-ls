@@ -8,13 +8,13 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/sema"
+	"github.com/karitham/thrift-ls/store"
 )
 
 // PrepareRename returns the range of the identifier under the cursor when
 // renaming is supported: definition names, const values, and services.
-func PrepareRename(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Position) (res *protocol.Range, err error) {
+func PrepareRename(ctx context.Context, view *store.View, file uri.URI, pos protocol.Position) (res *protocol.Range, err error) {
 	pf, target, err := resolveTarget(ctx, view, file, pos)
 	if err != nil {
 		return res, err
@@ -44,7 +44,7 @@ func PrepareRename(ctx context.Context, view *cache.View, file uri.URI, pos prot
 // Rename renames the definition under the cursor and all its references,
 // preserving include qualifiers on qualified references (user.Test becomes
 // user.newtext, not newtext).
-func Rename(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Position, newName string) (res *protocol.WorkspaceEdit, err error) {
+func Rename(ctx context.Context, view *store.View, file uri.URI, pos protocol.Position, newName string) (res *protocol.WorkspaceEdit, err error) {
 	pf, target, err := resolveTarget(ctx, view, file, pos)
 	if err != nil {
 		return res, err

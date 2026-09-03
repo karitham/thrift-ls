@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -138,7 +138,7 @@ func fieldNames(fields []*syntax.Field, kind string) []named {
 
 // checkNames reports a diagnostic on every name in a scope that repeats an
 // earlier one.
-func checkNames(pf *cache.ParsedFile, defs []named) []Diagnostic {
+func checkNames(pf *store.ParsedFile, defs []named) []Diagnostic {
 	seen := make(map[string]bool)
 
 	var ret []Diagnostic
@@ -165,14 +165,14 @@ func checkNames(pf *cache.ParsedFile, defs []named) []Diagnostic {
 }
 
 // nameToken returns the token of an identifier.
-func nameToken(pf *cache.ParsedFile, id *syntax.Identifier) *syntax.Token {
+func nameToken(pf *store.ParsedFile, id *syntax.Identifier) *syntax.Token {
 	return &pf.AST().Tokens[id.TokStart()]
 }
 
 // checkEnumValues reports enum members whose resolved value — an explicit
 // constant or the compiler's auto-increment — collides with an earlier
 // member's.
-func checkEnumValues(pf *cache.ParsedFile, enum *syntax.Enum) []Diagnostic {
+func checkEnumValues(pf *store.ParsedFile, enum *syntax.Enum) []Diagnostic {
 	seen := make(map[int64]string) // value -> first member with it
 
 	var ret []Diagnostic
@@ -202,7 +202,7 @@ func checkEnumValues(pf *cache.ParsedFile, enum *syntax.Enum) []Diagnostic {
 // values in set literals, recursing into nested containers. The declared
 // type decides whether a list literal is a set: lists keep duplicates,
 // sets reject them.
-func checkValueDuplicates(pf *cache.ParsedFile, value *syntax.ConstValue, typ *syntax.FieldType) []Diagnostic {
+func checkValueDuplicates(pf *store.ParsedFile, value *syntax.ConstValue, typ *syntax.FieldType) []Diagnostic {
 	var ret []Diagnostic
 
 	switch value.Kind {
@@ -280,7 +280,7 @@ func valueKey(v *syntax.ConstValue) string {
 
 // duplicateValueDiagnostic is the diagnostic for a repeated map key or set
 // value.
-func duplicateValueDiagnostic(pf *cache.ParsedFile, v *syntax.ConstValue, kind string) Diagnostic {
+func duplicateValueDiagnostic(pf *store.ParsedFile, v *syntax.ConstValue, kind string) Diagnostic {
 	return Diagnostic{
 		Span:     spanOfToken(&pf.AST().Tokens[v.TokStart()]),
 		Severity: SeverityError,

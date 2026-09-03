@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 func Test_UnusedIncludeCheck(t *testing.T) {
@@ -81,12 +81,12 @@ func Test_UnusedIncludeCheck(t *testing.T) {
 
 			filePath := writeThrift(t, folder, "user.thrift", tt.content)
 
-			view := buildFolderSnapshotForTest(t, folder, []*cache.FileChange{
+			view := buildFolderSnapshotForTest(t, folder, []*vfs.FileChange{
 				{
 					URI:     uri.File(filePath),
 					Version: 0,
 					Content: []byte(tt.content),
-					From:    cache.FileChangeTypeDidOpen,
+					From:    vfs.FileChangeTypeDidOpen,
 				},
 			})
 

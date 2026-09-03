@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 func Test_EnumValueCheck_Diagnostic(t *testing.T) {
@@ -80,12 +80,12 @@ func Test_EnumValueCheck_Diagnostic(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*cache.FileChange{
+			view := buildSnapshotForTest(t, []*vfs.FileChange{
 				{
 					URI:     "file:///tmp/user.thrift",
 					Version: 0,
 					Content: []byte(tt.content),
-					From:    cache.FileChangeTypeDidOpen,
+					From:    vfs.FileChangeTypeDidOpen,
 				},
 			})
 

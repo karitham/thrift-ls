@@ -8,14 +8,14 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 )
 
 // RenameFileEdits returns, per including file, the edits retargeting every
 // include of oldURI at newURI's location. Only direct includers carry an
 // include literal naming the file; transitive dependents resolve through
 // them and need no edit.
-func RenameFileEdits(ctx context.Context, view *cache.View, oldURI, newURI uri.URI) (map[uri.URI][]protocol.TextEdit, error) {
+func RenameFileEdits(ctx context.Context, view *store.View, oldURI, newURI uri.URI) (map[uri.URI][]protocol.TextEdit, error) {
 	res := make(map[uri.URI][]protocol.TextEdit)
 
 	for _, f := range view.Includers(oldURI) {

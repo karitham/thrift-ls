@@ -8,7 +8,7 @@ import (
 
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -61,14 +61,14 @@ func cycleDiagnostic(inc Include) Diagnostic {
 type Include struct {
 	file    uri.URI
 	include *syntax.Include
-	pf      *cache.ParsedFile
+	pf      *store.ParsedFile
 }
 
 // getIncludes collects the include closure of file into includesMap: the
 // include edges of every file reachable from file, parsed through the
 // view so the ParsedFiles (and the include edges parsing records) are
 // shared with the rest of the analysis.
-func getIncludes(ctx context.Context, view *cache.View, file uri.URI, includesMap *map[uri.URI][]Include) error {
+func getIncludes(ctx context.Context, view *store.View, file uri.URI, includesMap *map[uri.URI][]Include) error {
 	pf, err := view.Parse(ctx, file)
 	if err != nil {
 		return err

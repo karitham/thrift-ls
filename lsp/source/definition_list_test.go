@@ -8,7 +8,8 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 func TestDefinition_EnumValueInConstList(t *testing.T) {
@@ -23,18 +24,18 @@ func TestDefinition_EnumValueInConstList(t *testing.T) {
 
 const list<MyEnum> my_list = [MyEnum.Value1, MyEnum.Value2]`
 
-	view := cache.BuildViewForTest([]*cache.FileChange{
+	view := store.BuildViewForTest([]*vfs.FileChange{
 		{
 			URI:     "file:///tmp/test.thrift",
 			Version: 0,
 			Content: []byte(file),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		},
 	})
 
 	type args struct {
 		ctx  context.Context
-		view *cache.View
+		view *store.View
 		file uri.URI
 		pos  protocol.Position
 	}

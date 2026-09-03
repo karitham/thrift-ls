@@ -10,8 +10,9 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // lspPosOf returns the LSP position (0-based line, UTF-16 character)
@@ -49,7 +50,7 @@ func utf16Len(b []byte) int {
 
 // completionLabels runs the completion entry point at an LSP position and
 // returns the item labels, the edit range, and the truncated flag.
-func completionLabels(t *testing.T, view *cache.View, file string, pos protocol.Position) ([]string, protocol.Range, bool) {
+func completionLabels(t *testing.T, view *store.View, file string, pos protocol.Position) ([]string, protocol.Range, bool) {
 	t.Helper()
 
 	fh, err := view.ReadFile(t.Context(), uri.URI(file))
@@ -70,7 +71,7 @@ func completionLabels(t *testing.T, view *cache.View, file string, pos protocol.
 }
 
 // completionItems runs the entry point and returns raw items.
-func completionItems(t *testing.T, view *cache.View, file string, pos protocol.Position) ([]*CompletionItem, protocol.Range, bool) {
+func completionItems(t *testing.T, view *store.View, file string, pos protocol.Position) ([]*CompletionItem, protocol.Range, bool) {
 	t.Helper()
 
 	fh, err := view.ReadFile(t.Context(), uri.URI(file))
@@ -88,7 +89,7 @@ func completionItems(t *testing.T, view *cache.View, file string, pos protocol.P
 // gundamSnapshot builds a snapshot with the gundam corpus: a main file with
 // a struct, enum, const, and an included file defining another type. It
 // returns the snapshot and the main file content.
-func gundamSnapshot(t *testing.T, includePaths []string) (*cache.View, string) {
+func gundamSnapshot(t *testing.T, includePaths []string) (*store.View, string) {
 	t.Helper()
 
 	mainContent := `include "federation.gundam.thrift"
@@ -113,8 +114,8 @@ exception BayFull {
 }`
 
 	view := buildSnapshot(t, includePaths,
-		&cache.FileChange{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(mainContent), From: cache.FileChangeTypeDidOpen},
-		&cache.FileChange{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte(incContent), From: cache.FileChangeTypeDidOpen},
+		&vfs.FileChange{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(mainContent), From: vfs.FileChangeTypeDidOpen},
+		&vfs.FileChange{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte(incContent), From: vfs.FileChangeTypeDidOpen},
 	)
 
 	return view, mainContent
@@ -228,7 +229,7 @@ func labelsOf(cands []Candidate) []string {
 	return labels
 }
 
-func mustParse(t *testing.T, view *cache.View, file string) *syntax.Document {
+func mustParse(t *testing.T, view *store.View, file string) *syntax.Document {
 	t.Helper()
 
 	pf, err := view.Parse(t.Context(), uri.URI(file))
@@ -248,8 +249,8 @@ func TestCompletionQualifiedValue(t *testing.T) {
 	assert.NotEqual(t, mainContent, content)
 
 	view := buildSnapshot(t, nil,
-		&cache.FileChange{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(content), From: cache.FileChangeTypeDidOpen},
-		&cache.FileChange{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte("struct MobileSuit {\n\t1: required string ModelName\n}"), From: cache.FileChangeTypeDidOpen},
+		&vfs.FileChange{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(content), From: vfs.FileChangeTypeDidOpen},
+		&vfs.FileChange{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte("struct MobileSuit {\n\t1: required string ModelName\n}"), From: vfs.FileChangeTypeDidOpen},
 	)
 
 	dotPos := lspPosOf(t, content, "const i32 LIMIT = ZeonForces.")
@@ -275,7 +276,7 @@ func TestCompletionQualifiedValue(t *testing.T) {
 
 func TestCompletionKeywordFallback(t *testing.T) {
 	view := buildSnapshot(t, nil,
-		&cache.FileChange{URI: "file:///tmp/empty.thrift", Version: 0, Content: []byte(""), From: cache.FileChangeTypeDidOpen},
+		&vfs.FileChange{URI: "file:///tmp/empty.thrift", Version: 0, Content: []byte(""), From: vfs.FileChangeTypeDidOpen},
 	)
 
 	labels, _, truncated := completionLabels(t, view, "file:///tmp/empty.thrift", protocol.Position{Line: 0, Character: 0})
@@ -311,7 +312,7 @@ func TestCompletionIncludePath(t *testing.T) {
 	pos := lspPosOf(t, mainContent, "include \"fed")
 
 	view := buildSnapshot(t, []string{filepath.Join(dir, "zeon")},
-		&cache.FileChange{URI: uri.File(filepath.Join(dir, "main.thrift")), Version: 0, Content: []byte(mainContent), From: cache.FileChangeTypeDidOpen},
+		&vfs.FileChange{URI: uri.File(filepath.Join(dir, "main.thrift")), Version: 0, Content: []byte(mainContent), From: vfs.FileChangeTypeDidOpen},
 	)
 
 	labels, rng, _ := completionLabels(t, view, uri.File(filepath.Join(dir, "main.thrift")).String(), pos)
@@ -325,7 +326,7 @@ func TestCompletionIncludePath(t *testing.T) {
 	mainContent2 := "include \"zeon/m"
 	pos2 := lspPosOf(t, mainContent2, "include \"zeon/m")
 	ss2 := buildSnapshot(t, []string{filepath.Join(dir, "zeon")},
-		&cache.FileChange{URI: uri.File(filepath.Join(dir, "main.thrift")), Version: 0, Content: []byte(mainContent2), From: cache.FileChangeTypeDidOpen},
+		&vfs.FileChange{URI: uri.File(filepath.Join(dir, "main.thrift")), Version: 0, Content: []byte(mainContent2), From: vfs.FileChangeTypeDidOpen},
 	)
 
 	labels2, _, _ := completionLabels(t, ss2, uri.File(filepath.Join(dir, "main.thrift")).String(), pos2)
@@ -336,7 +337,7 @@ func TestCompletionIncludePath(t *testing.T) {
 // wrapped edit range (the old whole-file prefix fallback bug).
 func TestCompletionNoPrefixUnderflow(t *testing.T) {
 	view := buildSnapshot(t, nil,
-		&cache.FileChange{URI: "file:///tmp/underflow.thrift", Version: 0, Content: []byte("const X=1"), From: cache.FileChangeTypeDidOpen},
+		&vfs.FileChange{URI: "file:///tmp/underflow.thrift", Version: 0, Content: []byte("const X=1"), From: vfs.FileChangeTypeDidOpen},
 	)
 
 	_, rng, _ := completionLabels(t, view, "file:///tmp/underflow.thrift", protocol.Position{Line: 0, Character: 9})
@@ -350,7 +351,7 @@ func TestCompletionNonASCIIPrefix(t *testing.T) {
 	pos := lspPosOf(t, content, "const X=1 😀")
 
 	view := buildSnapshot(t, nil,
-		&cache.FileChange{URI: "file:///tmp/emoji.thrift", Version: 0, Content: []byte(content), From: cache.FileChangeTypeDidOpen},
+		&vfs.FileChange{URI: "file:///tmp/emoji.thrift", Version: 0, Content: []byte(content), From: vfs.FileChangeTypeDidOpen},
 	)
 
 	_, rng, _ := completionLabels(t, view, "file:///tmp/emoji.thrift", pos)

@@ -8,8 +8,9 @@ import (
 	"go.lsp.dev/protocol"
 
 	"github.com/karitham/thrift-ls/formatter"
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/lsp/mapper"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // ErrNotParseable is returned by Format when the document has parse
@@ -19,7 +20,7 @@ import (
 var ErrNotParseable = errors.New("document does not parse")
 
 // Format returns the whole-document formatting of fh's content.
-func Format(ctx context.Context, view *cache.View, fh cache.FileHandle, opts formatter.Options) (string, error) {
+func Format(ctx context.Context, view *store.View, fh vfs.FileHandle, opts formatter.Options) (string, error) {
 	pf, err := view.Parse(ctx, fh.URI())
 	if err != nil {
 		return "", err
@@ -35,7 +36,7 @@ func Format(ctx context.Context, view *cache.View, fh cache.FileHandle, opts for
 // FormatDocument returns the single text edit replacing the whole document
 // with its formatted content. It returns nil when the document is already
 // formatted.
-func FormatDocument(ctx context.Context, view *cache.View, fh cache.FileHandle, opts formatter.Options) (*protocol.TextEdit, error) {
+func FormatDocument(ctx context.Context, view *store.View, fh vfs.FileHandle, opts formatter.Options) (*protocol.TextEdit, error) {
 	content, err := fh.Content()
 	if err != nil {
 		return nil, err
@@ -76,7 +77,7 @@ func FormatDocument(ctx context.Context, view *cache.View, fh cache.FileHandle, 
 // are preserved exactly by the formatter, so the blocks align one-to-one;
 // every edit is bounded by blank lines or file edges, and any subset
 // splices safely. Only the edits overlapping the selection are returned.
-func FormatRange(ctx context.Context, view *cache.View, fh cache.FileHandle, opts formatter.Options, rng protocol.Range) ([]protocol.TextEdit, error) {
+func FormatRange(ctx context.Context, view *store.View, fh vfs.FileHandle, opts formatter.Options, rng protocol.Range) ([]protocol.TextEdit, error) {
 	content, err := fh.Content()
 	if err != nil {
 		return nil, err
@@ -278,7 +279,7 @@ func lineEnd(content []byte, offset int) int {
 // typed: the whole struct/union/exception/enum/service block reflows. A
 // document that does not parse, or a position outside any construct,
 // formats nothing.
-func OnTypeFormat(ctx context.Context, view *cache.View, fh cache.FileHandle, opts formatter.Options, pos protocol.Position) ([]protocol.TextEdit, error) {
+func OnTypeFormat(ctx context.Context, view *store.View, fh vfs.FileHandle, opts formatter.Options, pos protocol.Position) ([]protocol.TextEdit, error) {
 	pf, err := view.Parse(ctx, fh.URI())
 	if err != nil || pf.AST() == nil {
 		return nil, nil
@@ -294,7 +295,7 @@ func OnTypeFormat(ctx context.Context, view *cache.View, fh cache.FileHandle, op
 
 // enclosingConstruct returns the range of the top-level construct
 // containing pos — definitions never overlap, so at most one matches.
-func enclosingConstruct(pf *cache.ParsedFile, pos protocol.Position) *protocol.Range {
+func enclosingConstruct(pf *store.ParsedFile, pos protocol.Position) *protocol.Range {
 	for _, n := range pf.AST().Nodes {
 		rng := nodeRange(pf, n)
 

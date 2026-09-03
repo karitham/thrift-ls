@@ -7,8 +7,9 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/lsp/source"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // willRenameFiles computes the edits re-pointing every include of each
@@ -70,8 +71,8 @@ func (s *Server) didRenameFiles(ctx context.Context, params *protocol.RenameFile
 		// Forget the editor overlay first, mirroring didClose: otherwise
 		// the stale buffer shadows the file system forever, and the
 		// watcher guard drops this rename's delete/create events.
-		change := &cache.FileChange{URI: oldURI, From: cache.FileChangeTypeDidClose}
-		if err := s.session.Update(ctx, []*cache.FileChange{change}); err != nil {
+		change := &vfs.FileChange{URI: oldURI, From: vfs.FileChangeTypeDidClose}
+		if err := s.session.Update(ctx, []*vfs.FileChange{change}); err != nil {
 			return err
 		}
 
@@ -87,8 +88,8 @@ func (s *Server) didRenameFiles(ctx context.Context, params *protocol.RenameFile
 // store, so their include edges re-resolve after a rename even in clients
 // without working file watchers. Overlay-backed includers are re-fed their
 // own current content: a cheap no-op re-parse.
-func (s *Server) refreshIncluders(ctx context.Context, view *cache.View, oldURI uri.URI) {
-	var refreshes []*cache.FileChange
+func (s *Server) refreshIncluders(ctx context.Context, view *store.View, oldURI uri.URI) {
+	var refreshes []*vfs.FileChange
 
 	for _, inc := range view.Includers(oldURI) {
 		fh, err := s.session.ReadFile(ctx, inc)
@@ -105,11 +106,11 @@ func (s *Server) refreshIncluders(ctx context.Context, view *cache.View, oldURI 
 			continue
 		}
 
-		refreshes = append(refreshes, &cache.FileChange{
+		refreshes = append(refreshes, &vfs.FileChange{
 			URI:     inc,
 			Version: int(fh.Version()),
 			Content: content,
-			From:    cache.FileChangeTypeDidChange,
+			From:    vfs.FileChangeTypeDidChange,
 		})
 	}
 

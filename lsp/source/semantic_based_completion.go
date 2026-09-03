@@ -5,14 +5,14 @@ import (
 
 	"go.lsp.dev/protocol"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 )
 
 type Interface interface {
 	// Completion returns the completion items for the request, the edit
 	// range, and whether the list was truncated by the item cap (the LSP
 	// isIncomplete flag).
-	Completion(ctx context.Context, view *cache.View, cmp *CompletionRequest) ([]*CompletionItem, protocol.Range, bool, error)
+	Completion(ctx context.Context, view *store.View, cmp *CompletionRequest) ([]*CompletionItem, protocol.Range, bool, error)
 }
 
 func BuildCompletionItem(candidate Candidate) *CompletionItem {

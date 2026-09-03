@@ -8,22 +8,23 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // openChange opens one file with content in a view.
-func openChange(path, content string) []*cache.FileChange {
-	return []*cache.FileChange{{
+func openChange(path, content string) []*vfs.FileChange {
+	return []*vfs.FileChange{{
 		URI:     uri.File(path),
 		Version: 0,
 		Content: []byte(content),
-		From:    cache.FileChangeTypeDidOpen,
+		From:    vfs.FileChangeTypeDidOpen,
 	}}
 }
 
 // addIncludeFixes returns the fixes the fixer offers for the undefined-type
 // diagnostics the analysis produced for file.
-func addIncludeFixes(t *testing.T, view *cache.View, file uri.URI) []Fix {
+func addIncludeFixes(t *testing.T, view *store.View, file uri.URI) []Fix {
 	t.Helper()
 
 	report := runOne(t, EachFile(&SemanticAnalysis{}), view, file)
@@ -126,7 +127,7 @@ func TestFixAllEnumValues(t *testing.T) {
 		b: []byte("enum Color {\n  RED,\n  GREEN = 2,\n  BLUE,\n}\n"),
 	}
 
-	view := cache.NewView(uri.File(folder), cache.NewMemFS(files), nil)
+	view := store.NewView(uri.File(folder), vfs.NewMemFS(files), nil)
 
 	var written []byte
 

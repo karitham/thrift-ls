@@ -1,4 +1,4 @@
-package cache
+package store
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/karitham/thrift-ls/lsp/mapper"
 	"github.com/karitham/thrift-ls/syntax"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // collectTokens collects every identifier name in the document: definition
@@ -30,7 +31,7 @@ func collectTokens(ast *syntax.Document, tokens map[string]struct{}) {
 }
 
 type ParsedFile struct {
-	fh FileHandle
+	fh vfs.FileHandle
 	// ast is the latest available ast. The current fh content may not be
 	// parsed, so ast may be nil when fh content is invalid.
 	ast *syntax.Document
@@ -120,7 +121,7 @@ func (p *ParsedFile) AggregatedError() error {
 }
 
 // Parse lexes and parses the file content into a ParsedFile.
-func Parse(fh FileHandle) (*ParsedFile, error) {
+func Parse(fh vfs.FileHandle) (*ParsedFile, error) {
 	content, err := fh.Content()
 	if err != nil {
 		return nil, err

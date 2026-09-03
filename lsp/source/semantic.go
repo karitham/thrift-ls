@@ -8,7 +8,7 @@ import (
 
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -47,7 +47,7 @@ func Legend() []string {
 
 // Tokens returns the delta-encoded semantic tokens of a file, in source
 // order.
-func Tokens(ctx context.Context, view *cache.View, file uri.URI) ([]uint32, error) {
+func Tokens(ctx context.Context, view *store.View, file uri.URI) ([]uint32, error) {
 	pf, err := view.Parse(ctx, file)
 	if err != nil || pf.AST() == nil {
 		return nil, err

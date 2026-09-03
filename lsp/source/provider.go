@@ -8,7 +8,7 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -18,7 +18,7 @@ import (
 type Provider interface {
 	// Candidates returns unfiltered candidates for the slot. The current
 	// context carries the prefix and the document.
-	Candidates(ctx context.Context, view *cache.View, file uri.URI, c Context) []Candidate
+	Candidates(ctx context.Context, view *store.View, file uri.URI, c Context) []Candidate
 }
 
 // providersFor returns the providers for a slot: the exact slot provider
@@ -53,19 +53,19 @@ func providersFor(kind ContextKind) []Provider {
 
 type includeProvider struct{}
 
-func (includeProvider) Candidates(_ context.Context, view *cache.View, file uri.URI, c Context) []Candidate {
+func (includeProvider) Candidates(_ context.Context, view *store.View, file uri.URI, c Context) []Candidate {
 	return ListDirAndFiles(filepath.Dir(file.FsPath()), view.Resolver().IncludePaths(), c.Prefix)
 }
 
 type typeProvider struct{}
 
-func (typeProvider) Candidates(ctx context.Context, view *cache.View, file uri.URI, c Context) []Candidate {
+func (typeProvider) Candidates(ctx context.Context, view *store.View, file uri.URI, c Context) []Candidate {
 	return typeCandidates(ctx, view, file, c)
 }
 
 type valueProvider struct{}
 
-func (valueProvider) Candidates(ctx context.Context, view *cache.View, file uri.URI, c Context) []Candidate {
+func (valueProvider) Candidates(ctx context.Context, view *store.View, file uri.URI, c Context) []Candidate {
 	return valueCandidates(ctx, view, file, c.Doc)
 }
 
@@ -73,7 +73,7 @@ type keywordProvider struct{}
 
 // Candidates returns the keyword snippets and every identifier token known
 // to the file (and its includes).
-func (keywordProvider) Candidates(_ context.Context, view *cache.View, file uri.URI, _ Context) []Candidate {
+func (keywordProvider) Candidates(_ context.Context, view *store.View, file uri.URI, _ Context) []Candidate {
 	res := make([]Candidate, 0, len(keywords)+16)
 
 	for text, format := range keywords {
@@ -92,7 +92,7 @@ type fieldNameProvider struct{}
 // Candidates returns the field modifiers and every identifier token, so a
 // field name position suggests required/optional and names from the
 // codebase — never value candidates.
-func (fieldNameProvider) Candidates(_ context.Context, view *cache.View, file uri.URI, _ Context) []Candidate {
+func (fieldNameProvider) Candidates(_ context.Context, view *store.View, file uri.URI, _ Context) []Candidate {
 	res := []Candidate{
 		{showText: "required", insertText: "required", format: protocol.InsertTextFormatPlainText},
 		{showText: "optional", insertText: "optional", format: protocol.InsertTextFormatPlainText},
@@ -109,7 +109,7 @@ type annotationKeyProvider struct{}
 
 // Candidates collects the annotation names used in the file and its
 // transitively included files.
-func (annotationKeyProvider) Candidates(ctx context.Context, view *cache.View, file uri.URI, c Context) []Candidate {
+func (annotationKeyProvider) Candidates(ctx context.Context, view *store.View, file uri.URI, c Context) []Candidate {
 	keys := make(map[string]struct{})
 
 	collect := func(doc *syntax.Document) {
@@ -148,7 +148,7 @@ func annotationKeys(doc *syntax.Document) map[string]struct{} {
 type serviceExtendsProvider struct{}
 
 // Candidates returns the service names from the file and its includes.
-func (serviceExtendsProvider) Candidates(ctx context.Context, view *cache.View, file uri.URI, c Context) []Candidate {
+func (serviceExtendsProvider) Candidates(ctx context.Context, view *store.View, file uri.URI, c Context) []Candidate {
 	names := make(map[string]struct{})
 
 	collect := func(doc *syntax.Document) {

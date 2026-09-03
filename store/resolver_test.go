@@ -1,4 +1,4 @@
-package cache
+package store
 
 import (
 	"path/filepath"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/karitham/thrift-ls/resolver/resolvertest"
 	"github.com/karitham/thrift-ls/syntax"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 func TestResolver(t *testing.T) {
@@ -20,7 +21,7 @@ func TestResolver(t *testing.T) {
 	tree := resolvertest.Map{
 		sharedThrift: []byte("struct Shared {}"),
 	}
-	fs := NewOverlayFS(NewMemFS(tree.URIs()))
+	fs := vfs.NewOverlayFS(vfs.NewMemFS(tree.URIs()))
 
 	view := NewView(uri.File(root), fs, []string{sharedDir})
 
@@ -60,8 +61,8 @@ func TestResolver(t *testing.T) {
 				// The include lives only in the editor overlay: an unsaved
 				// buffer resolves even with no disk copy.
 				overlayURI := uri.File(filepath.Join(sharedDir, "overlay.thrift"))
-				assert.NoError(t, fs.Update(t.Context(), []*FileChange{
-					{URI: overlayURI, Version: 1, Content: []byte("struct Overlay {}"), From: FileChangeTypeDidOpen},
+				assert.NoError(t, fs.Update(t.Context(), []*vfs.FileChange{
+					{URI: overlayURI, Version: 1, Content: []byte("struct Overlay {}"), From: vfs.FileChangeTypeDidOpen},
 				}))
 				t.Cleanup(func() { fs.Forget(overlayURI) })
 

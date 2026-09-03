@@ -7,15 +7,15 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/sema"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
 // typeCandidates collects the names of all type definitions (structs,
 // unions, exceptions, enums, typedefs, services) from the file and its
 // transitively included files, plus the base type keywords.
-func typeCandidates(ctx context.Context, view *cache.View, file uri.URI, c Context) []Candidate {
+func typeCandidates(ctx context.Context, view *store.View, file uri.URI, c Context) []Candidate {
 	// A dotted prefix scopes the completion to the include: suggest the
 	// include's type names, qualified with the include name.
 	if i := strings.LastIndexByte(c.Prefix, '.'); i >= 0 {
@@ -137,7 +137,7 @@ var typeKeywords = []struct {
 
 // valueCandidates collects const names and enum names and values from the
 // file and its transitively included files, both bare and enum-qualified.
-func valueCandidates(ctx context.Context, view *cache.View, file uri.URI, doc *syntax.Document) []Candidate {
+func valueCandidates(ctx context.Context, view *store.View, file uri.URI, doc *syntax.Document) []Candidate {
 	names := make(map[string]struct{})
 	collectValueNames := func(ast *syntax.Document) {
 		for _, cst := range ast.Consts() {
@@ -166,7 +166,7 @@ func valueCandidates(ctx context.Context, view *cache.View, file uri.URI, doc *s
 
 // includedFiles returns the files transitively included by file, per the
 // include graph.
-func includedFiles(view *cache.View, file uri.URI) []uri.URI {
+func includedFiles(view *store.View, file uri.URI) []uri.URI {
 	var out []uri.URI
 
 	visited := make(map[uri.URI]bool)

@@ -7,7 +7,7 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 )
 
 // WorkspaceSymbols returns the workspace symbols matching query among the
@@ -15,7 +15,7 @@ import (
 // URI, symbols in source order. An empty query matches everything; the
 // result is capped at maxResults (0 means unlimited). Matching is
 // case-insensitive substring on the symbol name.
-func WorkspaceSymbols(ctx context.Context, view *cache.View, files []uri.URI, query string, maxResults int) []protocol.SymbolInformation {
+func WorkspaceSymbols(ctx context.Context, view *store.View, files []uri.URI, query string, maxResults int) []protocol.SymbolInformation {
 	res := make([]protocol.SymbolInformation, 0, 64)
 	q := strings.ToLower(query)
 
@@ -38,7 +38,7 @@ func WorkspaceSymbols(ctx context.Context, view *cache.View, files []uri.URI, qu
 // documentSymbolsFlat returns the document symbols of a file flattened
 // into workspace symbols: each child carries its parent's name as the
 // container, and the location points at the symbol's name.
-func documentSymbolsFlat(ctx context.Context, view *cache.View, file uri.URI) []protocol.SymbolInformation {
+func documentSymbolsFlat(ctx context.Context, view *store.View, file uri.URI) []protocol.SymbolInformation {
 	syms := make([]protocol.SymbolInformation, 0, 16)
 
 	for _, sym := range DocumentSymbols(ctx, view, file) {

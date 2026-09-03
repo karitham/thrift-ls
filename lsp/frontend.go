@@ -1,9 +1,9 @@
 package lsp
 
 import (
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/sema"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // Layering, lowest to highest precedence:
@@ -45,7 +45,7 @@ type Analysis struct {
 type Options struct {
 	// Files serves file content and directory walks. Nil uses the memoized
 	// disk source.
-	Files cache.FileSource
+	Files vfs.FileSource
 	// Defaults sits directly above the builtin defaults. An empty patch
 	// uses the package defaults.
 	Defaults options.Patch

@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // TestCompletionQualifiedType covers "songs.|" in type positions: the dot
@@ -48,8 +48,8 @@ const i32 TEMPO = 120`
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			view := buildSnapshot(t, nil,
-				&cache.FileChange{URI: "file:///tmp/songs.thrift", Version: 0, Content: []byte(songs), From: cache.FileChangeTypeDidOpen},
-				&cache.FileChange{URI: "file:///tmp/club.thrift", Version: 0, Content: []byte(tt.content), From: cache.FileChangeTypeDidOpen},
+				&vfs.FileChange{URI: "file:///tmp/songs.thrift", Version: 0, Content: []byte(songs), From: vfs.FileChangeTypeDidOpen},
+				&vfs.FileChange{URI: "file:///tmp/club.thrift", Version: 0, Content: []byte(tt.content), From: vfs.FileChangeTypeDidOpen},
 			)
 
 			pos := lspPosOf(t, tt.content, tt.marker)
@@ -73,8 +73,8 @@ func TestCompletionQualifiedTypeFilter(t *testing.T) {
 	content := "include \"songs.thrift\"\nstruct Club {\n\t1: required songs.A\n}"
 
 	view := buildSnapshot(t, nil,
-		&cache.FileChange{URI: "file:///tmp/songs.thrift", Version: 0, Content: []byte("enum Song {\n\tFUWA_FUWA_TIME = 1\n}\n\nstruct Album {\n\t1: required string title\n}\n"), From: cache.FileChangeTypeDidOpen},
-		&cache.FileChange{URI: "file:///tmp/club.thrift", Version: 0, Content: []byte(content), From: cache.FileChangeTypeDidOpen},
+		&vfs.FileChange{URI: "file:///tmp/songs.thrift", Version: 0, Content: []byte("enum Song {\n\tFUWA_FUWA_TIME = 1\n}\n\nstruct Album {\n\t1: required string title\n}\n"), From: vfs.FileChangeTypeDidOpen},
+		&vfs.FileChange{URI: "file:///tmp/club.thrift", Version: 0, Content: []byte(content), From: vfs.FileChangeTypeDidOpen},
 	)
 
 	pos := lspPosOf(t, content, "songs.A")

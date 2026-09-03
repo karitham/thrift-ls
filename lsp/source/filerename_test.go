@@ -8,7 +8,8 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // litEdit is the expected edit of a whole include literal on one line.
@@ -22,12 +23,12 @@ func litEdit(colStart, colEnd int, text string) protocol.TextEdit {
 	}
 }
 
-func openDoc(u, content string) *cache.FileChange {
-	return &cache.FileChange{
+func openDoc(u, content string) *vfs.FileChange {
+	return &vfs.FileChange{
 		URI:     uri.URI(u),
 		Version: 0,
 		Content: []byte(content),
-		From:    cache.FileChangeTypeDidOpen,
+		From:    vfs.FileChangeTypeDidOpen,
 	}
 }
 
@@ -39,7 +40,7 @@ func openDoc(u, content string) *cache.FileChange {
 func Test_RenameFileEdits(t *testing.T) {
 	tests := []struct {
 		name   string
-		files  []*cache.FileChange
+		files  []*vfs.FileChange
 		paths  []string // extra include paths, like --I
 		oldURI string
 		newURI string
@@ -49,7 +50,7 @@ func Test_RenameFileEdits(t *testing.T) {
 	}{
 		{
 			name: "flat and relative includes both rewrite",
-			files: []*cache.FileChange{
+			files: []*vfs.FileChange{
 				openDoc("file:///tmp/ren/shared.thrift", "struct Shared {}\n"),
 				openDoc("file:///tmp/ren/a.thrift", "include \"shared.thrift\"\nstruct A { 1: shared.X x }\n"),
 				openDoc("file:///tmp/ren/sub/b.thrift", "include \"../shared.thrift\"\nstruct B { 1: shared.X x }\n"),
@@ -65,7 +66,7 @@ func Test_RenameFileEdits(t *testing.T) {
 		},
 		{
 			name: "a file nobody includes yields no edits",
-			files: []*cache.FileChange{
+			files: []*vfs.FileChange{
 				openDoc("file:///tmp/solo/lonely.thrift", "struct Lonely {}\n"),
 			},
 			oldURI: "file:///tmp/solo/lonely.thrift",
@@ -74,7 +75,7 @@ func Test_RenameFileEdits(t *testing.T) {
 		},
 		{
 			name: "a move between directories under one include root rewrites the whole tail",
-			files: []*cache.FileChange{
+			files: []*vfs.FileChange{
 				openDoc("file:///tmp/inc/vendor/base.thrift", "struct Base {}\n"),
 				openDoc("file:///tmp/proj/main.thrift", "include \"vendor/base.thrift\"\nstruct M { 1: vendor.B b }\n"),
 			},
@@ -87,7 +88,7 @@ func Test_RenameFileEdits(t *testing.T) {
 		},
 		{
 			name: "an include resolved through an include path swaps only its base name",
-			files: []*cache.FileChange{
+			files: []*vfs.FileChange{
 				openDoc("file:///tmp/inc/vendor.thrift", "struct Vendor {}\n"),
 				openDoc("file:///tmp/proj/main.thrift", "include \"vendor.thrift\"\nstruct M { 1: vendor.V v }\n"),
 			},
@@ -100,7 +101,7 @@ func Test_RenameFileEdits(t *testing.T) {
 		},
 		{
 			name: "a self-include rewrites in place",
-			files: []*cache.FileChange{
+			files: []*vfs.FileChange{
 				openDoc("file:///tmp/self/loop.thrift", "include \"loop.thrift\"\nstruct L {}\n"),
 			},
 			oldURI: "file:///tmp/self/loop.thrift",
@@ -113,7 +114,7 @@ func Test_RenameFileEdits(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := cache.BuildViewForTestWithPaths(tt.paths, tt.files)
+			view := store.BuildViewForTestWithPaths(tt.paths, tt.files)
 
 			got, err := RenameFileEdits(t.Context(), view, uri.URI(tt.oldURI), uri.URI(tt.newURI))
 			require.NoError(t, err)

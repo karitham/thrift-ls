@@ -11,8 +11,9 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/options"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // WorkspaceLoader discovers the projects in one LSP workspace folder. A
@@ -65,7 +66,7 @@ type workspace struct {
 	mu        sync.Mutex
 	folders   map[uri.URI]*workspaceFolder
 	model     workspaceModel
-	views     map[uri.URI]*cache.View
+	views     map[uri.URI]*store.View
 	documents map[uri.URI]struct{}
 }
 
@@ -94,7 +95,7 @@ func newWorkspace(server *Server, loader WorkspaceLoader) *workspace {
 		loader:    loader,
 		folders:   make(map[uri.URI]*workspaceFolder),
 		model:     emptyWorkspaceModel(),
-		views:     make(map[uri.URI]*cache.View),
+		views:     make(map[uri.URI]*store.View),
 		documents: make(map[uri.URI]struct{}),
 	}
 }
@@ -452,7 +453,7 @@ func (w *workspace) loadSync(ctx context.Context, folders []uri.URI) {
 // *.thrift file under the folder is a target, with no opinions of its own
 // so each root resolves through the ConfigSource. It keeps folder-based
 // sessions working with the workspace as the only workspace.
-func defaultLoader(src cache.FileSource) WorkspaceLoader {
+func defaultLoader(src vfs.FileSource) WorkspaceLoader {
 	return func(ctx context.Context, folder uri.URI) (WorkspaceSnapshot, error) {
 		var targets []uri.URI
 
@@ -581,16 +582,16 @@ func (w *workspace) updateViewsLocked(ctx context.Context, changes map[uri.URI][
 		files := changes[root]
 		slices.Sort(files)
 		files = slices.Compact(files)
-		updates := make([]*cache.FileChange, len(files))
+		updates := make([]*vfs.FileChange, len(files))
 		for i, file := range files {
-			updates[i] = &cache.FileChange{URI: file, From: cache.FileChangeTypeInitialize}
+			updates[i] = &vfs.FileChange{URI: file, From: vfs.FileChangeTypeInitialize}
 		}
 
 		w.server.postDiagnostics(ctx, view, view.Update(ctx, updates...))
 	}
 }
 
-func (w *workspace) applyChanges(ctx context.Context, changes []*cache.FileChange, overlay bool) error {
+func (w *workspace) applyChanges(ctx context.Context, changes []*vfs.FileChange, overlay bool) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -605,7 +606,7 @@ func (w *workspace) applyChanges(ctx context.Context, changes []*cache.FileChang
 	for _, change := range changes {
 		previousRoot, previouslyOwned := w.model.ownerOf(change.URI, w.documents)
 		if overlay {
-			if change.From == cache.FileChangeTypeDidClose {
+			if change.From == vfs.FileChangeTypeDidClose {
 				delete(w.documents, change.URI)
 			} else {
 				w.documents[change.URI] = struct{}{}
@@ -617,7 +618,7 @@ func (w *workspace) applyChanges(ctx context.Context, changes []*cache.FileChang
 			continue
 		}
 
-		if change.From == cache.FileChangeTypeDidClose && previouslyOwned {
+		if change.From == vfs.FileChangeTypeDidClose && previouslyOwned {
 			if view := w.views[previousRoot]; view != nil {
 				view.Evict(change.URI)
 				evicted = append(evicted, change.URI)
@@ -633,7 +634,7 @@ func (w *workspace) applyChanges(ctx context.Context, changes []*cache.FileChang
 	return nil
 }
 
-func (w *workspace) viewOf(file uri.URI) (*cache.View, error) {
+func (w *workspace) viewOf(file uri.URI) (*store.View, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -666,7 +667,7 @@ func (w *workspace) rootContains(file uri.URI) bool {
 	return ok
 }
 
-func (w *workspace) files(view *cache.View) []uri.URI {
+func (w *workspace) files(view *store.View) []uri.URI {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 

@@ -10,13 +10,13 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
 // Links returns the document links of a file, one per include and
 // cpp_include, targeting the resolved file.
-func Links(ctx context.Context, view *cache.View, file uri.URI) []protocol.DocumentLink {
+func Links(ctx context.Context, view *store.View, file uri.URI) []protocol.DocumentLink {
 	pf, err := view.Parse(ctx, file)
 	if err != nil || pf.AST() == nil {
 		return nil

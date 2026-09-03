@@ -1,4 +1,4 @@
-package cache
+package store
 
 import (
 	"context"
@@ -11,13 +11,14 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/syntax"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // viewEntry is one file's store record: its content handle and the parse
 // derived from it. Entries are replaced wholesale when content changes, so
 // a live entry never goes stale.
 type viewEntry struct {
-	fh     FileHandle
+	fh     vfs.FileHandle
 	parsed *ParsedFile // nil until parsed
 }
 
@@ -33,7 +34,7 @@ type View struct {
 	// directory in single-file mode.
 	folder uri.URI
 
-	fs FileSource
+	fs vfs.FileSource
 
 	includePaths []string
 
@@ -59,7 +60,7 @@ func generationOf(ctx context.Context) (uint64, bool) {
 	return generation, ok
 }
 
-func NewView(folder uri.URI, fs FileSource, includePaths []string) *View {
+func NewView(folder uri.URI, fs vfs.FileSource, includePaths []string) *View {
 	return &View{
 		folder:       folder,
 		fs:           fs,
@@ -100,7 +101,7 @@ func (v *View) WalkFiles(ctx context.Context, root uri.URI, fn func(uri.URI) err
 // ReadFile returns the current content of uri: the editor overlay for open
 // files, the memoized disk content otherwise. Content is not cached on the
 // view — the file sources already memoize it.
-func (v *View) ReadFile(ctx context.Context, u uri.URI) (FileHandle, error) {
+func (v *View) ReadFile(ctx context.Context, u uri.URI) (vfs.FileHandle, error) {
 	slog.Debug("view read file", "uri", u)
 
 	return v.fs.ReadFile(ctx, u)
@@ -316,7 +317,7 @@ func (v *View) KnownFiles() []uri.URI {
 }
 
 // Generation returns the view's change counter. It increments on every
-// FileChange; asynchronous work captures it and re-checks before publishing.
+// vfs.FileChange; asynchronous work captures it and re-checks before publishing.
 func (v *View) Generation() uint64 {
 	return v.gen.Load()
 }
@@ -379,7 +380,7 @@ type ChangeResult struct {
 // entries and re-parses them, so their include edges are fresh before any
 // request observes the change. It returns what changed; publishing derived
 // results (diagnostics) is the caller's policy.
-func (v *View) Update(ctx context.Context, changes ...*FileChange) ChangeResult {
+func (v *View) Update(ctx context.Context, changes ...*vfs.FileChange) ChangeResult {
 	uris := make([]uri.URI, 0, len(changes))
 	for _, change := range changes {
 		uris = append(uris, change.URI)

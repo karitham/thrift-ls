@@ -12,13 +12,13 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
 // Ranges returns the folding ranges of a file, in source order. Degenerate
 // single-line ranges are omitted.
-func Ranges(ctx context.Context, view *cache.View, file uri.URI) []protocol.FoldingRange {
+func Ranges(ctx context.Context, view *store.View, file uri.URI) []protocol.FoldingRange {
 	pf, err := view.Parse(ctx, file)
 	if err != nil || pf.AST() == nil {
 		return nil
@@ -116,7 +116,7 @@ func contentStart(n syntax.Node, toks []syntax.Token) int {
 // bracedRange returns the fold range of a brace-delimited body: from the
 // opening brace to the closing one. start is the first content token
 // (see contentStart).
-func bracedRange(pf *cache.ParsedFile, n syntax.Node, start int) (protocol.FoldingRange, bool) {
+func bracedRange(pf *store.ParsedFile, n syntax.Node, start int) (protocol.FoldingRange, bool) {
 	open := -1
 
 	for i := start; i <= n.TokEnd(); i++ {
@@ -178,7 +178,7 @@ func nodeAnnotation(n syntax.Node) *syntax.Annotations {
 
 // spanRange converts the token span [start, end] into a folding range.
 // Degenerate single-line spans yield no range.
-func spanRange(pf *cache.ParsedFile, start, end int) (protocol.FoldingRange, bool) {
+func spanRange(pf *store.ParsedFile, start, end int) (protocol.FoldingRange, bool) {
 	doc := pf.AST()
 	s := doc.TokenPosition(start)
 	e := doc.TokenEndPosition(end)
@@ -199,7 +199,7 @@ func spanRange(pf *cache.ParsedFile, start, end int) (protocol.FoldingRange, boo
 }
 
 // commentSpanRange is spanRange for comment folds.
-func commentSpanRange(pf *cache.ParsedFile, start, end int) (protocol.FoldingRange, bool) {
+func commentSpanRange(pf *store.ParsedFile, start, end int) (protocol.FoldingRange, bool) {
 	r, ok := spanRange(pf, start, end)
 	if ok {
 		r.Kind = protocol.FoldingRangeKindComment
@@ -210,7 +210,7 @@ func commentSpanRange(pf *cache.ParsedFile, start, end int) (protocol.FoldingRan
 
 // blockCommentSpan folds a multi-line block comment. The token records
 // only its start position, so the end line is derived from the text.
-func blockCommentSpan(pf *cache.ParsedFile, idx int) (protocol.FoldingRange, bool) {
+func blockCommentSpan(pf *store.ParsedFile, idx int) (protocol.FoldingRange, bool) {
 	doc := pf.AST()
 	tok := doc.Tokens[idx]
 	startPos := toLSPPosition(pf, doc.TokenPosition(idx))
@@ -233,7 +233,7 @@ func blockCommentSpan(pf *cache.ParsedFile, idx int) (protocol.FoldingRange, boo
 
 // commentBlocks folds consecutive same-line comments on consecutive
 // source lines, and multi-line block comments, into comment fold ranges.
-func commentBlocks(pf *cache.ParsedFile) []protocol.FoldingRange {
+func commentBlocks(pf *store.ParsedFile) []protocol.FoldingRange {
 	var ranges []protocol.FoldingRange
 
 	doc := pf.AST()

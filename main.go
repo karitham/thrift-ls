@@ -17,9 +17,10 @@ import (
 	"github.com/karitham/thrift-ls/doc"
 	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/lsp"
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/options"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
+	"github.com/karitham/thrift-ls/vfs"
 
 	"go.lsp.dev/uri"
 )
@@ -198,7 +199,7 @@ func runLSP(ctx context.Context, cmd *cli.Command) error {
 	lsp.InitLogger(logLevelValue)
 
 	lspOpts := &lsp.Options{
-		Files: cache.NewMemoizedFS(),
+		Files: vfs.NewMemoizedFS(),
 		CLI:   cliPatch,
 	}
 	// An explicit --config pins one document for every view, skipping
@@ -366,14 +367,14 @@ func dumpIncludes(ctx context.Context, file string, cmd *cli.Command) error {
 
 	patch = cliPatch.Apply(patch)
 
-	fs := cache.NewMemoizedFS()
-	sess := cache.NewSession(fs)
+	fs := vfs.NewMemoizedFS()
+	sess := store.NewSession(fs)
 	sess.AddView(uri.File(filepath.Dir(abs)), derefStrings(patch.IncludePaths))
 
 	u := uri.File(abs)
 
-	err = sess.Update(ctx, []*cache.FileChange{
-		{URI: u, Version: 0, Content: content, From: cache.FileChangeTypeDidOpen},
+	err = sess.Update(ctx, []*vfs.FileChange{
+		{URI: u, Version: 0, Content: content, From: vfs.FileChangeTypeDidOpen},
 	})
 	if err != nil {
 		return err
@@ -429,7 +430,7 @@ func dumpIncludes(ctx context.Context, file string, cmd *cli.Command) error {
 }
 
 // checkAction reports the diagnostics the language server computes for a
-// thrift file or folder, through the same cache and checker pipeline the
+// thrift file or folder, through the same store and checker pipeline the
 // LSP uses. Diagnostics print to stdout; the command exits 1 when any
 // error-severity diagnostic is found, so it can gate CI. Warnings do not
 // fail the check.

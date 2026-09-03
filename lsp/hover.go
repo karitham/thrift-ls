@@ -6,12 +6,12 @@ import (
 
 	"go.lsp.dev/protocol"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/lsp/source"
+	"github.com/karitham/thrift-ls/store"
 )
 
 func (s *Server) hover(ctx context.Context, params *protocol.HoverParams) (*protocol.Hover, error) {
-	return withView(s.viewOf, params.TextDocument.URI, func(view *cache.View) (*protocol.Hover, error) {
+	return withView(s.viewOf, params.TextDocument.URI, func(view *store.View) (*protocol.Hover, error) {
 		content, err := source.Hover(ctx, view, params.TextDocument.URI, params.Position)
 		if err != nil {
 			return nil, err

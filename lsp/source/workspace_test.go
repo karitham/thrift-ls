@@ -12,7 +12,8 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // writeTree writes the file contents under dir and returns the directory.
@@ -32,7 +33,7 @@ func writeTree(t *testing.T, files map[string]string) string {
 // openTree registers every file of dir with its view, like the server's
 // initialization walk does. When only is non-nil, only those file names
 // are registered.
-func openTree(t *testing.T, session *cache.Session, dir string, only map[string]bool) {
+func openTree(t *testing.T, session *store.Session, dir string, only map[string]bool) {
 	t.Helper()
 
 	folder := uri.File(dir)
@@ -50,11 +51,11 @@ func openTree(t *testing.T, session *cache.Session, dir string, only map[string]
 		content, err := os.ReadFile(path)
 		require.NoError(t, err)
 
-		view.Update(t.Context(), &cache.FileChange{
+		view.Update(t.Context(), &vfs.FileChange{
 			URI:     uri.File(path),
 			Version: 0,
 			Content: content,
-			From:    cache.FileChangeTypeInitialize,
+			From:    vfs.FileChangeTypeInitialize,
 		})
 
 		return nil
@@ -63,7 +64,7 @@ func openTree(t *testing.T, session *cache.Session, dir string, only map[string]
 
 // allWorkspaceSymbols mirrors the server's Symbols handler: one snapshot
 // per view (folders ordered by URI), querying each view's known files.
-func allWorkspaceSymbols(ctx context.Context, session *cache.Session, query string, maxResults int) []protocol.SymbolInformation {
+func allWorkspaceSymbols(ctx context.Context, session *store.Session, query string, maxResults int) []protocol.SymbolInformation {
 	var res []protocol.SymbolInformation
 
 	views := session.Views()
@@ -191,7 +192,7 @@ struct C { 1: string x }`,
 		t.Run(tt.name, func(t *testing.T) {
 			dir := writeTree(t, tt.files)
 
-			session := cache.NewSession(cache.NewMemoizedFS())
+			session := store.NewSession(vfs.NewMemoizedFS())
 
 			if tt.nested {
 				// Each top-level directory is a workspace folder.
@@ -240,7 +241,7 @@ const i32 DEFAULT_HP = 100,
 typedef string PilotName`,
 	})
 
-	session := cache.NewSession(cache.NewMemoizedFS())
+	session := store.NewSession(vfs.NewMemoizedFS())
 	openTree(t, session, dir, nil)
 
 	file := uri.File(filepath.Join(dir, "shapes.thrift"))
@@ -298,7 +299,7 @@ service Federation {
 }`,
 	})
 
-	session := cache.NewSession(cache.NewMemoizedFS())
+	session := store.NewSession(vfs.NewMemoizedFS())
 	openTree(t, session, dir, nil)
 
 	tests := []struct {
@@ -352,7 +353,7 @@ exception BayFull {
 }`,
 	})
 
-	session := cache.NewSession(cache.NewMemoizedFS())
+	session := store.NewSession(vfs.NewMemoizedFS())
 	openTree(t, session, dir, nil)
 
 	syms := allWorkspaceSymbols(t.Context(), session, "", 0)

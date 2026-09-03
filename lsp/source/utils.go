@@ -1,8 +1,8 @@
 package source
 
 import (
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/sema"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -30,7 +30,7 @@ func definitionMatches(n syntax.Node, kind sema.DefinitionKind) bool {
 
 // enumOfValue returns the enum declaring the value with the given name, or
 // nil.
-func enumOfValue(pf *cache.ParsedFile, name string) *syntax.Enum {
+func enumOfValue(pf *store.ParsedFile, name string) *syntax.Enum {
 	id := pf.EnumValues()[name]
 	if id == nil {
 		return nil

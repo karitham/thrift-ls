@@ -8,7 +8,8 @@ import (
 
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 func TestHover(t *testing.T) {
@@ -31,9 +32,9 @@ service Svc extends Base {
 }
 
 const Color defaultColor = GREEN`
-	view := cache.BuildViewForTest([]*cache.FileChange{
-		{URI: "file:///tmp/user.thrift", Version: 0, Content: []byte(file1), From: cache.FileChangeTypeDidOpen},
-		{URI: "file:///tmp/api.thrift", Version: 0, Content: []byte(file2), From: cache.FileChangeTypeDidOpen},
+	view := store.BuildViewForTest([]*vfs.FileChange{
+		{URI: "file:///tmp/user.thrift", Version: 0, Content: []byte(file1), From: vfs.FileChangeTypeDidOpen},
+		{URI: "file:///tmp/api.thrift", Version: 0, Content: []byte(file2), From: vfs.FileChangeTypeDidOpen},
 	})
 
 	posOf := func(file, marker string, offset ...int) protocol.Position {
@@ -89,8 +90,8 @@ const Color defaultColor = GREEN`
 }
 
 func TestHoverUnresolvable(t *testing.T) {
-	view := cache.BuildViewForTest([]*cache.FileChange{
-		{URI: "file:///tmp/test.thrift", Version: 0, Content: []byte("struct S {\n  1: Missing x\n}"), From: cache.FileChangeTypeDidOpen},
+	view := store.BuildViewForTest([]*vfs.FileChange{
+		{URI: "file:///tmp/test.thrift", Version: 0, Content: []byte("struct S {\n  1: Missing x\n}"), From: vfs.FileChangeTypeDidOpen},
 	})
 
 	got, err := Hover(t.Context(), view, "file:///tmp/test.thrift", protocol.Position{Line: 1, Character: 8})

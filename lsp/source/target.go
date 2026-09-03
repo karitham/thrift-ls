@@ -8,7 +8,7 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -41,7 +41,7 @@ type target struct {
 var errNoAST = errors.New("parse ast failed")
 
 // resolveTarget parses the file and finds what the cursor is on.
-func resolveTarget(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Position) (*cache.ParsedFile, *target, error) {
+func resolveTarget(ctx context.Context, view *store.View, file uri.URI, pos protocol.Position) (*store.ParsedFile, *target, error) {
 	pf, err := view.Parse(ctx, file)
 	if err != nil {
 		return nil, nil, err
@@ -126,7 +126,7 @@ func (t *target) identifier() *syntax.Identifier {
 }
 
 // jump builds an LSP location for a node.
-func jump(file uri.URI, pf *cache.ParsedFile, node syntax.Node) protocol.Location {
+func jump(file uri.URI, pf *store.ParsedFile, node syntax.Node) protocol.Location {
 	return protocol.Location{
 		Range: nodeRange(pf, node),
 		URI:   file,
@@ -137,7 +137,7 @@ func jump(file uri.URI, pf *cache.ParsedFile, node syntax.Node) protocol.Locatio
 // file's AST. Use this for nodes resolved from a different file than the
 // one under the cursor: the node's token indices are only meaningful in its
 // own document's token stream.
-func jumpInFile(ctx context.Context, view *cache.View, file uri.URI, node syntax.Node) (protocol.Location, error) {
+func jumpInFile(ctx context.Context, view *store.View, file uri.URI, node syntax.Node) (protocol.Location, error) {
 	pf, err := view.Parse(ctx, file)
 	if err != nil {
 		return protocol.Location{}, err
@@ -154,7 +154,7 @@ func jumpInFile(ctx context.Context, view *cache.View, file uri.URI, node syntax
 // file mapper, so character columns are UTF-16 code units as the protocol
 // requires. When the offset does not map (defensive), the rune column is
 // the fallback.
-func toLSPPosition(pf *cache.ParsedFile, pos syntax.Position) protocol.Position {
+func toLSPPosition(pf *store.ParsedFile, pos syntax.Position) protocol.Position {
 	p, err := pf.Mapper().OffsetToLSPPosition(pos.Offset)
 	if err != nil {
 		return protocol.Position{Line: uint32(pos.Line - 1), Character: uint32(pos.Col - 1)}
@@ -164,19 +164,19 @@ func toLSPPosition(pf *cache.ParsedFile, pos syntax.Position) protocol.Position 
 }
 
 // toLSPRange converts a parser span to an LSP range with UTF-16 columns.
-func toLSPRange(pf *cache.ParsedFile, start, end syntax.Position) protocol.Range {
+func toLSPRange(pf *store.ParsedFile, start, end syntax.Position) protocol.Range {
 	return protocol.Range{Start: toLSPPosition(pf, start), End: toLSPPosition(pf, end)}
 }
 
 // nodeRange converts a node span to an LSP range.
-func nodeRange(pf *cache.ParsedFile, node syntax.Node) protocol.Range {
+func nodeRange(pf *store.ParsedFile, node syntax.Node) protocol.Range {
 	start, end := pf.AST().Range(node)
 
 	return toLSPRange(pf, start, end)
 }
 
 // tokenRange converts a token's span to an LSP range.
-func tokenRange(pf *cache.ParsedFile, tok *syntax.Token) protocol.Range {
+func tokenRange(pf *store.ParsedFile, tok *syntax.Token) protocol.Range {
 	if tok == nil {
 		return protocol.Range{}
 	}

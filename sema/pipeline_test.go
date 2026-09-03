@@ -8,14 +8,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 var _ func(Config) *Pipeline = DefaultPipeline
 
 // runOne runs a single analyzer over view and files: the shape check
 // tests use to pin one check's behavior in isolation.
-func runOne(t *testing.T, a Analyzer, view *cache.View, files ...uri.URI) Report {
+func runOne(t *testing.T, a Analyzer, view *store.View, files ...uri.URI) Report {
 	t.Helper()
 
 	report, err := New(Config{}, []Analyzer{a}).Run(t.Context(), view, files)
@@ -62,14 +63,14 @@ func cmpAll(ds []Diagnostic) []diagCmp {
 
 // buildFolderSnapshotForTest builds a snapshot whose view root is folder,
 // with the given files opened in the overlay.
-func buildFolderSnapshotForTest(t *testing.T, folder string, files []*cache.FileChange) *cache.View {
+func buildFolderSnapshotForTest(t *testing.T, folder string, files []*vfs.FileChange) *store.View {
 	t.Helper()
 
-	c := cache.NewMemoizedFS()
-	fs := cache.NewOverlayFS(c)
+	c := vfs.NewMemoizedFS()
+	fs := vfs.NewOverlayFS(c)
 	_ = fs.Update(t.Context(), files)
 
-	view := cache.NewView(uri.File(folder), fs, nil)
+	view := store.NewView(uri.File(folder), fs, nil)
 
 	for _, f := range files {
 		_, _ = view.Parse(t.Context(), f.URI)
@@ -89,7 +90,7 @@ func writeThrift(t *testing.T, folder, name, content string) string {
 }
 
 // analyzeOne runs the full semantic analysis over one file.
-func analyzeOne(t *testing.T, view *cache.View, file uri.URI) []Diagnostic {
+func analyzeOne(t *testing.T, view *store.View, file uri.URI) []Diagnostic {
 	t.Helper()
 
 	return runOne(t, EachFile(&SemanticAnalysis{}), view, file)[file]

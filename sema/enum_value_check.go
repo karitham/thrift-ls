@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -79,7 +79,7 @@ func (c *EnumValueCheck) AnalyzeFile(ctx context.Context, f File) ([]Diagnostic,
 }
 
 // enumValueNameToken returns the name token of an enum member.
-func enumValueNameToken(pf *cache.ParsedFile, v *syntax.EnumValue) *syntax.Token {
+func enumValueNameToken(pf *store.ParsedFile, v *syntax.EnumValue) *syntax.Token {
 	return &pf.AST().Tokens[v.Name.TokStart()]
 }
 

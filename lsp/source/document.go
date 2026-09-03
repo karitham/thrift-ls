@@ -6,12 +6,12 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
 // DocumentSymbols returns the document symbols of a file, in source order.
-func DocumentSymbols(ctx context.Context, view *cache.View, file uri.URI) []*protocol.DocumentSymbol {
+func DocumentSymbols(ctx context.Context, view *store.View, file uri.URI) []*protocol.DocumentSymbol {
 	res := make([]*protocol.DocumentSymbol, 0)
 
 	pf, err := view.Parse(ctx, file)
@@ -37,7 +37,7 @@ func DocumentSymbols(ctx context.Context, view *cache.View, file uri.URI) []*pro
 //go:fix inline
 
 // nameRange returns the LSP range of an identifier.
-func nameRange(pf *cache.ParsedFile, id *syntax.Identifier) protocol.Range {
+func nameRange(pf *store.ParsedFile, id *syntax.Identifier) protocol.Range {
 	if id == nil {
 		return protocol.Range{}
 	}
@@ -48,7 +48,7 @@ func nameRange(pf *cache.ParsedFile, id *syntax.Identifier) protocol.Range {
 }
 
 // nodeSymbol builds the symbol for a top-level definition.
-func nodeSymbol(pf *cache.ParsedFile, node syntax.Node) *protocol.DocumentSymbol {
+func nodeSymbol(pf *store.ParsedFile, node syntax.Node) *protocol.DocumentSymbol {
 	switch v := node.(type) {
 	case *syntax.Typedef:
 		return typedefSymbol(pf, v)
@@ -72,7 +72,7 @@ func nodeSymbol(pf *cache.ParsedFile, node syntax.Node) *protocol.DocumentSymbol
 	return nil
 }
 
-func structSymbol(pf *cache.ParsedFile, st *syntax.Struct, detail string, kind protocol.SymbolKind) *protocol.DocumentSymbol {
+func structSymbol(pf *store.ParsedFile, st *syntax.Struct, detail string, kind protocol.SymbolKind) *protocol.DocumentSymbol {
 	res := &protocol.DocumentSymbol{
 		Name:           st.Name.Text,
 		Detail:         &detail,
@@ -90,7 +90,7 @@ func structSymbol(pf *cache.ParsedFile, st *syntax.Struct, detail string, kind p
 	return res
 }
 
-func enumSymbol(pf *cache.ParsedFile, enum *syntax.Enum) *protocol.DocumentSymbol {
+func enumSymbol(pf *store.ParsedFile, enum *syntax.Enum) *protocol.DocumentSymbol {
 	res := &protocol.DocumentSymbol{
 		Name:           enum.Name.Text,
 		Detail:         new("Enum"),
@@ -111,7 +111,7 @@ func enumSymbol(pf *cache.ParsedFile, enum *syntax.Enum) *protocol.DocumentSymbo
 	return res
 }
 
-func serviceSymbol(pf *cache.ParsedFile, svc *syntax.Service) *protocol.DocumentSymbol {
+func serviceSymbol(pf *store.ParsedFile, svc *syntax.Service) *protocol.DocumentSymbol {
 	res := &protocol.DocumentSymbol{
 		Name:           svc.Name.Text,
 		Kind:           protocol.SymbolKindInterface,
@@ -131,7 +131,7 @@ func serviceSymbol(pf *cache.ParsedFile, svc *syntax.Service) *protocol.Document
 	return res
 }
 
-func fieldSymbol(pf *cache.ParsedFile, field *syntax.Field) *protocol.DocumentSymbol {
+func fieldSymbol(pf *store.ParsedFile, field *syntax.Field) *protocol.DocumentSymbol {
 	return &protocol.DocumentSymbol{
 		Name:           field.Name.Text,
 		Kind:           protocol.SymbolKindField,
@@ -140,7 +140,7 @@ func fieldSymbol(pf *cache.ParsedFile, field *syntax.Field) *protocol.DocumentSy
 	}
 }
 
-func typedefSymbol(pf *cache.ParsedFile, td *syntax.Typedef) *protocol.DocumentSymbol {
+func typedefSymbol(pf *store.ParsedFile, td *syntax.Typedef) *protocol.DocumentSymbol {
 	return &protocol.DocumentSymbol{
 		Name:           td.Name.Text,
 		Detail:         new("Typedef"),
@@ -150,7 +150,7 @@ func typedefSymbol(pf *cache.ParsedFile, td *syntax.Typedef) *protocol.DocumentS
 	}
 }
 
-func constSymbol(pf *cache.ParsedFile, cst *syntax.Const) *protocol.DocumentSymbol {
+func constSymbol(pf *store.ParsedFile, cst *syntax.Const) *protocol.DocumentSymbol {
 	return &protocol.DocumentSymbol{
 		Name:           cst.Name.Text,
 		Detail:         new("Const"),

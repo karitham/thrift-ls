@@ -8,7 +8,7 @@ import (
 
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -57,7 +57,7 @@ func (p EnumValuesProvider) Actions(ctx context.Context, f File, span Span, repo
 
 // enumAt returns the enum declaration containing the selection start, or
 // nil when it lies outside every enum.
-func enumAt(pf *cache.ParsedFile, span Span) *syntax.Enum {
+func enumAt(pf *store.ParsedFile, span Span) *syntax.Enum {
 	for _, enum := range pf.AST().Enums() {
 		if pf.AST().Contains(enum, span.Start) {
 			return enum
@@ -70,7 +70,7 @@ func enumAt(pf *cache.ParsedFile, span Span) *syntax.Enum {
 // enumValueEdits appends " = N" to every member without an explicit value.
 // ok is false when the implicit values cannot be computed; the caller must
 // then not edit the enum, as the inserted values would be wrong.
-func enumValueEdits(pf *cache.ParsedFile, enum *syntax.Enum) (edits []Edit, ok bool) {
+func enumValueEdits(pf *store.ParsedFile, enum *syntax.Enum) (edits []Edit, ok bool) {
 	for _, im := range EnumImplicitValues(enum) {
 		if !im.Known {
 			return nil, false
@@ -166,7 +166,7 @@ func fieldQualifiers(field *syntax.Field, unionField bool) []syntax.TokenKind {
 // fieldQualifierAction builds the action switching the field to qualifier:
 // the edit replaces the span from the current qualifier keyword, or the
 // type start when the field is unqualified, up to the type start.
-func fieldQualifierAction(pf *cache.ParsedFile, file uri.URI, field *syntax.Field, qualifier syntax.TokenKind) Action {
+func fieldQualifierAction(pf *store.ParsedFile, file uri.URI, field *syntax.Field, qualifier syntax.TokenKind) Action {
 	keyword := qualifier.String()
 
 	start := pf.AST().TokenPosition(field.Type.TokStart())

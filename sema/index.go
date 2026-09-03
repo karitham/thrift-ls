@@ -9,30 +9,30 @@ import (
 
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
 // Index answers cross-file semantic queries over one view: definition
 // resolution and reference search. It composes per-file
-// cache.FileIndexes over the include graph.
+// store.FileIndexes over the include graph.
 //
 // An Index is cheap — construct one per request with NewIndex. Resolutions
 // are memoized per (file, name), so a request resolving the same name in
 // the same file repeatedly (references, diagnostics) resolves it once.
 type Index struct {
-	view *cache.View
+	view *store.View
 
 	resolved map[resolveKey]*Resolved
 }
 
 // NewIndex returns an Index over the view's store.
-func NewIndex(view *cache.View) *Index {
+func NewIndex(view *store.View) *Index {
 	return &Index{view: view}
 }
 
 // View returns the store view the index reads from.
-func (x *Index) View() *cache.View {
+func (x *Index) View() *store.View {
 	return x.view
 }
 
@@ -75,7 +75,7 @@ func (x *Index) memoize(file uri.URI, name string, kind resolveKind, def *Resolv
 // AST). It returns nil when the file cannot be read at all — an unresolved
 // include is a normal, reported condition, not a failure of the feature
 // answering a request.
-func parseDefinitionFile(ctx context.Context, view *cache.View, file uri.URI) *cache.ParsedFile {
+func parseDefinitionFile(ctx context.Context, view *store.View, file uri.URI) *store.ParsedFile {
 	pf, err := view.Parse(ctx, file)
 	if err != nil {
 		slog.Debug("definition file unreadable", "file", file, "err", err)
@@ -94,7 +94,7 @@ func parseDefinitionFile(ctx context.Context, view *cache.View, file uri.URI) *c
 // document, the definition identifier (jump target), and its kind.
 type Resolved struct {
 	File   uri.URI
-	Parsed *cache.ParsedFile
+	Parsed *store.ParsedFile
 
 	// Name is the definition's identifier node, whose range is the jump
 	// target.
@@ -110,7 +110,7 @@ type Resolved struct {
 // ResolveType resolves a type reference to its definition, or returns nil
 // when unresolved (base types, unresolvable name). Files backing the
 // resolution may fail to read; those count as unresolved.
-func (x *Index) ResolveType(ctx context.Context, from *cache.ParsedFile, ft *syntax.FieldType) (*Resolved, error) {
+func (x *Index) ResolveType(ctx context.Context, from *store.ParsedFile, ft *syntax.FieldType) (*Resolved, error) {
 	name := TypeReferenceName(ft)
 	if name == "" || IsBasicType(name) {
 		return nil, nil
@@ -140,7 +140,7 @@ func (x *Index) ResolveType(ctx context.Context, from *cache.ParsedFile, ft *syn
 // An identifier that resolves to no definition returns nil — the type has
 // no classifiable kind, and existence is another check's job. A cyclic or
 // pathological chain stops at maxTypedefDepth steps.
-func (x *Index) UnderlyingType(ctx context.Context, from *cache.ParsedFile, ft *syntax.FieldType) (*syntax.FieldType, *cache.ParsedFile) {
+func (x *Index) UnderlyingType(ctx context.Context, from *store.ParsedFile, ft *syntax.FieldType) (*syntax.FieldType, *store.ParsedFile) {
 	pf, cur := from, ft
 
 	for range maxTypedefDepth {
@@ -168,7 +168,7 @@ func (x *Index) UnderlyingType(ctx context.Context, from *cache.ParsedFile, ft *
 const maxTypedefDepth = 32
 
 // resolveType resolves a non-basic type name in from, without memoization.
-func (x *Index) resolveType(ctx context.Context, from *cache.ParsedFile, name string) (*Resolved, error) {
+func (x *Index) resolveType(ctx context.Context, from *store.ParsedFile, name string) (*Resolved, error) {
 	_, identifier := ParseIdent(from.URI(), from.AST().Includes(), name)
 
 	for _, astFile := range definitionFiles(ctx, x.view, from.URI(), from.AST(), name) {
@@ -192,7 +192,7 @@ func (x *Index) resolveType(ctx context.Context, from *cache.ParsedFile, name st
 
 // ResolveValue resolves a const-value identifier to its definition
 // (an enum value or a const), or returns nil when unresolved.
-func (x *Index) ResolveValue(ctx context.Context, from *cache.ParsedFile, v *syntax.ConstValue) (*Resolved, error) {
+func (x *Index) ResolveValue(ctx context.Context, from *store.ParsedFile, v *syntax.ConstValue) (*Resolved, error) {
 	if v == nil || v.Kind != syntax.ValueIdent {
 		return nil, nil
 	}
@@ -217,7 +217,7 @@ func (x *Index) ResolveValue(ctx context.Context, from *cache.ParsedFile, v *syn
 
 // resolveValue resolves a value-identifier text in from, without
 // memoization.
-func (x *Index) resolveValue(ctx context.Context, from *cache.ParsedFile, text string) (*Resolved, error) {
+func (x *Index) resolveValue(ctx context.Context, from *store.ParsedFile, text string) (*Resolved, error) {
 	_, identifier := ParseIdent(from.URI(), from.AST().Includes(), text)
 	identifier = BareName(identifier)
 
@@ -241,7 +241,7 @@ func (x *Index) resolveValue(ctx context.Context, from *cache.ParsedFile, text s
 
 // ResolveService resolves a service name or extends reference, or returns
 // nil when unresolved.
-func (x *Index) ResolveService(ctx context.Context, from *cache.ParsedFile, ident *syntax.Identifier) (*Resolved, error) {
+func (x *Index) ResolveService(ctx context.Context, from *store.ParsedFile, ident *syntax.Identifier) (*Resolved, error) {
 	if ident == nil {
 		return nil, nil
 	}
@@ -262,7 +262,7 @@ func (x *Index) ResolveService(ctx context.Context, from *cache.ParsedFile, iden
 
 // resolveService resolves a service name text in from, without
 // memoization.
-func (x *Index) resolveService(ctx context.Context, from *cache.ParsedFile, name string) (*Resolved, error) {
+func (x *Index) resolveService(ctx context.Context, from *store.ParsedFile, name string) (*Resolved, error) {
 	_, identifier := ParseIdent(from.URI(), from.AST().Includes(), name)
 	for _, astFile := range definitionFiles(ctx, x.view, from.URI(), from.AST(), name) {
 		dst := parseDefinitionFile(ctx, x.view, astFile)
@@ -287,7 +287,7 @@ type Hit struct {
 
 	// Kind is the grammar slot the reference sits in, so callers can tell
 	// type hits from value hits (e.g. for highlight kinds).
-	Kind cache.RefKind
+	Kind store.RefKind
 }
 
 // References returns every occurrence of name in file and in every file
@@ -295,7 +295,7 @@ type Hit struct {
 // The definition site is not included (no self-referencing hit). Hits are
 // matched by bare name only; use ReferencesTo for resolution-matched
 // results.
-func (x *Index) References(ctx context.Context, file uri.URI, name string, kinds ...cache.RefKind) ([]Hit, error) {
+func (x *Index) References(ctx context.Context, file uri.URI, name string, kinds ...store.RefKind) ([]Hit, error) {
 	files := x.searchFiles(file)
 
 	var out []Hit
@@ -328,7 +328,7 @@ func (x *Index) References(ctx context.Context, file uri.URI, name string, kinds
 // qualifier resolves to this very enum; the hit covers only the enum
 // segment, so a rename rewrites the qualifier while keeping the member
 // name.
-func (x *Index) ReferencesTo(ctx context.Context, def *Resolved, kinds ...cache.RefKind) ([]Hit, error) {
+func (x *Index) ReferencesTo(ctx context.Context, def *Resolved, kinds ...store.RefKind) ([]Hit, error) {
 	var out []Hit
 
 	for _, f := range x.searchFiles(def.File) {
@@ -338,7 +338,7 @@ func (x *Index) ReferencesTo(ctx context.Context, def *Resolved, kinds ...cache.
 		}
 
 		for _, r := range pf.Index().References() {
-			if r.Kind == cache.RefConstValue && def.Kind == DefinitionEnum && referenceKind(cache.RefConstValue, kinds) {
+			if r.Kind == store.RefConstValue && def.Kind == DefinitionEnum && referenceKind(store.RefConstValue, kinds) {
 				// Value position qualified with the enum: only the enum
 				// segment is rewritten.
 				seg, off, ok := enumSegment(r.Name, def.Name.Text)
@@ -467,16 +467,16 @@ func (x *Index) FindInWorkspace(ctx context.Context, name string) (*Resolved, er
 // resolves any declared type. Enum values and consts live in value
 // positions. Services are extends-only. Every other type can appear in
 // field, signature, and annotation-type slots.
-func RefKindsFor(k DefinitionKind) []cache.RefKind {
+func RefKindsFor(k DefinitionKind) []store.RefKind {
 	switch k {
 	case DefinitionException:
-		return []cache.RefKind{cache.RefSignatureType, cache.RefAnnotationType}
+		return []store.RefKind{store.RefSignatureType, store.RefAnnotationType}
 	case DefinitionEnumValue, DefinitionConst:
-		return []cache.RefKind{cache.RefConstValue}
+		return []store.RefKind{store.RefConstValue}
 	case DefinitionService:
-		return []cache.RefKind{cache.RefServiceExtends}
+		return []store.RefKind{store.RefServiceExtends}
 	case DefinitionStruct, DefinitionUnion, DefinitionEnum, DefinitionTypedef:
-		return []cache.RefKind{cache.RefFieldType, cache.RefSignatureType, cache.RefAnnotationType}
+		return []store.RefKind{store.RefFieldType, store.RefSignatureType, store.RefAnnotationType}
 	}
 
 	return nil
@@ -487,23 +487,23 @@ func RefKindsFor(k DefinitionKind) []cache.RefKind {
 // resolveReference resolves a reference to its definition, dispatching on
 // the grammar slot the reference sits in. Unresolvable references (parse
 // errors, unknown names) yield nil, not an error.
-func (x *Index) resolveReference(ctx context.Context, pf *cache.ParsedFile, r cache.Reference) (*Resolved, error) {
+func (x *Index) resolveReference(ctx context.Context, pf *store.ParsedFile, r store.Reference) (*Resolved, error) {
 	switch r.Kind {
-	case cache.RefFieldType, cache.RefSignatureType, cache.RefAnnotationType:
+	case store.RefFieldType, store.RefSignatureType, store.RefAnnotationType:
 		ident, ok := r.Node.(*syntax.Identifier)
 		if !ok {
 			return nil, nil
 		}
 
 		return x.ResolveType(ctx, pf, typeReference(ident.Text))
-	case cache.RefConstValue:
+	case store.RefConstValue:
 		v, ok := r.Node.(*syntax.ConstValue)
 		if !ok {
 			return nil, nil
 		}
 
 		return x.ResolveValue(ctx, pf, v)
-	case cache.RefServiceExtends:
+	case store.RefServiceExtends:
 		ident, ok := r.Node.(*syntax.Identifier)
 		if !ok {
 			return nil, nil
@@ -532,13 +532,13 @@ func sameDefinition(resolved, def *Resolved) bool {
 }
 
 // referenceKind reports whether k is in kinds; an empty kinds matches all.
-func referenceKind(k cache.RefKind, kinds []cache.RefKind) bool {
+func referenceKind(k store.RefKind, kinds []store.RefKind) bool {
 	return len(kinds) == 0 || slices.Contains(kinds, k)
 }
 
 // enumSegmentHit builds a hit covering one segment (off, seg) of the
 // reference node's text, so a rename rewrites just that segment.
-func enumSegmentHit(pf *cache.ParsedFile, node syntax.Node, off int, seg string) Hit {
+func enumSegmentHit(pf *store.ParsedFile, node syntax.Node, off int, seg string) Hit {
 	start, _ := pf.AST().Range(node)
 
 	segStart := syntax.Position{
@@ -552,7 +552,7 @@ func enumSegmentHit(pf *cache.ParsedFile, node syntax.Node, off int, seg string)
 		File: pf.URI(),
 		Span: Span{Start: segStart, End: segEnd},
 		Text: seg,
-		Kind: cache.RefConstValue,
+		Kind: store.RefConstValue,
 	}
 }
 
@@ -575,7 +575,7 @@ func (x *Index) searchFiles(file uri.URI) []uri.URI {
 
 // matches returns hits for references in pf whose kind is in kinds and
 // whose bare name equals BareName(name).
-func (x *Index) matches(pf *cache.ParsedFile, name string, kinds []cache.RefKind) []Hit {
+func (x *Index) matches(pf *store.ParsedFile, name string, kinds []store.RefKind) []Hit {
 	var out []Hit
 
 	for _, r := range pf.Index().References() {
@@ -619,7 +619,7 @@ func enumSegment(text, enumName string) (seg string, off int, ok bool) {
 }
 
 // defStruct maps a struct/union/exception definition.
-func defStruct(pf *cache.ParsedFile, v *syntax.Struct) *Resolved {
+func defStruct(pf *store.ParsedFile, v *syntax.Struct) *Resolved {
 	return &Resolved{
 		File:   pf.URI(),
 		Parsed: pf,
@@ -640,14 +640,14 @@ func structKind(k syntax.TokenKind) DefinitionKind {
 	return DefinitionStruct
 }
 
-func defFrom(pf *cache.ParsedFile, name *syntax.Identifier, node syntax.Node, kind DefinitionKind) *Resolved {
+func defFrom(pf *store.ParsedFile, name *syntax.Identifier, node syntax.Node, kind DefinitionKind) *Resolved {
 	return &Resolved{File: pf.URI(), Parsed: pf, Name: name, Node: node, Kind: kind}
 }
 
 // DefFromNode builds a Resolved from any top-level definition node. Use
 // when the concrete type and Kind are not known statically (e.g.
 // FindInWorkspace).
-func DefFromNode(pf *cache.ParsedFile, n syntax.Node) *Resolved {
+func DefFromNode(pf *store.ParsedFile, n syntax.Node) *Resolved {
 	switch v := n.(type) {
 	case *syntax.Struct:
 		return defStruct(pf, v)

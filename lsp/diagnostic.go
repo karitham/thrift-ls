@@ -9,16 +9,16 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/lsp/source"
 	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/sema"
+	"github.com/karitham/thrift-ls/store"
 )
 
 // lintConfig returns the analysis pipeline config for a view's folder:
 // the folder's thrift-ls.json lint settings overlaid by the workspace
 // settings. New severities apply from the next analysis run.
-func (s *Server) lintConfig(view *cache.View) sema.Config {
+func (s *Server) lintConfig(view *store.View) sema.Config {
 	s.optsMu.RLock()
 	overlay := s.workspaceOverlay
 	s.optsMu.RUnlock()
@@ -49,7 +49,7 @@ func lintConfigOf(l options.LintConfig) sema.Config {
 	return sema.ConfigFromLint(disabled, severity)
 }
 
-func (s *Server) pipeline(view *cache.View) *sema.Pipeline {
+func (s *Server) pipeline(view *store.View) *sema.Pipeline {
 	return sema.DefaultPipeline(s.lintConfig(view)).
 		WithAnalyzers(s.analysis.Analyzers...).
 		WithFixers(s.analysis.Fixers...).
@@ -59,14 +59,14 @@ func (s *Server) pipeline(view *cache.View) *sema.Pipeline {
 // diagnose runs the analysis pipeline once over every affected file — one
 // run, one shared cross-file index — and publishes the findings per file.
 // The per-file findings are cached for code actions.
-func (s *Server) diagnose(ctx context.Context, view *cache.View, affected []uri.URI) {
+func (s *Server) diagnose(ctx context.Context, view *store.View, affected []uri.URI) {
 	s.diagnoseAt(ctx, view, affected, view.Generation())
 }
 
-func (s *Server) diagnoseAt(ctx context.Context, view *cache.View, affected []uri.URI, generation uint64) {
+func (s *Server) diagnoseAt(ctx context.Context, view *store.View, affected []uri.URI, generation uint64) {
 	s.analysisMu.Lock()
 	defer s.analysisMu.Unlock()
-	ctx = cache.WithGeneration(ctx, generation)
+	ctx = store.WithGeneration(ctx, generation)
 
 	slog.Debug("diagnose called", "files", len(affected))
 	defer slog.Debug("diagnose finished")

@@ -1,4 +1,4 @@
-package cache
+package store
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/syntax"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // gundam-themed URIs, fixed for deterministic sort order across tests:
@@ -162,14 +163,14 @@ func Test_View_GenerationAndIsCurrent(t *testing.T) {
 	before := h.view.Generation()
 	assert.True(t, h.view.IsCurrent(before))
 
-	h.change(t, &FileChange{
+	h.change(t, &vfs.FileChange{
 		URI:     uri.URI(federation),
 		Version: 1,
 		Content: []byte(`include "mobile_suit.zeon.thrift"`),
-		From:    FileChangeTypeDidChange,
+		From:    vfs.FileChangeTypeDidChange,
 	})
 
-	assert.Greater(t, h.view.Generation(), before, "FileChange bumps the generation")
+	assert.Greater(t, h.view.Generation(), before, "vfs.FileChange bumps the generation")
 	assert.False(t, h.view.IsCurrent(before), "a generation older than the latest is not current")
 	assert.True(t, h.view.IsCurrent(h.view.Generation()))
 }
@@ -183,10 +184,10 @@ func Test_ViewParseIncludeCycles(t *testing.T) {
 	amuro := uri.File(filepath.Join(dir, "amuro.thrift"))
 	self := uri.File(filepath.Join(dir, "side_effect.thrift"))
 
-	files := []*FileChange{
-		{URI: char, Content: []byte(`include "amuro.thrift"`), From: FileChangeTypeDidOpen},
-		{URI: amuro, Content: []byte(`include "char.thrift"`), From: FileChangeTypeDidOpen},
-		{URI: self, Content: []byte(`include "side_effect.thrift"`), From: FileChangeTypeDidOpen},
+	files := []*vfs.FileChange{
+		{URI: char, Content: []byte(`include "amuro.thrift"`), From: vfs.FileChangeTypeDidOpen},
+		{URI: amuro, Content: []byte(`include "char.thrift"`), From: vfs.FileChangeTypeDidOpen},
+		{URI: self, Content: []byte(`include "side_effect.thrift"`), From: vfs.FileChangeTypeDidOpen},
 	}
 
 	ss := BuildViewForTest(files)

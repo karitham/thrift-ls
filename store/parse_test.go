@@ -1,21 +1,23 @@
-package cache
+package store
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 func TestParse(t *testing.T) {
 	tests := []struct {
 		name      string
-		fh        FileHandle
+		fh        vfs.FileHandle
 		assertion assert.ErrorAssertionFunc
 	}{
 		{
 			name: "normal",
-			fh: NewOverlay("file:///tmp/types.thrift", []byte(`
+			fh: vfs.NewOverlay("file:///tmp/types.thrift", []byte(`
 #include "base.thrift"
 struct Xtruct3
 {
@@ -29,7 +31,7 @@ struct Xtruct3
 		},
 		{
 			name: "invalid ast",
-			fh: NewOverlay("file:///tmp/types.thrift", []byte(`
+			fh: vfs.NewOverlay("file:///tmp/types.thrift", []byte(`
 #include "base.thrift"
 struct Xtruct3
 {
@@ -55,7 +57,7 @@ struct Xtruct3
 // TestParsedFileDefinitions pins the definition and enum-value indexes:
 // every top-level definition is reachable by name, enum values by name.
 func TestParsedFileDefinitions(t *testing.T) {
-	ss := BuildViewForTest([]*FileChange{
+	ss := BuildViewForTest([]*vfs.FileChange{
 		{URI: "file:///tmp/test.thrift", Version: 0, Content: []byte(`struct S {
 	1: required string Name,
 }
@@ -78,7 +80,7 @@ service Fed {
 }
 
 const i32 LIMIT = 1,
-typedef string PilotName`), From: FileChangeTypeDidOpen},
+typedef string PilotName`), From: vfs.FileChangeTypeDidOpen},
 	})
 
 	pf, err := ss.Parse(t.Context(), "file:///tmp/test.thrift")

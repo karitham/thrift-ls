@@ -8,7 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 // applyEdits applies edits to content by byte offset, last-first. The
@@ -31,7 +32,7 @@ func applyEdits(t *testing.T, content string, edits []Edit) string {
 
 // spanAt returns a one-point selection at a 1-based parser line/column,
 // with real offsets resolved through the file's mapper.
-func spanAt(t *testing.T, pf *cache.ParsedFile, line, col int) Span {
+func spanAt(t *testing.T, pf *store.ParsedFile, line, col int) Span {
 	t.Helper()
 
 	p, err := pf.Mapper().LSPPosToParserPosition(protocol.Position{Line: uint32(line - 1), Character: uint32(col - 1)})
@@ -109,12 +110,12 @@ enum E {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*cache.FileChange{
+			view := buildSnapshotForTest(t, []*vfs.FileChange{
 				{
 					URI:     "file:///tmp/user.thrift",
 					Version: 0,
 					Content: []byte(tt.content),
-					From:    cache.FileChangeTypeDidOpen,
+					From:    vfs.FileChangeTypeDidOpen,
 				},
 			})
 
@@ -142,12 +143,12 @@ enum E {
 func Test_EnumValuesProvider_QuickFixPromotion(t *testing.T) {
 	content := "enum E { A, B = 1 }\n"
 
-	view := buildSnapshotForTest(t, []*cache.FileChange{
+	view := buildSnapshotForTest(t, []*vfs.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
 			Content: []byte(content),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		},
 	})
 
@@ -182,12 +183,12 @@ func Test_EnumValuesProvider_QuickFixPromotion(t *testing.T) {
 func Test_FieldQualifierProvider(t *testing.T) {
 	content := "struct S {\n  1: i32 a,\n  2: required string b,\n  3: optional i64 c,\n}\n"
 
-	view := buildSnapshotForTest(t, []*cache.FileChange{
+	view := buildSnapshotForTest(t, []*vfs.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
 			Content: []byte(content),
-			From:    cache.FileChangeTypeDidOpen,
+			From:    vfs.FileChangeTypeDidOpen,
 		},
 	})
 

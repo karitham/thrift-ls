@@ -13,14 +13,15 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/formatter"
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/lsp/source"
 	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/sema"
+	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/vfs"
 )
 
 type Server struct {
-	session *cache.Session
+	session *store.Session
 
 	client protocol.Client
 
@@ -83,7 +84,7 @@ type Server struct {
 func NewServer(client protocol.Client, opts Options) *Server {
 	fs := opts.Files
 	if fs == nil {
-		fs = cache.NewMemoizedFS()
+		fs = vfs.NewMemoizedFS()
 	}
 	configSource := opts.ConfigSource
 	if configSource == nil {
@@ -96,7 +97,7 @@ func NewServer(client protocol.Client, opts Options) *Server {
 	defaults := opts.Defaults.Apply(options.Default())
 
 	server := &Server{
-		session:      cache.NewSession(fs),
+		session:      store.NewSession(fs),
 		client:       client,
 		defaults:     defaults,
 		configSource: configSource,
@@ -142,7 +143,7 @@ func (s *Server) setWorkspaceSettings(overlay options.Patch) {
 	slog.Debug("workspace settings applied")
 }
 
-func (s *Server) addProjectView(project Project) *cache.View {
+func (s *Server) addProjectView(project Project) *store.View {
 	cfg := s.projectViewConfig(project)
 	return s.addView(project.RootURI, cfg, derefIncludePaths(cfg.IncludePaths))
 }
@@ -154,7 +155,7 @@ func derefIncludePaths(p *[]string) []string {
 	return *p
 }
 
-func (s *Server) addView(folder uri.URI, cfg options.Patch, includePaths []string) *cache.View {
+func (s *Server) addView(folder uri.URI, cfg options.Patch, includePaths []string) *store.View {
 	s.applyLogLevel(cfg)
 
 	s.cfgMu.Lock()
@@ -329,7 +330,7 @@ func (s *Server) applyLogLevel(cfg options.Patch) {
 
 // formatOptions returns the folder's config with the workspace settings
 // overlay applied.
-func (s *Server) formatOptions(view *cache.View) formatter.Options {
+func (s *Server) formatOptions(view *store.View) formatter.Options {
 	s.optsMu.RLock()
 	overlay := s.workspaceOverlay
 	s.optsMu.RUnlock()
@@ -552,7 +553,7 @@ func (s *Server) Implementation(ctx context.Context, params *protocol.Implementa
 }
 
 func (s *Server) OnTypeFormatting(ctx context.Context, params *protocol.DocumentOnTypeFormattingParams) (result []protocol.TextEdit, err error) {
-	return withFile(ctx, s.viewOf, params.TextDocument.URI, func(view *cache.View, fh cache.FileHandle) ([]protocol.TextEdit, error) {
+	return withFile(ctx, s.viewOf, params.TextDocument.URI, func(view *store.View, fh vfs.FileHandle) ([]protocol.TextEdit, error) {
 		return source.OnTypeFormat(ctx, view, fh, s.formatOptions(view), params.Position)
 	})
 }
@@ -588,7 +589,7 @@ func (s *Server) SignatureHelp(ctx context.Context, params *protocol.SignatureHe
 
 func (s *Server) Symbols(ctx context.Context, params *protocol.WorkspaceSymbolParams) (result protocol.WorkspaceSymbolResult, err error) {
 	views := s.session.Views()
-	slices.SortFunc(views, func(a, b *cache.View) int {
+	slices.SortFunc(views, func(a, b *store.View) int {
 		return strings.Compare(string(a.Folder()), string(b.Folder()))
 	})
 
