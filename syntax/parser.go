@@ -479,7 +479,14 @@ func (p *parser) parseService() Node {
 		for !p.at(TokenRBrace) && !p.at(TokenEOF) {
 			f := p.parseFunction()
 			if f == nil {
-				p.synchronizeTo(TokenRBrace)
+				// Skip the bad function's parameter list, if any, so
+				// later functions still parse: stop at its closing
+				// paren (or the service's closing brace) and step past
+				// the paren.
+				p.synchronizeTo(TokenRParen, TokenRBrace)
+				if p.at(TokenRParen) {
+					p.advance()
+				}
 
 				continue
 			}
