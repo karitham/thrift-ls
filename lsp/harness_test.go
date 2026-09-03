@@ -138,15 +138,6 @@ func diagMessages(diags []protocol.Diagnostic) []string {
 	return msgs
 }
 
-func symbolNames(syms protocol.SymbolInformationSlice) []string {
-	names := make([]string, len(syms))
-	for i, s := range syms {
-		names[i] = s.Name
-	}
-
-	return names
-}
-
 // Server construction. All test servers run with diagSync so
 // DidOpen/DidChange/applyChanges publish inline with no goroutines.
 
