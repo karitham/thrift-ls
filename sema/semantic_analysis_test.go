@@ -1,11 +1,11 @@
 package sema
 
 import (
-	"context"
 	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/store"
@@ -52,7 +52,7 @@ struct TestUUID {
 	1: required uuid id
 }
 `
-	view := buildSnapshotForTest(t, []*store.FileChange{
+	view := store.BuildViewForTest([]*store.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
@@ -61,119 +61,97 @@ struct TestUUID {
 		},
 	})
 
-	type args struct {
-		ctx         context.Context
-		view        *store.View
-		changeFiles []uri.URI
-	}
-
-	tests := []struct {
-		name      string
-		args      args
-		want      map[uri.URI][]diagCmp
-		assertion assert.ErrorAssertionFunc
-	}{
-		{
-			name: "case 1",
-			args: args{
-				ctx:  t.Context(),
-				view: view,
-				changeFiles: []uri.URI{
-					"file:///tmp/user.thrift",
-				},
+	want := map[uri.URI][]diagCmp{
+		"file:///tmp/user.thrift": {
+			{
+				StartLine: 2 + 1, StartCol: 13 + 1, EndLine: 2 + 1, EndCol: 17 + 1,
+				Severity: SeverityError,
+				Code:     CodeUndefinedType,
+				Message:  "field type doesn't exist",
 			},
-			want: map[uri.URI][]diagCmp{
-				"file:///tmp/user.thrift": {
-					{
-						StartLine: 2 + 1, StartCol: 13 + 1, EndLine: 2 + 1, EndCol: 17 + 1,
-						Severity: SeverityError,
-						Code:     CodeUndefinedType,
-						Message:  "field type doesn't exist",
-					},
-					{
-						StartLine: 10 + 1, StartCol: 13 + 1, EndLine: 10 + 1, EndCol: 17 + 1,
-						Severity: SeverityError,
-						Code:     CodeUndefinedType,
-						Message:  "field type doesn't exist",
-					},
-					{
-						StartLine: 11 + 1, StartCol: 29 + 1, EndLine: 11 + 1, EndCol: 42 + 1,
-						Severity: SeverityError,
-						Code:     CodeUndefinedValue,
-						Message:  "default value doesn't exist",
-					},
-					{
-						StartLine: 16 + 1, StartCol: 13 + 1, EndLine: 16 + 1, EndCol: 17 + 1,
-						Severity: SeverityError,
-						Code:     CodeUndefinedType,
-						Message:  "field type doesn't exist",
-					},
-					{
-						StartLine: 21 + 1, StartCol: 16 + 1, EndLine: 21 + 1, EndCol: 20 + 1,
-						Severity: SeverityError,
-						Code:     CodeUndefinedType,
-						Message:  "field type doesn't exist",
-					},
-					{
-						StartLine: 21 + 1, StartCol: 57 + 1, EndLine: 21 + 1, EndCol: 74 + 1,
-						Severity: SeverityError,
-						Code:     CodeUndefinedType,
-						Message:  "field type doesn't exist",
-					},
-					{
-						StartLine: 26 + 1, StartCol: 27 + 1, EndLine: 26 + 1, EndCol: 31 + 1,
-						Severity: SeverityError,
-						Code:     CodeValueTypeMismatch,
-						Message:  "expect i32 but got bool",
-					},
-					{
-						StartLine: 27 + 1, StartCol: 27 + 1, EndLine: 27 + 1, EndCol: 29 + 1,
-						Severity: SeverityError,
-						Code:     CodeValueTypeMismatch,
-						Message:  "expect i32 but got string",
-					},
-					{
-						StartLine: 28 + 1, StartCol: 30 + 1, EndLine: 28 + 1, EndCol: 34 + 1,
-						Severity: SeverityError,
-						Code:     CodeValueTypeMismatch,
-						Message:  "expect string but got bool",
-					},
-					{
-						StartLine: 29 + 1, StartCol: 30 + 1, EndLine: 29 + 1, EndCol: 32 + 1,
-						Severity: SeverityError,
-						Code:     CodeValueTypeMismatch,
-						Message:  "expect string but got int",
-					},
-				},
+			{
+				StartLine: 10 + 1, StartCol: 13 + 1, EndLine: 10 + 1, EndCol: 17 + 1,
+				Severity: SeverityError,
+				Code:     CodeUndefinedType,
+				Message:  "field type doesn't exist",
 			},
-			assertion: assert.NoError,
+			{
+				StartLine: 11 + 1, StartCol: 29 + 1, EndLine: 11 + 1, EndCol: 42 + 1,
+				Severity: SeverityError,
+				Code:     CodeUndefinedValue,
+				Message:  "default value doesn't exist",
+			},
+			{
+				StartLine: 16 + 1, StartCol: 13 + 1, EndLine: 16 + 1, EndCol: 17 + 1,
+				Severity: SeverityError,
+				Code:     CodeUndefinedType,
+				Message:  "field type doesn't exist",
+			},
+			{
+				StartLine: 21 + 1, StartCol: 16 + 1, EndLine: 21 + 1, EndCol: 20 + 1,
+				Severity: SeverityError,
+				Code:     CodeUndefinedType,
+				Message:  "field type doesn't exist",
+			},
+			{
+				StartLine: 21 + 1, StartCol: 57 + 1, EndLine: 21 + 1, EndCol: 74 + 1,
+				Severity: SeverityError,
+				Code:     CodeUndefinedType,
+				Message:  "field type doesn't exist",
+			},
+			{
+				StartLine: 26 + 1, StartCol: 27 + 1, EndLine: 26 + 1, EndCol: 31 + 1,
+				Severity: SeverityError,
+				Code:     CodeValueTypeMismatch,
+				Message:  "expect i32 but got bool",
+			},
+			{
+				StartLine: 27 + 1, StartCol: 27 + 1, EndLine: 27 + 1, EndCol: 29 + 1,
+				Severity: SeverityError,
+				Code:     CodeValueTypeMismatch,
+				Message:  "expect i32 but got string",
+			},
+			{
+				StartLine: 28 + 1, StartCol: 30 + 1, EndLine: 28 + 1, EndCol: 34 + 1,
+				Severity: SeverityError,
+				Code:     CodeValueTypeMismatch,
+				Message:  "expect string but got bool",
+			},
+			{
+				StartLine: 29 + 1, StartCol: 30 + 1, EndLine: 29 + 1, EndCol: 32 + 1,
+				Severity: SeverityError,
+				Code:     CodeValueTypeMismatch,
+				Message:  "expect string but got int",
+			},
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c := &SemanticAnalysis{}
-			report, err := New(Config{}, []Analyzer{EachFile(c)}).Run(tt.args.ctx, tt.args.view, tt.args.changeFiles)
+	report, err := New(Config{}, []Analyzer{EachFile(&SemanticAnalysis{})}).Run(t.Context(), view, []uri.URI{"file:///tmp/user.thrift"})
+	require.NoError(t, err)
 
-			for key := range report {
-				slices.SortStableFunc(report[key], func(a, b Diagnostic) int {
-					if a.Span.Start.Line != b.Span.Start.Line {
-						return a.Span.Start.Line - b.Span.Start.Line
-					}
-
-					return a.Span.Start.Col - b.Span.Start.Col
-				})
+	for key := range report {
+		slices.SortStableFunc(report[key], func(a, b Diagnostic) int {
+			if a.Span.Start.Line != b.Span.Start.Line {
+				return a.Span.Start.Line - b.Span.Start.Line
 			}
 
-			got := make(map[uri.URI][]diagCmp, len(report))
-			for key, ds := range report {
-				got[key] = cmpAll(ds)
-			}
-
-			tt.assertion(t, err)
-			assert.Equal(t, tt.want, got)
+			return a.Span.Start.Col - b.Span.Start.Col
 		})
 	}
+
+	got := make(map[uri.URI][]diagCmp, len(report))
+	for key, ds := range report {
+		got[key] = cmpAll(ds)
+	}
+
+	assert.Equal(t, want, got)
+
+	clean := store.BuildViewForTest([]*store.FileChange{
+		{URI: "file:///tmp/clean.thrift", Content: []byte("struct Clean {\n  1: required string name,\n}\nservice Svc {\n  Clean get(1: Clean c),\n}\n"), From: store.FileChangeTypeDidOpen},
+	})
+	cleanReport, err := New(Config{}, []Analyzer{EachFile(&SemanticAnalysis{})}).Run(t.Context(), clean, []uri.URI{"file:///tmp/clean.thrift"})
+	require.NoError(t, err)
+	assert.Empty(t, cleanReport["file:///tmp/clean.thrift"])
 }
 
 func Test_NonScalarMapKeyCheck(t *testing.T) {
@@ -226,7 +204,7 @@ func Test_NonScalarMapKeyCheck(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*store.FileChange{
+			view := store.BuildViewForTest([]*store.FileChange{
 				{
 					URI:     "file:///tmp/user.thrift",
 					Version: 0,
@@ -287,7 +265,7 @@ func Test_SemanticAnalysis_StructuredAnnotations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*store.FileChange{
+			view := store.BuildViewForTest([]*store.FileChange{
 				{
 					URI:     "file:///tmp/user.thrift",
 					Version: 0,
@@ -349,11 +327,16 @@ func Test_SemanticAnalysis_WalkCoverage(t *testing.T) {
 				"field type doesn't exist",
 			},
 		},
+		{
+			name:    "clean file stays quiet",
+			content: "struct S {\n  1: required string name,\n}\n",
+			want:    nil,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*store.FileChange{
+			view := store.BuildViewForTest([]*store.FileChange{
 				{
 					URI:     "file:///tmp/user.thrift",
 					Version: 0,
@@ -492,7 +475,7 @@ func Test_SemanticAnalysis_ConstValueType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*store.FileChange{
+			view := store.BuildViewForTest([]*store.FileChange{
 				{
 					URI:     "file:///tmp/orth.thrift",
 					Version: 0,
@@ -526,7 +509,7 @@ func Test_SemanticAnalysis_ConstValueType_CrossFile(t *testing.T) {
 
 		view := crossSnap(t, "/tmp/orth.thrift", orth, "/tmp/abyss.thrift", abyss)
 
-		got := analyzeOne(t, view, fu("/tmp/orth.thrift"))
+		got := analyzeOne(t, view, uri.File("/tmp/orth.thrift"))
 		assert.Empty(t, got)
 	})
 
@@ -536,7 +519,7 @@ func Test_SemanticAnalysis_ConstValueType_CrossFile(t *testing.T) {
 
 		view := crossSnap(t, "/tmp/orth.thrift", orth, "/tmp/abyss.thrift", abyss)
 
-		got := analyzeOne(t, view, fu("/tmp/orth.thrift"))
+		got := analyzeOne(t, view, uri.File("/tmp/orth.thrift"))
 		assert.Empty(t, got)
 	})
 
@@ -548,7 +531,7 @@ func Test_SemanticAnalysis_ConstValueType_CrossFile(t *testing.T) {
 
 		view := crossSnap(t, "/tmp/orth.thrift", orth, "/tmp/abyss.thrift", abyss)
 
-		got := analyzeOne(t, view, fu("/tmp/orth.thrift"))
+		got := analyzeOne(t, view, uri.File("/tmp/orth.thrift"))
 
 		var msgs []string
 		for _, d := range got {

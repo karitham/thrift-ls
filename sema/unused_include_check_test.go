@@ -74,23 +74,16 @@ func Test_UnusedIncludeCheck(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			folder := t.TempDir()
-			_ = writeThrift(t, folder, "shared.thrift", "struct User {\n  1: i32 id,\n}\nenum Color { RED = 1 }\nservice Base {}\n")
-			_ = writeThrift(t, folder, "used.thrift", "struct User {\n  1: i32 id,\n}\n")
-			_ = writeThrift(t, folder, "unused.thrift", "struct Ghost {}\n")
+			user := uri.File("/tmp/user.thrift")
 
-			filePath := writeThrift(t, folder, "user.thrift", tt.content)
-
-			view := buildFolderSnapshotForTest(t, folder, []*store.FileChange{
-				{
-					URI:     uri.File(filePath),
-					Version: 0,
-					Content: []byte(tt.content),
-					From:    store.FileChangeTypeDidOpen,
-				},
+			view := store.BuildViewForTest([]*store.FileChange{
+				{URI: uri.File("/tmp/shared.thrift"), Content: []byte("struct User {\n  1: i32 id,\n}\nenum Color { RED = 1 }\nservice Base {}\n"), From: store.FileChangeTypeDidOpen},
+				{URI: uri.File("/tmp/used.thrift"), Content: []byte("struct User {\n  1: i32 id,\n}\n"), From: store.FileChangeTypeDidOpen},
+				{URI: uri.File("/tmp/unused.thrift"), Content: []byte("struct Ghost {}\n"), From: store.FileChangeTypeDidOpen},
+				{URI: user, Content: []byte(tt.content), From: store.FileChangeTypeDidOpen},
 			})
 
-			got := runOne(t, EachFile(&UnusedIncludeCheck{}), view, uri.File(filePath))[uri.File(filePath)]
+			got := runOne(t, EachFile(&UnusedIncludeCheck{}), view, user)[user]
 
 			var gotMsgs []string
 			for _, d := range got {

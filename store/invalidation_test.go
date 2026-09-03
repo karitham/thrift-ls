@@ -164,12 +164,19 @@ struct Gundam {
 		t.Run(tt.name, func(t *testing.T) {
 			h := newViewHarness(t, tt.files)
 
+			kept := make(map[uri.URI]*ParsedFile, len(tt.wantKept))
+			for _, file := range tt.wantKept {
+				kept[file] = h.view.parsed(file)
+				require.NotNil(t, kept[file], "setup: %s must parse before the change", file)
+			}
+
 			gotAffected := h.change(t, tt.change)
 			assert.Equal(t, tt.wantAffected, gotAffected)
 
 			for _, file := range tt.wantKept {
 				pf := h.view.parsed(file)
-				assert.NotNil(t, pf, "parse of %s should survive", file)
+				require.NotNil(t, pf, "parse of %s should survive", file)
+				assert.Same(t, kept[file], pf, "%s was untouched: no re-parse", file)
 			}
 
 			// Changed content is visible through the view's store.
@@ -182,4 +189,43 @@ struct Gundam {
 			}
 		})
 	}
+}
+
+func Test_ViewEvictDropsEdges(t *testing.T) {
+	h := newViewHarness(t, gundamFiles())
+
+	gen := h.view.Generation()
+	h.view.Evict(uri.URI(federation))
+
+	assert.False(t, h.view.IsCurrent(gen), "eviction bumps the generation")
+	assert.Empty(t, h.view.Includers(uri.URI(mobileSuit)), "reverse edge to the evicted file is dropped")
+	assert.Empty(t, h.view.Includes(uri.URI(federation)), "evicted file holds no edges")
+	assert.False(t, h.view.FileKnown(uri.URI(federation)), "evicted file leaves the view")
+	assert.True(t, h.view.FileKnown(uri.URI(strikeRouge)), "dependents stay tracked")
+}
+
+func Test_ViewDidCloseForgetsOverlay(t *testing.T) {
+	h := newViewHarness(t, gundamFiles())
+
+	closed := &FileChange{URI: uri.URI(federation), Version: 2, From: FileChangeTypeDidClose}
+	require.NoError(t, h.fs.Update(t.Context(), []*FileChange{closed}))
+	assert.False(t, h.fs.HasOverlay(uri.URI(federation)), "close drops the overlay")
+
+	h.view.Evict(uri.URI(federation))
+	assert.False(t, h.view.FileKnown(uri.URI(federation)))
+}
+
+func Test_ViewChangeRemovesIncludeEdge(t *testing.T) {
+	h := newViewHarness(t, gundamFiles())
+	require.Contains(t, h.view.Includes(uri.URI(federation)), uri.URI(mobileSuit))
+
+	h.change(t, &FileChange{
+		URI:     uri.URI(federation),
+		Version: 1,
+		Content: []byte("struct Gundam {\n\t1: required string Name\n}"),
+		From:    FileChangeTypeDidChange,
+	})
+
+	assert.Empty(t, h.view.Includes(uri.URI(federation)), "deleted include drops its edge")
+	assert.Empty(t, h.view.Includers(uri.URI(mobileSuit)), "reverse edge follows")
 }

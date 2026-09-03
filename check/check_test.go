@@ -181,3 +181,51 @@ func Test_Check_LintConfig(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, hasMessage(result.Diagnostics[file], "unused include"))
 }
+
+func Test_Check_FixConverges(t *testing.T) {
+	folder := t.TempDir()
+	file := filepath.Join(folder, "user.thrift")
+	require.NoError(t, os.WriteFile(file, []byte("enum Color {\n  RED,\n  GREEN = 2,\n  BLUE,\n}\n"), 0o644))
+
+	result, err := Run(t.Context(), Request{Files: []string{file}, Folder: folder, Fix: true})
+	require.NoError(t, err)
+	require.NotNil(t, result.Fix, "a fix run reports its summary")
+	assert.Positive(t, result.Fix.Applied)
+	assert.Positive(t, result.Fix.Passes)
+	assert.Contains(t, result.Fix.Files, file)
+
+	for _, d := range result.Diagnostics[file] {
+		assert.NotContains(t, d.Message, "explicit value", "remaining diagnostics hold only what fixes cannot do")
+	}
+
+	fixed, err := os.ReadFile(file)
+	require.NoError(t, err)
+	assert.Contains(t, string(fixed), "RED = 0")
+}
+
+func Test_Check_EmptyInput(t *testing.T) {
+	result, err := Run(t.Context(), Request{})
+	require.NoError(t, err)
+	assert.NotNil(t, result.Diagnostics)
+	assert.Empty(t, result.Diagnostics)
+}
+
+func Test_Check_SeverityOverride(t *testing.T) {
+	folder := t.TempDir()
+	file := filepath.Join(folder, "user.thrift")
+	require.NoError(t, os.WriteFile(file, []byte("include \"shared.thrift\"\nstruct S { 1: i32 a }\n"), 0o644))
+
+	sev := map[string]string{"unused-include": "error"}
+	result, err := Run(t.Context(), Request{
+		Files:  []string{file},
+		Folder: folder,
+		Lint:   &options.LintConfig{Severity: &sev},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, result.Diagnostics[file])
+	for _, d := range result.Diagnostics[file] {
+		if d.Code == "unused-include" {
+			assert.Equal(t, SeverityError, d.Severity)
+		}
+	}
+}

@@ -32,7 +32,7 @@ func TestIndexResolutionMemo(t *testing.T) {
 	})
 
 	ix := NewIndex(view)
-	pf := parseOne(t, view, fu("/app.thrift"))
+	pf := parseOne(t, view, uri.File("/app.thrift"))
 
 	tests := []struct {
 		name     string
@@ -145,8 +145,8 @@ func TestIndexMemoKeyIsolation(t *testing.T) {
 	})
 
 	ix := NewIndex(view)
-	main := parseOne(t, view, fu("/main.thrift"))
-	fromB := parseOne(t, view, fu("/b.thrift"))
+	main := parseOne(t, view, uri.File("/main.thrift"))
+	fromB := parseOne(t, view, uri.File("/b.thrift"))
 
 	tests := []struct {
 		name     string
@@ -199,7 +199,7 @@ func TestSemanticAnalysisSkipsBrokenFile(t *testing.T) {
 
 			report, err := New(Config{}, []Analyzer{EachFile(&SemanticAnalysis{})}).Run(t.Context(), view, []uri.URI{"file:///f.thrift"})
 			require.NoError(t, err, "a broken file must not fail the diagnostics run")
-			assert.NotNil(t, report)
+			assert.Empty(t, report["file:///f.thrift"], "no analyzer owns a broken file's diagnostics")
 		})
 	}
 }

@@ -80,7 +80,7 @@ func Test_EnumValueCheck_Diagnostic(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*store.FileChange{
+			view := store.BuildViewForTest([]*store.FileChange{
 				{
 					URI:     "file:///tmp/user.thrift",
 					Version: 0,
@@ -101,12 +101,14 @@ func Test_EnumValueCheck_Diagnostic(t *testing.T) {
 // for it.
 func Test_EnumValueCheck_InlineFix(t *testing.T) {
 	content := "enum Color {\n  RED,\n  GREEN = 2,\n  BLUE,\n}\n"
-	filePath := writeThrift(t, t.TempDir(), "user.thrift", content)
+	file := uri.File("/tmp/user.thrift")
 
-	view := buildFolderSnapshotForTest(t, t.TempDir(), openChange(filePath, content))
+	view := store.BuildViewForTest([]*store.FileChange{
+		{URI: file, Content: []byte(content), From: store.FileChangeTypeDidOpen},
+	})
 
-	report := runOne(t, EachFile(&EnumValueCheck{}), view, uri.File(filePath))
-	diags := report[uri.File(filePath)]
+	report := runOne(t, EachFile(&EnumValueCheck{}), view, file)
+	diags := report[file]
 	require.Len(t, diags, 2)
 
 	assert.Equal(t, "Add explicit value 0 to RED", diags[0].Fixes[0].Title)
@@ -124,12 +126,14 @@ func Test_EnumValueCheck_InlineFix(t *testing.T) {
 // value in the source. A fixable sibling still gets its fix.
 func Test_EnumValueCheck_UnknownValueNoFix(t *testing.T) {
 	content := "enum E {\n  A = 08,\n  B,\n  C,\n}\n"
-	filePath := writeThrift(t, t.TempDir(), "user.thrift", content)
+	file := uri.File("/tmp/user.thrift")
 
-	view := buildFolderSnapshotForTest(t, t.TempDir(), openChange(filePath, content))
+	view := store.BuildViewForTest([]*store.FileChange{
+		{URI: file, Content: []byte(content), From: store.FileChangeTypeDidOpen},
+	})
 
-	report := runOne(t, EachFile(&EnumValueCheck{}), view, uri.File(filePath))
-	diags := report[uri.File(filePath)]
+	report := runOne(t, EachFile(&EnumValueCheck{}), view, file)
+	diags := report[file]
 	require.Len(t, diags, 2)
 
 	// B follows the broken constant: no computable value, no fix.

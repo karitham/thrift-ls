@@ -13,22 +13,6 @@ import (
 	"github.com/karitham/thrift-ls/store"
 )
 
-func buildSnapshotForTest(t *testing.T, files []*store.FileChange) *store.View {
-	t.Helper()
-
-	c := store.NewDiskFS()
-	fs := store.NewOverlayFS(c)
-	_ = fs.Update(t.Context(), files)
-
-	view := store.NewView("file:///tmp", fs, nil)
-
-	for _, f := range files {
-		_, _ = view.Parse(t.Context(), f.URI)
-	}
-
-	return view
-}
-
 // cyclePair identifies one reported cycle include: the file containing the
 // include statement and the resolved URI it points at. Diagnostics carry
 // this as the message "cycle dependency in <to>".
@@ -84,7 +68,7 @@ func runCycleCheck(t *testing.T, files map[string]string, root string) []cyclePa
 		})
 	}
 
-	view := buildSnapshotForTest(t, changes)
+	view := store.BuildViewForTest(changes)
 
 	res := runOne(t, &CycleCheck{}, view, uri.URI("file:///tmp/"+root))
 
@@ -227,7 +211,7 @@ include "./test/address.thrift"`
 	file2 := `include "../user.thrift"`
 	file3 := `include "../user.thrift"`
 
-	view := buildSnapshotForTest(t, []*store.FileChange{
+	view := store.BuildViewForTest([]*store.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
@@ -279,4 +263,22 @@ include "./test/address.thrift"`
 	require.NoError(t, err)
 
 	assert.Equal(t, expectIncludeMap, includeMap)
+}
+
+func Test_getIncludes_Unresolvable(t *testing.T) {
+	view := store.BuildViewForTest([]*store.FileChange{
+		{
+			URI:     "file:///tmp/user.thrift",
+			Version: 0,
+			Content: []byte("include \"ghost.thrift\"\nstruct S {}"),
+			From:    store.FileChangeTypeDidOpen,
+		},
+	})
+
+	includeMap := make(map[uri.URI][]Include)
+
+	err := getIncludes(t.Context(), view, "file:///tmp/user.thrift", &includeMap)
+	require.NoError(t, err, "unresolvable includes are data, not errors")
+	require.Contains(t, includeMap, uri.URI("file:///tmp/user.thrift"))
+	assert.Empty(t, includeMap["file:///tmp/ghost.thrift"], "ghost target is never parsed into the map")
 }

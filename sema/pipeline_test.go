@@ -1,8 +1,6 @@
 package sema
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -58,34 +56,6 @@ func cmpAll(ds []Diagnostic) []diagCmp {
 	}
 
 	return out
-}
-
-// buildFolderSnapshotForTest builds a snapshot whose view root is folder,
-// with the given files opened in the overlay.
-func buildFolderSnapshotForTest(t *testing.T, folder string, files []*store.FileChange) *store.View {
-	t.Helper()
-
-	c := store.NewDiskFS()
-	fs := store.NewOverlayFS(c)
-	_ = fs.Update(t.Context(), files)
-
-	view := store.NewView(uri.File(folder), fs, nil)
-
-	for _, f := range files {
-		_, _ = view.Parse(t.Context(), f.URI)
-	}
-
-	return view
-}
-
-// writeThrift writes content to a .thrift file under folder.
-func writeThrift(t *testing.T, folder, name, content string) string {
-	t.Helper()
-
-	p := filepath.Join(folder, name)
-	require.NoError(t, os.WriteFile(p, []byte(content), 0o644))
-
-	return p
 }
 
 // analyzeOne runs the full semantic analysis over one file.

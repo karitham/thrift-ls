@@ -5,17 +5,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.lsp.dev/uri"
 )
 
 func TestParse(t *testing.T) {
-	tests := []struct {
-		name      string
-		fh        FileHandle
-		assertion assert.ErrorAssertionFunc
-	}{
-		{
-			name: "normal",
-			fh: NewOverlay("file:///tmp/types.thrift", []byte(`
+	t.Run("valid file parses to a document", func(t *testing.T) {
+		fh := NewOverlay("file:///tmp/types.thrift", []byte(`
 #include "base.thrift"
 struct Xtruct3
 {
@@ -24,12 +19,18 @@ struct Xtruct3
   9:  i32    i32_thing,
   11: i64    i64_thing
 }
-			`), 0),
-			assertion: assert.NoError,
-		},
-		{
-			name: "invalid ast",
-			fh: NewOverlay("file:///tmp/types.thrift", []byte(`
+			`), 0)
+
+		got, err := Parse(fh)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.NotNil(t, got.AST(), "valid content must yield a document")
+		assert.Contains(t, got.Definitions(), "Xtruct3")
+		assert.NotEmpty(t, got.Tokens(), "identifier tokens are collected")
+	})
+
+	t.Run("syntax errors ride the file, not the call", func(t *testing.T) {
+		fh := NewOverlay("file:///tmp/types.thrift", []byte(`
 #include "base.thrift"
 struct Xtruct3
 {
@@ -39,17 +40,23 @@ struct Xtruct3
   11: i64    i64_thing,
   12: 
 }
-			`), 0),
-			assertion: assert.NoError,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := Parse(tt.fh)
-			tt.assertion(t, err)
-			t.Logf("got: %v\n", got)
-		})
-	}
+			`), 0)
+
+		got, err := Parse(fh)
+		require.NoError(t, err, "Parse only fails when content is unreadable")
+		require.NotNil(t, got)
+		assert.NotEmpty(t, got.Errors(), "the trailing comma must surface as a file error")
+	})
+
+	t.Run("unreadable content fails the call", func(t *testing.T) {
+		u := "file:///tmp/ghost.thrift"
+		fh, err := NewDiskFS().ReadFile(t.Context(), uri.File(u))
+		require.NoError(t, err)
+
+		got, err := Parse(fh)
+		require.Error(t, err)
+		assert.Nil(t, got)
+	})
 }
 
 // TestParsedFileDefinitions pins the definition and enum-value indexes:

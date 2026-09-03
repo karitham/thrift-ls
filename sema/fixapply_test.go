@@ -251,6 +251,7 @@ func TestFixAllParseErrorGuard(t *testing.T) {
 		require.Equal(t, "file has parse errors", s.Reason)
 		require.Equal(t, broken, s.File)
 	}
+	require.NotEmpty(t, res.Skipped, "the parse-error guard must report what it skipped")
 }
 
 // TestFixAllPersistFailure keeps the partial summary: fixes persisted

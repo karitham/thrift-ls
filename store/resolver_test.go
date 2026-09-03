@@ -113,6 +113,8 @@ func TestResolver(t *testing.T) {
 			fn: func(t *testing.T) {
 				doc := &syntax.Document{
 					Nodes: []syntax.Node{
+						&syntax.Include{Path: nil},
+						&syntax.Namespace{},
 						&syntax.Include{Path: &syntax.Token{Text: "shared.thrift"}},
 					},
 				}

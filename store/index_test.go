@@ -138,12 +138,16 @@ func TestFileIndex_ExcludesTrueFalse(t *testing.T) {
 	idx := buildIndex(parse(t, `
 		const bool C = true
 		const bool D = false
+		const i32 E = SOME_CONST
 	`))
 
+	names := make([]string, 0, len(idx.References()))
 	for _, r := range idx.References() {
-		require.NotEqual(t, "true", r.Name)
-		require.NotEqual(t, "false", r.Name)
+		names = append(names, r.Name)
 	}
+	assert.Contains(t, names, "SOME_CONST", "positive control: real idents are indexed")
+	assert.NotContains(t, names, "true")
+	assert.NotContains(t, names, "false")
 }
 
 func TestFileIndex_Annotations(t *testing.T) {
@@ -191,19 +195,50 @@ func TestFileIndex_SingleWalkConsistency(t *testing.T) {
 		}
 	`
 	p := mustParse(content)
+
+	// buildIndex output must match an independent syntax.Walk oracle on
+	// the same document: every definition and enum value the walker
+	// finds, keyed by name.
+	wantDefs := map[string]struct{}{}
+	wantEnums := map[string]struct{}{}
+	syntax.Walk(p, func(n syntax.Node) bool {
+		switch v := n.(type) {
+		case *syntax.Struct:
+			wantDefs[v.Name.Text] = struct{}{}
+		case *syntax.Enum:
+			wantDefs[v.Name.Text] = struct{}{}
+			for _, ev := range v.Values {
+				wantEnums[ev.Name.Text] = struct{}{}
+			}
+		case *syntax.Service:
+			wantDefs[v.Name.Text] = struct{}{}
+		case *syntax.Const, *syntax.Typedef:
+			switch d := n.(type) {
+			case *syntax.Const:
+				wantDefs[d.Name.Text] = struct{}{}
+			case *syntax.Typedef:
+				wantDefs[d.Name.Text] = struct{}{}
+			}
+		}
+
+		return true
+	})
+
 	pf := &ParsedFile{ast: p}
-
-	// Definitions and EnumValues via the index must match the old
-	// accessors — the index walker produces identical output.
-	assert.NotNil(t, pf.Definitions()["Foo"])
-	assert.NotNil(t, pf.Definitions()["Color"])
-	assert.NotNil(t, pf.Definitions()["Svc"])
-
-	assert.NotNil(t, pf.EnumValues()["RED"])
+	for name := range wantDefs {
+		assert.Contains(t, pf.Definitions(), name)
+	}
+	for name := range wantEnums {
+		assert.Contains(t, pf.EnumValues(), name)
+	}
+	assert.Len(t, pf.Definitions(), len(wantDefs), "index must not add phantom definitions")
 }
 
 func mustParse(src string) *syntax.Document {
 	ast, _ := syntax.Parse([]byte(src))
+	if ast == nil {
+		panic("mustParse: fixture produced nil document")
+	}
 
 	return ast
 }
@@ -211,6 +246,7 @@ func mustParse(src string) *syntax.Document {
 func parse(t *testing.T, src string) *syntax.Document {
 	t.Helper()
 	ast, _ := syntax.Parse([]byte(src))
+	require.NotNil(t, ast, "fixture must produce a document")
 
 	return ast
 }

@@ -109,7 +109,7 @@ enum E {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*store.FileChange{
+			view := store.BuildViewForTest([]*store.FileChange{
 				{
 					URI:     "file:///tmp/user.thrift",
 					Version: 0,
@@ -142,7 +142,7 @@ enum E {
 func Test_EnumValuesProvider_QuickFixPromotion(t *testing.T) {
 	content := "enum E { A, B = 1 }\n"
 
-	view := buildSnapshotForTest(t, []*store.FileChange{
+	view := store.BuildViewForTest([]*store.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
@@ -182,7 +182,7 @@ func Test_EnumValuesProvider_QuickFixPromotion(t *testing.T) {
 func Test_FieldQualifierProvider(t *testing.T) {
 	content := "struct S {\n  1: i32 a,\n  2: required string b,\n  3: optional i64 c,\n}\n"
 
-	view := buildSnapshotForTest(t, []*store.FileChange{
+	view := store.BuildViewForTest([]*store.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
@@ -215,4 +215,10 @@ func Test_FieldQualifierProvider(t *testing.T) {
 	// Applying the first edit inserts the qualifier keyword.
 	assert.Equal(t, "struct S {\n  1: required i32 a,\n  2: required string b,\n  3: optional i64 c,\n}\n",
 		applyEdits(t, content, actions[0].Edits))
+
+	// A selection outside any field offers nothing.
+	outside := Span{Start: spanAt(t, pf, 1, 1).Start, End: spanAt(t, pf, 1, 1).Start}
+	assert.Empty(t, FieldQualifierProvider{}.Actions(t.Context(),
+		File{URI: "file:///tmp/user.thrift", PF: pf}, outside, Report{}),
+		"an always-offer provider would fail here")
 }

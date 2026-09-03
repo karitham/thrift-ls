@@ -11,16 +11,6 @@ import (
 	"github.com/karitham/thrift-ls/store"
 )
 
-// openChange opens one file with content in a view.
-func openChange(path, content string) []*store.FileChange {
-	return []*store.FileChange{{
-		URI:     uri.File(path),
-		Version: 0,
-		Content: []byte(content),
-		From:    store.FileChangeTypeDidOpen,
-	}}
-}
-
 // addIncludeFixes returns the fixes the fixer offers for the undefined-type
 // diagnostics the analysis produced for file.
 func addIncludeFixes(t *testing.T, view *store.View, file uri.URI) []Fix {
@@ -46,14 +36,16 @@ func addIncludeFixes(t *testing.T, view *store.View, file uri.URI) []Fix {
 
 func Test_AddIncludeFixer(t *testing.T) {
 	t.Run("adds the include defining the missing type", func(t *testing.T) {
-		folder := t.TempDir()
-		writeThrift(t, folder, "shared.thrift", "struct User {\n  1: i32 id,\n}\n")
-		filePath := writeThrift(t, folder, "user.thrift", "struct S {\n  1: User u,\n}\n")
+		user := uri.File("/tmp/user.thrift")
+		shared := uri.File("/tmp/shared.thrift")
 		content := "struct S {\n  1: User u,\n}\n"
 
-		view := buildFolderSnapshotForTest(t, folder, openChange(filePath, content))
+		view := store.BuildViewForTest([]*store.FileChange{
+			{URI: shared, Content: []byte("struct User {\n  1: i32 id,\n}\n"), From: store.FileChangeTypeDidOpen},
+			{URI: user, Content: []byte(content), From: store.FileChangeTypeDidOpen},
+		})
 
-		fixes := addIncludeFixes(t, view, uri.File(filePath))
+		fixes := addIncludeFixes(t, view, user)
 		require.Len(t, fixes, 1)
 		assert.Equal(t, `Add include "shared.thrift"`, fixes[0].Title)
 		assert.Equal(t, "include \"shared.thrift\"\n", fixes[0].Edits[0].NewText)
@@ -62,37 +54,41 @@ func Test_AddIncludeFixer(t *testing.T) {
 	})
 
 	t.Run("inserts after existing includes", func(t *testing.T) {
-		folder := t.TempDir()
-		writeThrift(t, folder, "shared.thrift", "struct User {\n  1: i32 id,\n}\n")
+		user := uri.File("/tmp/user.thrift")
+		shared := uri.File("/tmp/shared.thrift")
 		content := "include \"base.thrift\"\n\nstruct S {\n  1: User u,\n}\n"
-		filePath := writeThrift(t, folder, "user.thrift", content)
 
-		view := buildFolderSnapshotForTest(t, folder, openChange(filePath, content))
+		view := store.BuildViewForTest([]*store.FileChange{
+			{URI: shared, Content: []byte("struct User {\n  1: i32 id,\n}\n"), From: store.FileChangeTypeDidOpen},
+			{URI: user, Content: []byte(content), From: store.FileChangeTypeDidOpen},
+		})
 
-		fixes := addIncludeFixes(t, view, uri.File(filePath))
+		fixes := addIncludeFixes(t, view, user)
 		require.Len(t, fixes, 1)
 		assert.Equal(t, "include \"base.thrift\"\ninclude \"shared.thrift\"\n\nstruct S {\n  1: User u,\n}\n",
 			applyEdits(t, content, fixes[0].Edits))
 	})
 
 	t.Run("a type defined nowhere offers no fix", func(t *testing.T) {
-		folder := t.TempDir()
+		user := uri.File("/tmp/user.thrift")
 		content := "struct S {\n  1: Ghost u,\n}\n"
-		filePath := writeThrift(t, folder, "user.thrift", content)
 
-		view := buildFolderSnapshotForTest(t, folder, openChange(filePath, content))
+		view := store.BuildViewForTest([]*store.FileChange{
+			{URI: user, Content: []byte(content), From: store.FileChangeTypeDidOpen},
+		})
 
-		assert.Empty(t, addIncludeFixes(t, view, uri.File(filePath)))
+		assert.Empty(t, addIncludeFixes(t, view, user))
 	})
 
 	t.Run("a type defined in the same file offers no fix", func(t *testing.T) {
-		folder := t.TempDir()
+		user := uri.File("/tmp/user.thrift")
 		content := "struct User {}\nstruct S {\n  1: User u,\n}\n"
-		filePath := writeThrift(t, folder, "user.thrift", content)
 
-		view := buildFolderSnapshotForTest(t, folder, openChange(filePath, content))
+		view := store.BuildViewForTest([]*store.FileChange{
+			{URI: user, Content: []byte(content), From: store.FileChangeTypeDidOpen},
+		})
 
-		assert.Empty(t, addIncludeFixes(t, view, uri.File(filePath)))
+		assert.Empty(t, addIncludeFixes(t, view, user))
 	})
 }
 
@@ -100,12 +96,14 @@ func Test_AddIncludeFixer(t *testing.T) {
 // include line is deleted whole, trailing newline included.
 func Test_UnusedIncludeCheck_InlineFix(t *testing.T) {
 	content := "include \"shared.thrift\"\nstruct S { 1: i32 a }\n"
-	filePath := writeThrift(t, t.TempDir(), "user.thrift", content)
+	file := uri.File("/tmp/user.thrift")
 
-	view := buildFolderSnapshotForTest(t, t.TempDir(), openChange(filePath, content))
+	view := store.BuildViewForTest([]*store.FileChange{
+		{URI: file, Content: []byte(content), From: store.FileChangeTypeDidOpen},
+	})
 
-	report := runOne(t, EachFile(&UnusedIncludeCheck{}), view, uri.File(filePath))
-	diags := report[uri.File(filePath)]
+	report := runOne(t, EachFile(&UnusedIncludeCheck{}), view, file)
+	diags := report[file]
 	require.Len(t, diags, 1)
 	require.Len(t, diags[0].Fixes, 1)
 

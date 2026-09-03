@@ -12,6 +12,18 @@ import (
 	"github.com/karitham/thrift-ls/store"
 )
 
+// writeThrift writes content to a .thrift file under folder. Only the
+// include-shadow test needs real disk: its candidates resolve through the
+// disk fallback of the view's file source.
+func writeThrift(t *testing.T, folder, name, content string) string {
+	t.Helper()
+
+	p := filepath.Join(folder, name)
+	require.NoError(t, os.WriteFile(p, []byte(content), 0o644))
+
+	return p
+}
+
 func Test_IncludeShadowCheck(t *testing.T) {
 	tests := []struct {
 		name        string

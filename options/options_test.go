@@ -211,16 +211,18 @@ func TestLintConfigDecodeAndConvert(t *testing.T) {
 		name         string
 		data         string
 		wantErr      bool
-		wantEnabled  bool
 		wantDisabled []string
 		wantSeverity map[string]string
 	}{
 		{
 			name:         "disabled analyzers and severity overrides",
 			data:         `{"lint": {"disabled": ["unused-include"], "severity": {"implicit-enum-value": "info"}}}`,
-			wantEnabled:  true,
 			wantDisabled: []string{"unused-include"},
 			wantSeverity: map[string]string{"implicit-enum-value": "info"},
+		},
+		{
+			name: "absent lint decodes to nil",
+			data: `{}`,
 		},
 		{
 			name:    "unknown severity is rejected",
@@ -243,6 +245,12 @@ func TestLintConfigDecodeAndConvert(t *testing.T) {
 			}
 
 			require.NoError(t, err)
+
+			if tt.wantDisabled == nil && tt.wantSeverity == nil {
+				assert.Nil(t, p.Lint)
+				return
+			}
+
 			require.NotNil(t, p.Lint)
 
 			if tt.wantDisabled != nil {

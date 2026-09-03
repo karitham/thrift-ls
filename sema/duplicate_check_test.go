@@ -300,7 +300,7 @@ enum User {}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*store.FileChange{
+			view := store.BuildViewForTest([]*store.FileChange{
 				{
 					URI:     "file:///tmp/user.thrift",
 					Version: 0,

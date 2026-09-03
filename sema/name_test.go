@@ -49,44 +49,20 @@ func TestIncludeNameOf(t *testing.T) {
 }
 
 func TestIncludeNames(t *testing.T) {
-	type args struct {
-		cur      uri.URI
-		includes []*syntax.Include
+	cur := uri.MustParse("/tmp/app.thrift")
+	includes := []*syntax.Include{
+		{Path: &syntax.Token{Text: "../../base.sub.thrift"}},
+		{Path: &syntax.Token{Text: "user.sub.thrift"}},
+		{Path: &syntax.Token{Text: "app.thrift"}},
+		{Path: nil},
 	}
 
-	tests := []struct {
-		name             string
-		args             args
-		wantIncludeNames []string
-	}{
-		{
-			name: "case 1",
-			args: args{
-				cur: uri.MustParse("/tmp/app.thrift"),
-				includes: []*syntax.Include{
-					{
-						Path: &syntax.Token{Text: "../../base.sub.thrift"},
-					},
-					{
-						Path: &syntax.Token{Text: "user.sub.thrift"},
-					},
-					{
-						Path: &syntax.Token{Text: "app.thrift"},
-					},
-				},
-			},
-			wantIncludeNames: []string{
-				"base.sub",
-				"user.sub",
-				"app",
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.wantIncludeNames, includeNames(tt.args.cur, tt.args.includes))
-		})
-	}
+	assert.Equal(t,
+		[]string{"base.sub", "user.sub", "app"},
+		includeNames(cur, includes),
+		"nil paths are skipped")
+
+	assert.Empty(t, includeNames(cur, nil), "empty includes yield no names")
 }
 
 func TestParseIdent(t *testing.T) {
@@ -149,6 +125,20 @@ func TestParseIdent(t *testing.T) {
 			},
 			wantInclude: "user",
 			wantIdent:   "sub.Name",
+		},
+		{
+			name: "bare identifier has no qualifier",
+			args: args{
+				cur: uri.MustParse("/tmp/app.thrift"),
+				includes: []*syntax.Include{
+					{
+						Path: &syntax.Token{Text: "user.thrift"},
+					},
+				},
+				identifier: "Name",
+			},
+			wantInclude: "",
+			wantIdent:   "Name",
 		},
 	}
 	for _, tt := range tests {
