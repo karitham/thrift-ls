@@ -101,7 +101,7 @@ func (p *Pipeline) FixAll(ctx context.Context, view Store, targets []uri.URI, pe
 		return res
 	}
 
-	for pass := 0; pass < maxFixPasses; pass++ {
+	for pass := range maxFixPasses {
 		res.Passes++
 
 		report, err := p.Run(ctx, view, targets)
