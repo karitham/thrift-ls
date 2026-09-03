@@ -1,7 +1,7 @@
 package lsp
 
 import (
-	"context"
+	"errors"
 	"slices"
 	"testing"
 
@@ -63,6 +63,8 @@ func TestConfigDiscovery(t *testing.T) {
 		{name: "pinned source ignores the folder config", config: `{"printWidth": 30}`, pinned: true, want: probeOneLine},
 		{name: "no config formats with defaults, no CWD leak", want: probeOneLine},
 		{name: "invalid file keeps defaults", config: `{"printWidth": "wide"}`, want: probeOneLine},
+		{name: "truncated JSON keeps defaults", config: `{"printWidth":`, want: probeOneLine},
+		{name: "unknown key keeps defaults", config: `{"printWidht": 30}`, want: probeOneLine},
 		{name: "nested folder walks up to the repo root", config: `{"printWidth": 30}`, nested: true, want: probeBroken},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -269,6 +271,31 @@ func TestWorkspaceLoaderUsesConfigSourcePerProjectRoot(t *testing.T) {
 	}
 }
 
+func TestConfigSourceErrorDegradesOneRoot(t *testing.T) {
+	boom := errors.New("config store on fire")
+	source := func(root string) (options.Resolved, error) {
+		if root == "/ws/two" {
+			return options.Resolved{}, boom
+		}
+
+		return options.Resolved{}, nil
+	}
+	srv := newSyncServerWithOptions(nil,
+		resolvertest.Map{
+			"/ws/one/api.thrift": []byte("struct API {}"),
+			"/ws/two/api.thrift": []byte("struct API {}"),
+		}.URIs(),
+		Options{ConfigSource: source})
+	initCustomFolders(t, srv, []uri.URI{uri.File("/ws")})
+	installSnapshot(t, srv, uri.File("/ws"), WorkspaceSnapshot{Projects: []Project{
+		{ConfigURI: uri.File("/ws/one/project.json"), RootURI: uri.File("/ws/one"), TargetFiles: []uri.URI{uri.File("/ws/one/api.thrift")}},
+		{ConfigURI: uri.File("/ws/two/project.json"), RootURI: uri.File("/ws/two"), TargetFiles: []uri.URI{uri.File("/ws/two/api.thrift")}},
+	}})
+
+	assert.Equal(t, probeOneLine, openAndFormat(t, srv, "/ws/one/api.thrift"), "the healthy root formats")
+	assert.Contains(t, srv.configIssues, uri.File("/ws/two"), "the failing root surfaces an issue")
+}
+
 // TestPinnedSourceBypassesDiscovery verifies a pinned document applies to
 // loader projects without consulting disk.
 func TestPinnedSourceBypassesDiscovery(t *testing.T) {
@@ -352,8 +379,6 @@ func TestCustomProjectIncludePathsAreAuthoritative(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{projectIncludes}, view.Resolver().IncludePaths())
 	assert.Equal(t, uri.File("/ws/project-includes/shared.thrift"), view.Resolver().ResolveInclude(t.Context(), target, "shared.thrift"))
-
-	_ = context.Background
 }
 
 func TestLSPSettings(t *testing.T) {
@@ -363,6 +388,26 @@ func TestLSPSettings(t *testing.T) {
 		require.NotNil(t, patch.PrintWidth)
 		assert.Equal(t, 30, *patch.PrintWidth)
 		assert.Equal(t, "assign", *patch.Align)
+	})
+
+	for _, tt := range []struct {
+		name string
+		raw  string
+	}{
+		{"empty", ``},
+		{"array", `[]`},
+		{"truncated", `{`},
+	} {
+		t.Run("rejects "+tt.name, func(t *testing.T) {
+			_, err := lspSettings([]byte(tt.raw))
+			assert.Error(t, err)
+		})
+	}
+
+	t.Run("null means no settings", func(t *testing.T) {
+		patch, err := lspSettings([]byte(`null`))
+		require.NoError(t, err)
+		assert.Equal(t, options.Patch{}, *patch)
 	})
 
 	t.Run("rejects unknown keys", func(t *testing.T) {
@@ -401,12 +446,12 @@ func TestWorkspaceSettings(t *testing.T) {
 	assert.Equal(t, probeBroken, formatText(t, srv, file))
 
 	require.NoError(t, srv.DidChangeConfiguration(ctx, &protocol.DidChangeConfigurationParams{
-		Settings: protocol.LSPAny([]byte(`{"printWidth":80}`)),
+		Settings: protocol.LSPAny([]byte(`{"printWidth":30}`)),
 	}))
-	assert.Equal(t, probeOneLine, formatText(t, srv, file))
+	assert.Equal(t, probeBroken, formatText(t, srv, file))
 
 	require.NoError(t, srv.DidChangeConfiguration(ctx, &protocol.DidChangeConfigurationParams{
 		Settings: protocol.LSPAny([]byte(`{"printWidth":30,"align":"bogus"}`)),
 	}))
-	assert.Equal(t, probeOneLine, formatText(t, srv, file))
+	assert.Equal(t, probeBroken, formatText(t, srv, file), "rejected settings retain the overlay")
 }

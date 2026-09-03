@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 	"testing"
 
@@ -287,13 +288,7 @@ func openAndFormat(t *testing.T, srv *Server, file string) string {
 		},
 	}))
 
-	edits, err := srv.Formatting(t.Context(), &protocol.DocumentFormattingParams{
-		TextDocument: protocol.TextDocumentIdentifier{URI: uri.File(file)},
-	})
-	require.NoError(t, err)
-	require.Len(t, edits, 1)
-
-	return edits[0].NewText
+	return formatText(t, srv, uri.File(file))
 }
 
 func formatText(t *testing.T, srv *Server, file uri.URI) string {
@@ -348,18 +343,11 @@ func codeActionTitles(t *testing.T, srv *Server, file uri.URI, rng protocol.Rang
 func codeActionTitleList(t *testing.T, srv *Server, file uri.URI, rng protocol.Range) []string {
 	t.Helper()
 
-	actions, err := srv.codeAction(t.Context(), &protocol.CodeActionParams{
-		TextDocument: protocol.TextDocumentIdentifier{URI: file},
-		Range:        rng,
-	})
-	require.NoError(t, err)
-
-	titles := make([]string, 0, len(actions))
-	for _, a := range actions {
-		ca, ok := a.(*protocol.CodeAction)
-		require.True(t, ok)
-		titles = append(titles, ca.Title)
+	titles := []string{}
+	for title := range codeActionTitles(t, srv, file, rng) {
+		titles = append(titles, title)
 	}
+	sort.Strings(titles)
 
 	return titles
 }
@@ -390,7 +378,12 @@ func workspaceSymbolNames(t *testing.T, srv *Server) []string {
 	symbols, ok := result.(protocol.SymbolInformationSlice)
 	require.True(t, ok)
 
-	return symbolNames(symbols)
+	names := make([]string, len(symbols))
+	for i, s := range symbols {
+		names[i] = s.Name
+	}
+
+	return names
 }
 
 func assertViewPresent(t *testing.T, srv *Server, folder uri.URI) {

@@ -321,4 +321,5 @@ func TestServeStdioTreatsEOFAsCleanShutdown(t *testing.T) {
 
 	err := ServeStdio(t.Context(), &Options{}, bytes.NewReader(nil), &output)
 	require.NoError(t, err)
+	assert.Empty(t, output.String(), "clean shutdown writes nothing to stdout")
 }

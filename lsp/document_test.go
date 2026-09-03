@@ -166,8 +166,8 @@ func TestDependentDiagnosticsRepublish(t *testing.T) {
 				}))
 			}
 
-			assert.GreaterOrEqual(t, client.count(included), 1, "changed file gets diagnostics")
-			assert.GreaterOrEqual(t, client.count(dependent), 1, "dependent of changed file gets diagnostics")
+			assert.Equal(t, 1, client.count(included), "changed file publishes exactly once on the sync path")
+			assert.Equal(t, 1, client.count(dependent), "dependent of changed file publishes exactly once")
 
 			if tt.viaDisk {
 				fh, err := srv.session.ReadFile(t.Context(), included)

@@ -742,8 +742,12 @@ func TestWorkspaceTargetsAreIndexedOncePerView(t *testing.T) {
 	view, err := srv.session.ViewOf(first)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), view.Generation())
-	assert.NotEmpty(t, client.last(first))
-	assert.NotEmpty(t, client.last(second))
+
+	for _, file := range []uri.URI{first, second} {
+		msgs := diagMessages(client.last(file))
+		assert.NotEmpty(t, msgs, "%s must publish its parse diagnostics", file)
+		assert.Contains(t, msgs[0], "expected", "broken structs report parse errors, not silence")
+	}
 }
 
 func TestWorkspaceIssuesPersistAcrossFolders(t *testing.T) {
@@ -990,6 +994,12 @@ func TestValidateProject(t *testing.T) {
 	assert.Error(t, validateProject(Project{
 		RootURI: uri.File("/workspace/service"),
 	}), "missing config URI is rejected")
+
+	assert.Error(t, validateProject(Project{
+		ConfigURI:   uri.File("/workspace/project.json"),
+		RootURI:     uri.File("/workspace/service"),
+		TargetFiles: []uri.URI{uri.URI("not a URI")},
+	}), "invalid target URIs are rejected")
 
 	snap := validateWorkspaceSnapshot(uri.File("/workspace"), WorkspaceSnapshot{Projects: []Project{
 		{
