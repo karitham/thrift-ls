@@ -77,6 +77,10 @@ func (m *Mapper) OffsetToLSPPosition(offset int) (protocol.Position, error) {
 
 // LSPPosToParserPosition converts an LSP position (0-based line, UTF-16
 // code-unit column) to a parser position (1-based line, rune-based column).
+//
+// Client positions are hints, not facts: they race with edits, so a column
+// past the line end clamps to the line end instead of failing. Only a line
+// past the document is an error — there is nothing to clamp to.
 func (m *Mapper) LSPPosToParserPosition(pos protocol.Position) (syntax.Position, error) {
 	m.initLineStart()
 
@@ -92,21 +96,15 @@ func (m *Mapper) LSPPosToParserPosition(pos protocol.Position) (syntax.Position,
 	}
 
 	if !m.nonASCII {
-		col := int(pos.Character) + 1
-
-		offset := lineStart + int(pos.Character)
-		if offset > len(m.content) {
-			return syntax.InvalidPosition, fmt.Errorf("invalid position offset: %d, total content: %d, %s", offset, len(m.content), string(m.content))
-		}
-
-		if col > lineEnd-lineStart+1 { // if line length is 0, col is 1 means col is at end of line
-			return syntax.InvalidPosition, fmt.Errorf("invalid position column: %d, line length: %d, %s", col, lineEnd-lineStart, string(m.content))
+		char := int(pos.Character)
+		if lineLen := lineEnd - lineStart; char > lineLen {
+			char = lineLen
 		}
 
 		return syntax.Position{
 			Line:   line,
-			Col:    col,
-			Offset: offset,
+			Col:    char + 1,
+			Offset: lineStart + char,
 		}, nil
 	}
 

@@ -66,7 +66,7 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 			assertion: assert.Error,
 		},
 		{
-			name: "ascii character exceeded",
+			name: "ascii character clamps to line end",
 			fields: fields{
 				content: []byte(content),
 			},
@@ -76,8 +76,12 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 					Character: 28,
 				},
 			},
-			want:      syntax.InvalidPosition,
-			assertion: assert.Error,
+			want: syntax.Position{
+				Line:   2,
+				Col:    28,
+				Offset: 41,
+			},
+			assertion: assert.NoError,
 		},
 		{
 			name: "ascii character no exceeded end of file",
@@ -98,7 +102,7 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 			assertion: assert.NoError,
 		},
 		{
-			name: "ascii character exceeded end of file",
+			name: "ascii character past EOF clamps",
 			fields: fields{
 				content: []byte(content),
 			},
@@ -108,8 +112,12 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 					Character: 2,
 				},
 			},
-			want:      syntax.InvalidPosition,
-			assertion: assert.Error,
+			want: syntax.Position{
+				Line:   3,
+				Col:    2,
+				Offset: 42,
+			},
+			assertion: assert.NoError,
 		},
 		{
 			name: "rune",
@@ -130,9 +138,9 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 			assertion: assert.NoError,
 		},
 		{
-			name: "rune line exceeded",
+			name: "rune document short line clamps",
 			fields: fields{
-				content: []byte(content),
+				content: []byte(runeContent),
 			},
 			args: args{
 				pos: protocol.Position{
@@ -140,13 +148,35 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 					Character: 12,
 				},
 			},
-			want:      syntax.InvalidPosition,
-			assertion: assert.Error,
+			want: syntax.Position{
+				Line:   3,
+				Col:    2,
+				Offset: 46,
+			},
+			assertion: assert.NoError,
 		},
 		{
-			name: "rune character exceeded",
+			name: "ascii line in rune document clamps",
 			fields: fields{
-				content: []byte(content),
+				content: []byte(runeContent),
+			},
+			args: args{
+				pos: protocol.Position{
+					Line:      1,
+					Character: 99,
+				},
+			},
+			want: syntax.Position{
+				Line:   2,
+				Col:    28,
+				Offset: 45,
+			},
+			assertion: assert.NoError,
+		},
+		{
+			name: "rune character clamps to line end",
+			fields: fields{
+				content: []byte(runeContent),
 			},
 			args: args{
 				pos: protocol.Position{
@@ -154,8 +184,12 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 					Character: 15,
 				},
 			},
-			want:      syntax.InvalidPosition,
-			assertion: assert.Error,
+			want: syntax.Position{
+				Line:   1,
+				Col:    13,
+				Offset: 18,
+			},
+			assertion: assert.NoError,
 		},
 	}
 	for i := range tests {

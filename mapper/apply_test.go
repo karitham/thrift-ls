@@ -77,6 +77,22 @@ func TestApplyEdits(t *testing.T) {
 			want:    "untouched",
 		},
 		{
+			name:    "end past document clamps",
+			content: "abc",
+			edits: []protocol.TextEdit{
+				{Range: protocol.Range{Start: pos(0), End: pos(4)}, NewText: "x"},
+			},
+			want: "x",
+		},
+		{
+			name:    "start past document clamps to insertion",
+			content: "abc",
+			edits: []protocol.TextEdit{
+				{Range: protocol.Range{Start: pos(9), End: pos(9)}, NewText: "x"},
+			},
+			want: "abcx",
+		},
+		{
 			name: "utf16 surrogate pair counts as two units",
 			// a + emoji(4 bytes, 2 units) + b: b sits at char 3.
 			content: "a😀b",
@@ -127,27 +143,15 @@ func TestApplyEditsErrors(t *testing.T) {
 		name    string
 		content string
 		edits   []protocol.TextEdit
+		wantErr string
 	}{
-		{
-			name:    "end past document",
-			content: "abc",
-			edits: []protocol.TextEdit{
-				{Range: protocol.Range{Start: pos(0), End: pos(4)}, NewText: "x"},
-			},
-		},
-		{
-			name:    "start past document",
-			content: "abc",
-			edits: []protocol.TextEdit{
-				{Range: protocol.Range{Start: pos(9), End: pos(9)}, NewText: "x"},
-			},
-		},
 		{
 			name:    "start after end",
 			content: "abc",
 			edits: []protocol.TextEdit{
 				{Range: protocol.Range{Start: pos(2), End: pos(1)}, NewText: "x"},
 			},
+			wantErr: "invalid edit range",
 		},
 		{
 			name:    "line past document",
@@ -155,13 +159,15 @@ func TestApplyEditsErrors(t *testing.T) {
 			edits: []protocol.TextEdit{
 				{Range: protocol.Range{Start: protocol.Position{Line: 5, Character: 0}, End: protocol.Position{Line: 5, Character: 1}}, NewText: "x"},
 			},
+			wantErr: "invalid position line",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := NewMapper([]byte(tt.content)).ApplyEdits(tt.edits)
-			assert.Error(t, err)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
 }
