@@ -3,6 +3,7 @@ package lsp
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/lsp/cache"
+	"github.com/karitham/thrift-ls/options"
 )
 
 // WorkspaceLoader discovers the projects in one LSP workspace folder. A
@@ -51,9 +53,14 @@ type WorkspaceIssue struct {
 	Message string
 }
 
-type customWorkspace struct {
+type workspace struct {
 	server *Server
 	loader WorkspaceLoader
+
+	// implicitFolders lets didOpen grow the workspace: opening a file no
+	// project owns loads its directory as a folder. Only the default
+	// loader works this way; custom loaders own their files exclusively.
+	implicitFolders bool
 
 	mu        sync.Mutex
 	folders   map[uri.URI]*workspaceFolder
@@ -81,8 +88,8 @@ type workspaceModel struct {
 	issues  map[uri.URI][]WorkspaceIssue
 }
 
-func newCustomWorkspace(server *Server, loader WorkspaceLoader) *customWorkspace {
-	return &customWorkspace{
+func newWorkspace(server *Server, loader WorkspaceLoader) *workspace {
+	return &workspace{
 		server:    server,
 		loader:    loader,
 		folders:   make(map[uri.URI]*workspaceFolder),
@@ -307,7 +314,7 @@ func containsURI(root, file uri.URI) bool {
 	return strings.HasPrefix(file.Path(), folder+"/")
 }
 
-func (w *customWorkspace) initialize(folders []uri.URI) {
+func (w *workspace) initialize(folders []uri.URI) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -318,14 +325,14 @@ func (w *customWorkspace) initialize(folders []uri.URI) {
 	}
 }
 
-func (w *customWorkspace) start() {
+func (w *workspace) start() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	w.loadLocked(sortedURIs(w.folders))
 }
 
-func (w *customWorkspace) shutdown() {
+func (w *workspace) shutdown() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -338,7 +345,7 @@ func (w *customWorkspace) shutdown() {
 	}
 }
 
-func (w *customWorkspace) changeFolders(added, removed []uri.URI) {
+func (w *workspace) changeFolders(added, removed []uri.URI) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -375,7 +382,7 @@ func (w *customWorkspace) changeFolders(added, removed []uri.URI) {
 
 // loadLocked starts one asynchronous batch. The batch is committed only after
 // every loader returns, so every discovered view exists before target routing.
-func (w *customWorkspace) loadLocked(folders []uri.URI) {
+func (w *workspace) loadLocked(folders []uri.URI) {
 	if w.loader == nil || len(folders) == 0 {
 		return
 	}
@@ -404,9 +411,6 @@ func (w *customWorkspace) loadLocked(folders []uri.URI) {
 		for i := range results {
 			snapshot, err := loader(contexts[i], results[i].folder)
 			results[i].cancel()
-			if err == nil {
-				snapshot = cloneWorkspaceSnapshot(snapshot)
-			}
 			results[i].snapshot = snapshot
 			results[i].err = err
 		}
@@ -415,7 +419,65 @@ func (w *customWorkspace) loadLocked(folders []uri.URI) {
 	}()
 }
 
-func (w *customWorkspace) commit(results []workspaceLoadResult) {
+// loadSync runs the loader for folders inline and commits the results. It
+// backs implicit folder creation on didOpen and keeps tests deterministic.
+func (w *workspace) loadSync(ctx context.Context, folders []uri.URI) {
+	w.mu.Lock()
+	for _, folder := range folders {
+		if _, ok := w.folders[folder]; !ok {
+			w.folders[folder] = &workspaceFolder{}
+		}
+	}
+	states := make(map[uri.URI]*workspaceFolder, len(folders))
+	for _, folder := range folders {
+		states[folder] = w.folders[folder]
+	}
+	loader := w.loader
+	w.mu.Unlock()
+
+	if loader == nil {
+		return
+	}
+
+	results := make([]workspaceLoadResult, 0, len(folders))
+	for _, folder := range folders {
+		snapshot, err := loader(ctx, folder)
+		results = append(results, workspaceLoadResult{folder: folder, state: states[folder], snapshot: snapshot, err: err})
+	}
+
+	w.commit(results)
+}
+
+// defaultLoader treats each workspace folder as one project: every
+// *.thrift file under the folder is a target, with no opinions of its own
+// so each root resolves through the ConfigSource. It keeps folder-based
+// sessions working with the workspace as the only workspace.
+func defaultLoader(src cache.FileSource) WorkspaceLoader {
+	return func(ctx context.Context, folder uri.URI) (WorkspaceSnapshot, error) {
+		var targets []uri.URI
+
+		err := src.WalkFiles(ctx, folder, func(fileURI uri.URI) error {
+			if strings.HasSuffix(fileURI.Path(), ".thrift") {
+				targets = append(targets, fileURI)
+			}
+
+			return nil
+		})
+		if err != nil {
+			return WorkspaceSnapshot{}, err
+		}
+
+		slices.Sort(targets)
+
+		return WorkspaceSnapshot{Projects: []Project{{
+			ConfigURI:   uri.File(filepath.Join(folder.FsPath(), options.ConfigFileName)),
+			RootURI:     folder,
+			TargetFiles: targets,
+		}}}, nil
+	}
+}
+
+func (w *workspace) commit(results []workspaceLoadResult) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -438,7 +500,9 @@ func (w *customWorkspace) commit(results []workspaceLoadResult) {
 			continue
 		}
 
-		folder.snapshot = validateWorkspaceSnapshot(result.folder, result.snapshot)
+		// Clone crossing into the model: the loader must not mutate its
+		// result after returning, and neither path hereafter aliases it.
+		folder.snapshot = validateWorkspaceSnapshot(result.folder, cloneWorkspaceSnapshot(result.snapshot))
 	}
 
 	if accepted {
@@ -446,7 +510,7 @@ func (w *customWorkspace) commit(results []workspaceLoadResult) {
 	}
 }
 
-func (w *customWorkspace) reconcileLocked(ctx context.Context) {
+func (w *workspace) reconcileLocked(ctx context.Context) {
 	snapshots := make(map[uri.URI]WorkspaceSnapshot)
 	for folder, state := range w.folders {
 		snapshots[folder] = state.snapshot
@@ -507,7 +571,7 @@ func (w *customWorkspace) reconcileLocked(ctx context.Context) {
 	w.publishIssueChangesLocked(ctx, beforeIssues, next.issues)
 }
 
-func (w *customWorkspace) updateViewsLocked(ctx context.Context, changes map[uri.URI][]uri.URI) {
+func (w *workspace) updateViewsLocked(ctx context.Context, changes map[uri.URI][]uri.URI) {
 	for _, root := range sortedURIs(changes) {
 		view := w.views[root]
 		if view == nil {
@@ -526,12 +590,12 @@ func (w *customWorkspace) updateViewsLocked(ctx context.Context, changes map[uri
 	}
 }
 
-func (w *customWorkspace) applyChanges(ctx context.Context, changes []*cache.FileChange, overlay bool) error {
+func (w *workspace) applyChanges(ctx context.Context, changes []*cache.FileChange, overlay bool) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	if overlay {
-		if err := w.server.session.UpdateOverlayFS(ctx, changes); err != nil {
+		if err := w.server.session.Update(ctx, changes); err != nil {
 			return err
 		}
 	}
@@ -569,7 +633,7 @@ func (w *customWorkspace) applyChanges(ctx context.Context, changes []*cache.Fil
 	return nil
 }
 
-func (w *customWorkspace) viewOf(file uri.URI) (*cache.View, error) {
+func (w *workspace) viewOf(file uri.URI) (*cache.View, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -581,7 +645,7 @@ func (w *customWorkspace) viewOf(file uri.URI) (*cache.View, error) {
 	return w.views[root], nil
 }
 
-func (w *customWorkspace) owns(file uri.URI) bool {
+func (w *workspace) owns(file uri.URI) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -590,7 +654,19 @@ func (w *customWorkspace) owns(file uri.URI) bool {
 	return ok
 }
 
-func (w *customWorkspace) files(view *cache.View) []uri.URI {
+// rootContains reports whether any known project root contains file,
+// regardless of target or document ownership. didOpen uses it to keep new
+// files inside loaded roots instead of splitting off inner folders.
+func (w *workspace) rootContains(file uri.URI) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	_, ok := w.model.rootFor(file)
+
+	return ok
+}
+
+func (w *workspace) files(view *cache.View) []uri.URI {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -601,7 +677,7 @@ func (w *customWorkspace) files(view *cache.View) []uri.URI {
 	return w.model.ownedFiles(view.Folder(), w.documents)
 }
 
-func (w *customWorkspace) publishIssueChangesLocked(ctx context.Context, before, after map[uri.URI][]WorkspaceIssue) {
+func (w *workspace) publishIssueChangesLocked(ctx context.Context, before, after map[uri.URI][]WorkspaceIssue) {
 	changed := make(map[uri.URI]struct{}, len(before)+len(after))
 	for issueURI := range before {
 		changed[issueURI] = struct{}{}

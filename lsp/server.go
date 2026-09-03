@@ -44,12 +44,7 @@ type Server struct {
 	logLevelMu sync.Mutex
 	logLevel   *int
 
-	// folders are the workspace folders from the initialize request; the
-	// walk starts on the Initialized notification so the initialize
-	// handshake never blocks on parsing the workspace.
-	folders []uri.URI
-
-	workspace *customWorkspace
+	workspace *workspace
 	analysis  Analysis
 
 	// configs holds each view folder's resolved configuration. Views only
@@ -63,13 +58,9 @@ type Server struct {
 	// formatter defaults silently otherwise).
 	configIssues map[uri.URI]configIssue
 
-	// workspaceWalkOnce and dirWalkOnce guard the two independent walks:
-	// the whole workspace on Initialized, and the opened file's directory
-	// on the first didOpen (single-file mode). They must not share a guard
-	// — a didOpen racing the Initialized notification would otherwise
-	// permanently skip the workspace walk.
+	// workspaceWalkOnce guards the workspace load on Initialized so the
+	// initialize handshake never blocks on parsing the workspace.
 	workspaceWalkOnce sync.Once
-	dirWalkOnce       sync.Once
 
 	// analysisMu serializes analyzer instances shared by diagnostic workers.
 	analysisMu sync.Mutex
@@ -120,9 +111,17 @@ func NewServer(client protocol.Client, opts Options) *Server {
 			Providers: slices.Clone(opts.Analysis.Providers),
 		},
 	}
-	if opts.WorkspaceLoader != nil {
-		server.workspace = newCustomWorkspace(server, opts.WorkspaceLoader)
+
+	// The workspace is the only workspace: without a loader every folder
+	// is one project scanned from Files, and didOpen grows it implicitly.
+	loader := opts.WorkspaceLoader
+	implicit := false
+	if loader == nil {
+		loader = defaultLoader(server.session)
+		implicit = true
 	}
+	server.workspace = newWorkspace(server, loader)
+	server.workspace.implicitFolders = implicit
 
 	return server
 }
@@ -141,16 +140,6 @@ func (s *Server) setWorkspaceSettings(overlay options.Patch) {
 	s.optsMu.Unlock()
 
 	slog.Debug("workspace settings applied")
-}
-
-// addFolderView creates the view for a workspace folder, resolving the
-// folder's config at creation — when the workspace is finally known. The
-// resolved config is kept on the server, keyed by folder; views only carry
-// what the store needs.
-func (s *Server) addFolderView(folder uri.URI) *cache.View {
-	cfg := s.viewConfig(folder)
-
-	return s.addView(folder, cfg, derefIncludePaths(cfg.IncludePaths))
 }
 
 func (s *Server) addProjectView(project Project) *cache.View {
@@ -198,19 +187,6 @@ type configIssue struct {
 	// failed.
 	path string
 	err  error
-}
-
-// viewConfig resolves the config for a view rooted at folder:
-// defaults + ConfigSource document + CLI. A folder with no usable config
-// formats with defaults; the reason is kept and surfaced through
-// notifyConfigIssue.
-func (s *Server) viewConfig(folder uri.URI) options.Patch {
-	patch := s.loadFilePatch(folder)
-	if patch == nil {
-		return s.defaultConfig()
-	}
-
-	return s.cli.Apply(patch.Apply(s.defaults))
 }
 
 // projectViewConfig resolves the config for a loader-discovered project:
@@ -335,12 +311,6 @@ func (s *Server) notifyConfigIssue(folder uri.URI, issue configIssue) {
 	}
 }
 
-// defaultConfig is the fallback for a folder without a usable config
-// file: the configured defaults with the CLI overlay.
-func (s *Server) defaultConfig() options.Patch {
-	return s.cli.Apply(s.defaults)
-}
-
 // applyLogLevel applies the first view config's log level; the logger is
 // process-wide, so later views keep it.
 func (s *Server) applyLogLevel(cfg options.Patch) {
@@ -396,16 +366,7 @@ func (s *Server) Initialized(ctx context.Context, params *protocol.InitializedPa
 	// or diagnostics any earlier violates the spec — Helix deadlocks on
 	// a client request that arrives before initialize is answered.
 	s.workspaceWalkOnce.Do(func() {
-		if s.workspace != nil {
-			s.workspace.start()
-
-			return
-		}
-
-		folders := slices.Clone(s.folders)
-		go func() {
-			s.walkWorkspaceFolders(folders)
-		}()
+		s.workspace.start()
 	})
 
 	s.registerFileWatcher(ctx)
@@ -414,9 +375,7 @@ func (s *Server) Initialized(ctx context.Context, params *protocol.InitializedPa
 }
 
 func (s *Server) Shutdown(ctx context.Context) (err error) {
-	if s.workspace != nil {
-		s.workspace.shutdown()
-	}
+	s.workspace.shutdown()
 
 	return nil
 }
@@ -514,28 +473,16 @@ func (s *Server) DidChangeWatchedFiles(ctx context.Context, params *protocol.Did
 }
 
 func (s *Server) DidChangeWorkspaceFolders(ctx context.Context, params *protocol.DidChangeWorkspaceFoldersParams) (err error) {
-	if s.workspace != nil {
-		added := make([]uri.URI, len(params.Event.Added))
-		for i, folder := range params.Event.Added {
-			added[i] = folder.URI
-		}
-		removed := make([]uri.URI, len(params.Event.Removed))
-		for i, folder := range params.Event.Removed {
-			removed[i] = folder.URI
-		}
-
-		s.workspace.changeFolders(added, removed)
-
-		return nil
+	added := make([]uri.URI, len(params.Event.Added))
+	for i, folder := range params.Event.Added {
+		added[i] = folder.URI
+	}
+	removed := make([]uri.URI, len(params.Event.Removed))
+	for i, folder := range params.Event.Removed {
+		removed[i] = folder.URI
 	}
 
-	for _, folder := range params.Event.Removed {
-		s.removeStockView(ctx, folder.URI)
-	}
-
-	for _, folder := range params.Event.Added {
-		s.walkFoldersThriftFile(folder.URI)
-	}
+	s.workspace.changeFolders(added, removed)
 
 	return nil
 }
@@ -650,10 +597,7 @@ func (s *Server) Symbols(ctx context.Context, params *protocol.WorkspaceSymbolPa
 	var res []protocol.SymbolInformation
 
 	for _, view := range views {
-		files := view.KnownFiles()
-		if s.workspace != nil {
-			files = s.workspace.files(view)
-		}
+		files := s.workspace.files(view)
 
 		syms := source.WorkspaceSymbols(ctx, view, files, params.Query, maxResults-len(res))
 

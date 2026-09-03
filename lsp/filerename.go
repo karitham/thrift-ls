@@ -71,7 +71,7 @@ func (s *Server) didRenameFiles(ctx context.Context, params *protocol.RenameFile
 		// the stale buffer shadows the file system forever, and the
 		// watcher guard drops this rename's delete/create events.
 		change := &cache.FileChange{URI: oldURI, From: cache.FileChangeTypeDidClose}
-		if err := s.session.UpdateOverlayFS(ctx, []*cache.FileChange{change}); err != nil {
+		if err := s.session.Update(ctx, []*cache.FileChange{change}); err != nil {
 			return err
 		}
 

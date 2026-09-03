@@ -59,9 +59,9 @@ func TestLoggerForwardingSurvivesConfigRelevel(t *testing.T) {
 
 	_, err := srv.Initialize(t.Context(), testInitializeParams([]protocol.WorkspaceFolder{{URI: uri.File("/ws/proj")}}))
 	require.NoError(t, err)
-	// Wire before the walk, as Initialized does; the walk's re-level must keep it.
+	// Wire before the load, as Initialized does; the load's re-level must keep it.
 	setLogClient(client)
-	srv.walkWorkspaceFolders([]uri.URI{uri.File("/ws/proj")})
+	srv.workspace.loadSync(t.Context(), []uri.URI{uri.File("/ws/proj")})
 
 	slog.Error("after config re-level")
 

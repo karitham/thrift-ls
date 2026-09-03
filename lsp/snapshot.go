@@ -38,9 +38,5 @@ func withFile[T any](ctx context.Context, resolve viewResolver, file uri.URI, fn
 }
 
 func (s *Server) viewOf(file uri.URI) (*cache.View, error) {
-	if s.workspace != nil {
-		return s.workspace.viewOf(file)
-	}
-
-	return s.session.ViewOf(file)
+	return s.workspace.viewOf(file)
 }

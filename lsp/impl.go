@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"path"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 
@@ -30,18 +30,13 @@ func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocume
 		From:    cache.FileChangeTypeDidOpen,
 	}
 
-	if s.workspace == nil {
-		s.dirWalkOnce.Do(func() {
-			file := change.URI
-
-			dirPos := strings.LastIndexByte(string(file), '/')
-			if dirPos == -1 {
-				return
-			}
-
-			dir := file[0:dirPos]
-			s.walkFoldersThriftFile(dir)
-		})
+	// Opening a file no project owns loads its directory as a folder, so
+	// single-file sessions and files outside the workspace resolve. Files
+	// under a known root skip this: they join their root through the open
+	// document instead of splitting off a spurious inner project. Custom
+	// loaders own their files exclusively and never take this path.
+	if s.workspace.implicitFolders && !s.workspace.owns(fileURI) && !s.workspace.rootContains(fileURI) {
+		s.workspace.loadSync(ctx, []uri.URI{uri.File(filepath.Dir(fileURI.FsPath()))})
 	}
 
 	return s.applyChanges(ctx, []*cache.FileChange{change}, true)
@@ -59,8 +54,8 @@ func (s *Server) didClose(ctx context.Context, params *protocol.DidCloseTextDocu
 }
 
 // applyChanges is the single path from file events to overlays and views.
-// Custom workspaces route only through snapshot ownership; stock sessions keep
-// their historical first-view fallback and create a view for a lone open file.
+// Files route only through snapshot ownership: unowned files update the
+// overlay but reach no view.
 func (s *Server) applyChanges(ctx context.Context, changes []*cache.FileChange, overlay bool) error {
 	if len(changes) == 0 {
 		return nil
@@ -72,42 +67,14 @@ func (s *Server) applyChanges(ctx context.Context, changes []*cache.FileChange, 
 		}
 	}
 
-	if s.workspace != nil {
-		return s.workspace.applyChanges(ctx, changes, overlay)
-	}
-
-	if overlay {
-		if err := s.session.UpdateOverlayFS(ctx, changes); err != nil {
-			return err
-		}
-	}
-
-	byView := make(map[*cache.View][]*cache.FileChange)
-	for _, change := range changes {
-		view, err := s.session.ViewOf(change.URI)
-		if err != nil {
-			if change.From != cache.FileChangeTypeDidOpen {
-				return err
-			}
-
-			view = s.addFolderView(uri.File(path.Dir(change.URI.Path())))
-		}
-
-		byView[view] = append(byView[view], change)
-	}
-
-	for view, viewChanges := range byView {
-		s.postDiagnostics(ctx, view, view.Update(ctx, viewChanges...))
-	}
-
-	return nil
+	return s.workspace.applyChanges(ctx, changes, overlay)
 }
 
 func (s *Server) didChangeWatchedFiles(ctx context.Context, params *protocol.DidChangeWatchedFilesParams) error {
 	var changes []*cache.FileChange
 
 	for _, event := range params.Changes {
-		if s.workspace != nil && !s.workspace.owns(event.URI) {
+		if !s.workspace.owns(event.URI) {
 			continue
 		}
 

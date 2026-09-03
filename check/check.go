@@ -30,6 +30,8 @@ type Request struct {
 	IncludePaths []string
 	// Lint tunes the pipeline. Nil means defaults.
 	Lint *options.LintConfig
+	// Analyzers are appended to the built-in pipeline.
+	Analyzers []sema.Analyzer
 	// Fix rewrites files in place until nothing applies, preserving file
 	// permissions.
 	Fix bool
@@ -115,10 +117,10 @@ func Run(ctx context.Context, req Request) (Result, error) {
 	}
 
 	if req.Fix {
-		return runFix(ctx, req.Files, folder, req.IncludePaths, lint)
+		return runFix(ctx, req.Files, folder, req.IncludePaths, lint, req.Analyzers)
 	}
 
-	diags, err := runDiagnostics(ctx, req.Files, folder, req.IncludePaths, lint)
+	diags, err := runDiagnostics(ctx, req.Files, folder, req.IncludePaths, lint, req.Analyzers)
 	if err != nil {
 		return Result{}, err
 	}
@@ -129,7 +131,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 // runDiagnostics runs the language server's diagnostic pipeline — parse,
 // semantic analysis, and lints — over files opened in a session rooted at
 // folder, and returns the diagnostics per file, keyed by absolute path.
-func runDiagnostics(ctx context.Context, files []string, folder string, includePaths []string, lint sema.Config) (map[string][]Diagnostic, error) {
+func runDiagnostics(ctx context.Context, files []string, folder string, includePaths []string, lint sema.Config, analyzers []sema.Analyzer) (map[string][]Diagnostic, error) {
 	_, view, uris, err := openSession(ctx, files, folder, includePaths)
 	if err != nil {
 		return nil, err
@@ -139,7 +141,7 @@ func runDiagnostics(ctx context.Context, files []string, folder string, includeP
 
 	// One pipeline run over the whole corpus: the shared index memoizes
 	// resolutions across files, so each name resolves once.
-	report, err := sema.DefaultPipeline(lint).Run(ctx, view, uris)
+	report, err := sema.DefaultPipeline(lint).WithAnalyzers(analyzers...).Run(ctx, view, uris)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +162,7 @@ func runDiagnostics(ctx context.Context, files []string, folder string, includeP
 // what remains. Only the requested files are fixed — one file, or one
 // folder — while resolution reads the whole view, so fixing a greenfield
 // module resolves its types against the tree without touching the tree.
-func runFix(ctx context.Context, files []string, folder string, includePaths []string, lint sema.Config) (Result, error) {
+func runFix(ctx context.Context, files []string, folder string, includePaths []string, lint sema.Config, analyzers []sema.Analyzer) (Result, error) {
 	sess, view, uris, err := openSession(ctx, files, folder, includePaths)
 	if err != nil {
 		return Result{}, err
@@ -178,7 +180,7 @@ func runFix(ctx context.Context, files []string, folder string, includePaths []s
 
 		version++
 
-		if err := sess.UpdateOverlayFS(ctx, []*cache.FileChange{
+		if err := sess.Update(ctx, []*cache.FileChange{
 			{URI: u, Version: version, Content: content, From: cache.FileChangeTypeDidChange},
 		}); err != nil {
 			return err
@@ -192,7 +194,7 @@ func runFix(ctx context.Context, files []string, folder string, includePaths []s
 		return os.WriteFile(u.FsPath(), content, perms)
 	}
 
-	res, err := sema.DefaultPipeline(lint).FixAll(ctx, view, uris, persist)
+	res, err := sema.DefaultPipeline(lint).WithAnalyzers(analyzers...).FixAll(ctx, view, uris, persist)
 
 	summary := &FixSummary{
 		Applied: res.Applied,
@@ -311,7 +313,7 @@ func openSession(ctx context.Context, files []string, folder string, includePath
 		changes = append(changes, &cache.FileChange{URI: u, Version: 0, Content: content, From: cache.FileChangeTypeDidOpen})
 	}
 
-	if err := sess.UpdateOverlayFS(ctx, changes); err != nil {
+	if err := sess.Update(ctx, changes); err != nil {
 		return nil, nil, nil, err
 	}
 

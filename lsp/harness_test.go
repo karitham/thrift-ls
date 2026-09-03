@@ -207,9 +207,8 @@ func openDocument(t *testing.T, srv *Server, fileURI uri.URI, content string) {
 	assert.NoError(t, err)
 }
 
-// Initialize helpers. Stock walks run synchronously via walkWorkspaceFolders;
-// custom workspaces only record folders here and wait for installSnapshot.
-
+// Initialize helpers. Workspace loads run synchronously via loadSync;
+// snapshots arrive via installSnapshot for loader-driven tests.
 func testInitializeParams(folders []protocol.WorkspaceFolder) *protocol.InitializeParams {
 	params := &protocol.InitializeParams{}
 	params.WorkspaceFolders = protocol.NewNullable(folders)
@@ -240,8 +239,8 @@ func foldersFromURIs(uris []uri.URI) []protocol.WorkspaceFolder {
 	return folders
 }
 
-// initWorkspace initializes srv and runs the stock walk synchronously.
-// For custom workspaces it only records folders; call installSnapshot next.
+// initWorkspace initializes srv and loads folders synchronously through
+// the server's loader.
 func initWorkspace(t *testing.T, srv *Server, folders []uri.URI, initializationOptions []byte) {
 	t.Helper()
 
@@ -250,21 +249,15 @@ func initWorkspace(t *testing.T, srv *Server, folders []uri.URI, initializationO
 	_, err := srv.Initialize(t.Context(), params)
 	require.NoError(t, err)
 
-	if srv.workspace != nil {
-		return
-	}
-
-	srv.walkWorkspaceFolders(folders)
+	srv.workspace.loadSync(t.Context(), folders)
 }
 
-// initCustomFolders records folders on a custom-workspace server without
-// starting any loader. Snapshots arrive via installSnapshot.
+// initCustomFolders swaps in a loaderless workspace and records folders.
+// Snapshots arrive via installSnapshot.
 func initCustomFolders(t *testing.T, srv *Server, folders []uri.URI) {
 	t.Helper()
 
-	if srv.workspace == nil {
-		srv.workspace = newCustomWorkspace(srv, nil)
-	}
+	srv.workspace = newWorkspace(srv, nil)
 
 	_, err := srv.Initialize(t.Context(), testInitializeParams(foldersFromURIs(folders)))
 	require.NoError(t, err)
@@ -280,10 +273,6 @@ func installSnapshot(t *testing.T, srv *Server, folder uri.URI, snap WorkspaceSn
 // installSnapshots installs several folder snapshots, then reconciles once.
 func installSnapshots(t *testing.T, srv *Server, snaps map[uri.URI]WorkspaceSnapshot) {
 	t.Helper()
-
-	if srv.workspace == nil {
-		srv.workspace = newCustomWorkspace(srv, nil)
-	}
 
 	w := srv.workspace
 	w.mu.Lock()

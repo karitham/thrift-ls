@@ -4,12 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"strings"
 
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/lsp/source"
 )
 
@@ -42,11 +40,7 @@ func (s *Server) initialize(params *protocol.InitializeParams) (result *protocol
 
 	slog.Debug("initialized folders", "folders", folders)
 
-	if s.workspace != nil {
-		s.workspace.initialize(folders)
-	} else {
-		s.folders = folders
-	}
+	s.workspace.initialize(folders)
 
 	// Workspace settings (initializationOptions) overlay each view's
 	// config; didChangeConfiguration updates them later.
@@ -107,193 +101,6 @@ func (s *Server) registerFileWatcher(ctx context.Context) {
 	}
 
 	slog.Debug("file watcher registered")
-}
-
-func (s *Server) walkFoldersThriftFile(folder uri.URI) {
-	slog.Debug("walk dir", "folder", folder.Path())
-
-	// The view is the folder itself, so files in nested directories
-	// resolve to it via ContainsFile; addFolderView resolves its config.
-	view := s.addFolderView(folder)
-	migrated := s.reconcileStockAddition(context.TODO(), view)
-
-	// Walk the folder through the session's file source: the disk in
-	// production, an in-memory tree in tests. WalkDir walks with lexical
-	// order; the fs implementations handle their own entry errors.
-	changes := s.workspaceFileChanges([]uri.URI{folder})
-	seen := make(map[uri.URI]struct{}, len(changes))
-	for _, change := range changes {
-		seen[change.URI] = struct{}{}
-	}
-
-	for _, fileURI := range migrated {
-		if _, ok := seen[fileURI]; ok {
-			continue
-		}
-
-		changes = append(changes, &cache.FileChange{
-			URI:  fileURI,
-			From: cache.FileChangeTypeInitialize,
-		})
-	}
-
-	if err := s.applyChanges(context.TODO(), changes, false); err != nil {
-		slog.Warn("workspace files failed", "err", err)
-	}
-}
-
-func (s *Server) walkWorkspaceFolders(folders []uri.URI) {
-	var migrated []uri.URI
-	for _, folder := range folders {
-		view := s.addFolderView(folder)
-		migrated = append(migrated, s.reconcileStockAddition(context.TODO(), view)...)
-	}
-
-	changes := s.workspaceFileChanges(folders)
-	seen := make(map[uri.URI]struct{}, len(changes))
-	for _, change := range changes {
-		seen[change.URI] = struct{}{}
-	}
-
-	for _, fileURI := range migrated {
-		if _, ok := seen[fileURI]; ok {
-			continue
-		}
-
-		changes = append(changes, &cache.FileChange{
-			URI:  fileURI,
-			From: cache.FileChangeTypeInitialize,
-		})
-	}
-
-	if err := s.applyChanges(context.TODO(), changes, false); err != nil {
-		slog.Warn("workspace files failed", "err", err)
-	}
-}
-
-func (s *Server) workspaceFileChanges(folders []uri.URI) []*cache.FileChange {
-	var changes []*cache.FileChange
-	seen := make(map[uri.URI]struct{})
-
-	for _, folder := range folders {
-		_ = s.session.WalkFiles(context.TODO(), folder, func(fileURI uri.URI) error {
-			if !strings.HasSuffix(fileURI.Path(), ".thrift") {
-				return nil
-			}
-
-			if _, ok := seen[fileURI]; ok {
-				return nil
-			}
-			seen[fileURI] = struct{}{}
-
-			slog.Debug("file path", "uri", fileURI)
-			changes = append(changes, &cache.FileChange{
-				URI:     fileURI,
-				Version: 0,
-				Content: []byte{},
-				From:    cache.FileChangeTypeInitialize,
-			})
-
-			return nil
-		})
-	}
-
-	return changes
-}
-
-func (s *Server) reconcileStockAddition(ctx context.Context, view *cache.View) []uri.URI {
-	var migrated []uri.URI
-	seen := make(map[uri.URI]struct{})
-
-	for _, other := range s.session.Views() {
-		if other == view || !other.ContainsFile(view.Folder()) {
-			continue
-		}
-
-		var evicted []uri.URI
-		for _, fileURI := range other.KnownFiles() {
-			if !view.ContainsFile(fileURI) {
-				continue
-			}
-
-			evicted = append(evicted, fileURI)
-			if _, ok := seen[fileURI]; !ok {
-				seen[fileURI] = struct{}{}
-				migrated = append(migrated, fileURI)
-			}
-		}
-
-		if len(evicted) == 0 {
-			continue
-		}
-
-		other.Evict(evicted...)
-		s.clearDiagnostics(ctx, evicted...)
-	}
-
-	return migrated
-}
-
-func (s *Server) removeStockView(ctx context.Context, folder uri.URI) {
-	var removed *cache.View
-	for _, view := range s.session.Views() {
-		if view.Folder() == folder {
-			removed = view
-
-			break
-		}
-	}
-	if removed == nil {
-		s.removeView(folder)
-
-		return
-	}
-
-	files := removed.KnownFiles()
-	s.removeView(folder)
-	s.clearDiagnostics(ctx, files...)
-
-	byView := make(map[*cache.View][]uri.URI)
-	for _, fileURI := range files {
-		view := s.stockViewOf(fileURI)
-		if view == nil {
-			continue
-		}
-
-		byView[view] = append(byView[view], fileURI)
-	}
-
-	for view, files := range byView {
-		updates := make([]*cache.FileChange, len(files))
-		for i, fileURI := range files {
-			updates[i] = &cache.FileChange{URI: fileURI, From: cache.FileChangeTypeInitialize}
-		}
-
-		s.postDiagnostics(ctx, view, view.Update(ctx, updates...))
-	}
-}
-
-func (s *Server) stockViewOf(fileURI uri.URI) *cache.View {
-	var best *cache.View
-	for _, view := range s.session.Views() {
-		if !view.ContainsFile(fileURI) {
-			continue
-		}
-		if best == nil || len(view.Folder().Path()) > len(best.Folder().Path()) {
-			best = view
-		}
-	}
-	if best != nil {
-		return best
-	}
-
-	for _, view := range s.session.Views() {
-		if view.FileKnown(fileURI) {
-			return view
-		}
-	}
-
-	return nil
 }
 
 // thriftFileOperationFilters is the registration for one file operation:

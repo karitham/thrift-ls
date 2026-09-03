@@ -372,7 +372,7 @@ func dumpIncludes(ctx context.Context, file string, cmd *cli.Command) error {
 
 	u := uri.File(abs)
 
-	err = sess.UpdateOverlayFS(ctx, []*cache.FileChange{
+	err = sess.Update(ctx, []*cache.FileChange{
 		{URI: u, Version: 0, Content: content, From: cache.FileChangeTypeDidOpen},
 	})
 	if err != nil {

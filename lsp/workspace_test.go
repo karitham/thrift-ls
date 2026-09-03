@@ -16,10 +16,10 @@ import (
 	"github.com/karitham/thrift-ls/options"
 )
 
-// Stock workspace: initialize defers the walk, folders add/remove.
+// Workspace lifecycle: initialize defers the load, folders add/remove.
 
-func TestStockWorkspaceLifecycle(t *testing.T) {
-	t.Run("initialize defers the walk until the sync walk runs", func(t *testing.T) {
+func TestWorkspaceLifecycle(t *testing.T) {
+	t.Run("initialize defers the load until the sync load runs", func(t *testing.T) {
 		files := seedFiles(map[string]string{
 			"/ws/a.thrift":        "struct FromA {}",
 			"/ws/nested/b.thrift": "struct FromB {}",
@@ -31,7 +31,7 @@ func TestStockWorkspaceLifecycle(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, srv.session.Views(), "nothing runs during the handshake")
 
-		srv.walkWorkspaceFolders([]uri.URI{uri.File("/ws")})
+		srv.workspace.loadSync(t.Context(), []uri.URI{uri.File("/ws")})
 
 		views := srv.session.Views()
 		require.Len(t, views, 1)
@@ -43,7 +43,7 @@ func TestStockWorkspaceLifecycle(t *testing.T) {
 		assert.Equal(t, []string{"FromA", "FromB"}, workspaceSymbolNames(t, srv))
 	})
 
-	t.Run("adding and removing folders walks and drops views", func(t *testing.T) {
+	t.Run("adding and removing folders loads and drops views", func(t *testing.T) {
 		ctx := t.Context()
 		files := seedFiles(map[string]string{
 			"/ws-a/a.thrift": "struct FromA {}",
@@ -55,9 +55,11 @@ func TestStockWorkspaceLifecycle(t *testing.T) {
 		require.NoError(t, srv.DidChangeWorkspaceFolders(ctx, &protocol.DidChangeWorkspaceFoldersParams{
 			Event: protocol.WorkspaceFoldersChangeEvent{Added: []protocol.WorkspaceFolder{{URI: uri.File("/ws-a")}}},
 		}))
+		srv.workspace.loadSync(ctx, []uri.URI{uri.File("/ws-a")})
 		require.NoError(t, srv.DidChangeWorkspaceFolders(ctx, &protocol.DidChangeWorkspaceFoldersParams{
 			Event: protocol.WorkspaceFoldersChangeEvent{Added: []protocol.WorkspaceFolder{{URI: uri.File("/ws-b")}}},
 		}))
+		srv.workspace.loadSync(ctx, []uri.URI{uri.File("/ws-b")})
 		assert.Len(t, srv.session.Views(), 2)
 		assert.Equal(t, []string{"FromA", "FromB"}, workspaceSymbolNames(t, srv))
 
@@ -84,26 +86,25 @@ func TestNestedWorkspaceFolderRouting(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			outer := uri.File("/workspace")
 			inner := uri.File("/workspace/service")
+			rootFile := uri.File("/workspace/root.thrift")
 			nested := uri.File("/workspace/service/api.thrift")
 
 			srv := newSyncServerWithOptions(nil,
-				seedFiles(map[string]string{"/workspace/service/api.thrift": "struct Nested {}"}),
+				seedFiles(map[string]string{
+					"/workspace/root.thrift":        "struct Root {}",
+					"/workspace/service/api.thrift": "struct Nested {}",
+				}),
 				Options{})
 
-			folders := []protocol.WorkspaceFolder{{URI: outer}}
+			folders := []uri.URI{outer}
 			if !tt.addLater {
-				folders = append(folders, protocol.WorkspaceFolder{URI: inner})
+				folders = append(folders, inner)
 			}
-			_, err := srv.Initialize(t.Context(), testInitializeParams(folders))
+			_, err := srv.Initialize(t.Context(), testInitializeParams(foldersFromURIs(folders)))
 			require.NoError(t, err)
-			srv.walkWorkspaceFolders([]uri.URI{outer})
+			srv.workspace.loadSync(t.Context(), []uri.URI{outer})
 			if !tt.addLater {
-				srv.walkWorkspaceFolders([]uri.URI{inner})
-				// Reconcile the overlap synchronously: the inner walk must
-				// evict the nested file from the outer view.
-				outerView, err := srv.session.ViewOf(uri.File("/workspace/root.thrift"))
-				require.NoError(t, err)
-				_ = outerView
+				srv.workspace.loadSync(t.Context(), []uri.URI{inner})
 			}
 
 			if tt.addLater {
@@ -115,14 +116,14 @@ func TestNestedWorkspaceFolderRouting(t *testing.T) {
 				require.NoError(t, srv.DidChangeWorkspaceFolders(t.Context(), &protocol.DidChangeWorkspaceFoldersParams{
 					Event: protocol.WorkspaceFoldersChangeEvent{Added: []protocol.WorkspaceFolder{{URI: inner}}},
 				}))
+				srv.workspace.loadSync(t.Context(), []uri.URI{inner})
 			}
 
-			outerView, err := srv.session.ViewOf(uri.File("/workspace/root.thrift"))
-			if !tt.addLater {
-				require.NoError(t, err)
-				assert.Equal(t, outer, outerView.Folder())
-				assert.False(t, outerView.FileKnown(nested), "the outer view must not retain a nested project's file")
-			}
+			outerView, err := srv.session.ViewOf(rootFile)
+			require.NoError(t, err)
+			assert.Equal(t, outer, outerView.Folder())
+			assert.True(t, outerView.FileKnown(rootFile))
+			assert.False(t, outerView.FileKnown(nested), "the outer view must not retain a nested project's file")
 
 			innerView, err := srv.session.ViewOf(nested)
 			require.NoError(t, err)
@@ -131,9 +132,31 @@ func TestNestedWorkspaceFolderRouting(t *testing.T) {
 			if tt.addLater {
 				assert.False(t, outerView.FileKnown(nested), "adding a specific folder must evict the old owner")
 			}
-			assert.Equal(t, []string{"Nested"}, workspaceSymbolNames(t, srv))
+			assert.Equal(t, []string{"Root", "Nested"}, workspaceSymbolNames(t, srv))
 		})
 	}
+}
+
+// TestDidOpenNewFileInsideLoadedRoot pins that opening an unsaved file
+// inside a loaded root joins the root: no spurious inner project splits
+// off for a file the loader has never seen.
+func TestDidOpenNewFileInsideLoadedRoot(t *testing.T) {
+	outer := uri.File("/ws")
+	nested := uri.File("/ws/sub/new.thrift")
+
+	srv := newSyncServerWithOptions(nil,
+		seedFiles(map[string]string{"/ws/a.thrift": "struct A {}"}),
+		Options{})
+	initWorkspace(t, srv, []uri.URI{outer}, nil)
+	require.Len(t, srv.session.Views(), 1)
+
+	openDocument(t, srv, nested, "struct New {}")
+
+	assert.Len(t, srv.session.Views(), 1, "a new file under a known root must not create a folder")
+	view, err := srv.viewOf(nested)
+	require.NoError(t, err)
+	assert.Equal(t, outer, view.Folder())
+	assert.True(t, view.FileKnown(nested))
 }
 
 // Custom loader: deferred views, overlays, failures, issues.
@@ -225,7 +248,7 @@ func TestWorkspaceLoaderFailureDoesNotCreateFallbackView(t *testing.T) {
 		},
 	}))
 
-	assert.Empty(t, srv.session.Views(), "a deferred open must not create a stock view after loader failure")
+	assert.Empty(t, srv.session.Views(), "a deferred open must not create a fallback view after loader failure")
 	assert.True(t, srv.session.HasOverlay(file), "the editor overlay remains available for a later snapshot")
 
 	require.NoError(t, srv.DidOpen(t.Context(), &protocol.DidOpenTextDocumentParams{
@@ -236,7 +259,7 @@ func TestWorkspaceLoaderFailureDoesNotCreateFallbackView(t *testing.T) {
 			Text:       "struct LaterOverlayVersion {}",
 		},
 	}))
-	assert.Empty(t, srv.session.Views(), "later opens remain owned by the custom loader")
+	assert.Empty(t, srv.session.Views(), "later opens remain owned by the loader")
 }
 
 func TestWorkspaceLoaderPublishesIssuesWithoutDroppingProjects(t *testing.T) {
@@ -631,9 +654,6 @@ func TestCustomWatchedFilesDoNotReadUnownedEvents(t *testing.T) {
 	}
 	srv := NewServer(nil, Options{Files: fs, ConfigSource: options.PinnedSource(nil)})
 	srv.diagSync = true
-	if srv.workspace == nil {
-		srv.workspace = newCustomWorkspace(srv, nil)
-	}
 	_, err := srv.Initialize(t.Context(), testInitializeParams([]protocol.WorkspaceFolder{{URI: root}}))
 	require.NoError(t, err)
 	installSnapshot(t, srv, root, WorkspaceSnapshot{Projects: []Project{{
