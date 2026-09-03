@@ -11,10 +11,10 @@ import (
 // legal inside string literals and comments, so the check strips those and
 // fails on anything left over.
 //
-// The sweep covers the full option matrix: every construct's separator
-// mode (comma/semicolon/none/preserve) crossed with align modes, forced
-// breaks, print widths, and two format passes (some artifacts only appear
-// when formatting already-formatted output).
+// The sweep covers the separator matrix: every construct's separator
+// mode (comma/semicolon/none/preserve) crossed with align modes, print
+// widths, and two format passes (some artifacts only appear when
+// formatting already-formatted output).
 
 type sepCase struct {
 	name string
@@ -222,10 +222,9 @@ func TestNoSpaceBeforeSeparator(t *testing.T) {
 				for _, w := range widths {
 					o := DefaultOptions()
 					o.PrintWidth = w
-					o.Separator.Set(ConstructStruct, m.mode)
-					o.Separator.Set(ConstructEnum, m.mode)
-					o.Separator.Set(ConstructArguments, m.mode)
-					o.Separator.Set(ConstructThrows, m.mode)
+					for _, c := range AllConstructs {
+						o.Separator.Set(c, m.mode)
+					}
 					o.Align = a.align
 
 					label := src.name + "/" + m.name + "/" + a.name

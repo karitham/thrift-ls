@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/karitham/thrift-ls/formatter"
+	"github.com/karitham/thrift-ls/syntax"
 )
 
 const fileProbe = "struct API{1:i32 id}"
@@ -277,4 +278,27 @@ func assertGoldenFile(t *testing.T, fixture, source, golden string, patch format
 	want, err := os.ReadFile(filepath.Join("..", "tests", "e2e", fixture, golden+".expect"))
 	require.NoError(t, err)
 	assert.Equal(t, string(want), output.String())
+
+	// The golden itself must be a fixed point: re-formatting it with the
+	// same options changes nothing, or every real run churns on
+	// already-formatted files.
+	reopts, err := patch.Apply(formatter.FormatPatch{}).Options()
+	require.NoError(t, err)
+	again, err := formatter.Format(parseGolden(t, output.String()), reopts)
+	require.NoError(t, err)
+	assert.Equal(t, output.String(), again)
+}
+
+// parseGolden parses formatted output, failing on hard parse errors.
+func parseGolden(t *testing.T, src string) *syntax.Document {
+	t.Helper()
+
+	doc, errs := syntax.Parse([]byte(src))
+	for _, e := range errs {
+		if e.Severity == syntax.SeverityError {
+			t.Fatalf("golden does not parse: %v", e)
+		}
+	}
+
+	return doc
 }

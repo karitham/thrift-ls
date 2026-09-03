@@ -55,24 +55,47 @@ func TestFormatRealWorldCorpus(t *testing.T) {
 				t.Fatalf("read: %v", err)
 			}
 
-			doc := parseBytes(t, src)
+			checkRoundTrip(t, src, DefaultOptions())
 
-			formatted, ferr := Format(doc, DefaultOptions())
-			if ferr != nil {
-				t.Fatalf("format: %v", ferr)
+			// Off-default knobs must converge too: separator and break
+			// regressions that only manifest away from defaults are
+			// invisible to the defaults-only pass above.
+			commas := DefaultOptions()
+			for _, c := range AllConstructs {
+				commas.Separator.Set(c, SeparatorComma)
 			}
+			checkRoundTrip(t, src, commas)
 
-			reparsed := parseBytes(t, []byte(formatted))
-
-			again, ferr := Format(reparsed, DefaultOptions())
-			if ferr != nil {
-				t.Fatalf("reformat: %v", ferr)
+			breaks := DefaultOptions()
+			for _, c := range AllConstructs {
+				breaks.Break.Set(c, true)
 			}
-
-			if again != formatted {
-				t.Errorf("not idempotent\nfirst:\n%s\nsecond:\n%s", formatted, again)
-			}
+			checkRoundTrip(t, src, breaks)
 		})
+	}
+}
+
+// checkRoundTrip formats src with opts and asserts the output reparses
+// and is a fixed point.
+func checkRoundTrip(t *testing.T, src []byte, opts Options) {
+	t.Helper()
+
+	doc := parseBytes(t, src)
+
+	formatted, ferr := Format(doc, opts)
+	if ferr != nil {
+		t.Fatalf("format: %v", ferr)
+	}
+
+	reparsed := parseBytes(t, []byte(formatted))
+
+	again, ferr := Format(reparsed, opts)
+	if ferr != nil {
+		t.Fatalf("reformat: %v", ferr)
+	}
+
+	if again != formatted {
+		t.Errorf("not idempotent\nfirst:\n%s\nsecond:\n%s", formatted, again)
 	}
 }
 

@@ -593,6 +593,27 @@ func TestFormatOptions(t *testing.T) {
 			src:  "struct S {\n  1: i32 a\n}",
 			want: "struct S { 1: i32 a }\n",
 		},
+		{
+			name: "no trailing newline",
+			opts: func() Options {
+				o := testOpts(80)
+				o.NoTrailingNewline = true
+
+				return o
+			}(),
+			src:  "struct S {\n  1: i32 a\n}",
+			want: "struct S { 1: i32 a }",
+		},
+		{
+			name: "empty file",
+			src:  "",
+			want: "\n",
+		},
+		{
+			name: "whitespace only",
+			src:  "   \n  \n",
+			want: "\n",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -684,6 +705,22 @@ struct User { 1: required i64 id } (tag = "x")`
 
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+
+	if _, err := FormatNode(nil, doc.Structs()[0], testOpts(80)); err == nil {
+		t.Error("nil document must fail")
+	}
+
+	if _, err := FormatNode(doc, nil, testOpts(80)); err == nil {
+		t.Error("nil node must fail")
+	}
+
+	again, err := FormatNode(parseDoc(t, want), parseDoc(t, want).Structs()[0], testOpts(80))
+	if err != nil {
+		t.Fatalf("re-format: %v", err)
+	}
+	if again != want {
+		t.Errorf("not a fixed point: got %q, want %q", again, want)
 	}
 }
 

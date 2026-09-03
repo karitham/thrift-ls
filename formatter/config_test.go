@@ -144,10 +144,12 @@ func TestFormatPatchValidate(t *testing.T) {
 		{"default is valid", DefaultFormatPatch(), false},
 		{"bad printWidth", FormatPatch{PrintWidth: intPtr(0)}, true},
 		{"bad tabWidth", FormatPatch{TabWidth: intPtr(-1)}, true},
+		{"zero tabWidth", FormatPatch{TabWidth: intPtr(0)}, true},
 		{"bad align", FormatPatch{Align: strPtr("sideways")}, true},
 		{"bad separator value", FormatPatch{Separators: &Separators{Structs: strPtr("maybe")}}, true},
 		{"preserve alias", FormatPatch{Separators: &Separators{Structs: strPtr("preserve")}}, false},
 		{"bad indent value", FormatPatch{Indent: &Indent{Value: "x", Width: 1}}, true},
+		{"zero indent width", FormatPatch{Indent: &Indent{Value: "  ", Width: 0}}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -202,18 +204,29 @@ func TestParseIndentValue(t *testing.T) {
 
 func TestIndentUnmarshal(t *testing.T) {
 	tests := []struct {
-		name string
-		json string
-		want Indent
+		name    string
+		json    string
+		want    Indent
+		wantErr bool
 	}{
-		{"string spaces", `"  "`, Indent{"  ", 2}},
-		{"string tab", `"\t"`, Indent{"\t", 4}},
+		{"string spaces", `"  "`, Indent{"  ", 2}, false},
+		{"string tab", `"\t"`, Indent{"\t", 4}, false},
+		{"non-string", `123`, Indent{}, true},
+		{"invalid literal", `"banana"`, Indent{}, true},
+		{"mixed whitespace", `" \t"`, Indent{}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var i Indent
 			if err := json.Unmarshal([]byte(tt.json), &i); err != nil {
-				t.Fatalf("unmarshal: %v", err)
+				if !tt.wantErr {
+					t.Fatalf("unmarshal: %v", err)
+				}
+
+				return
+			}
+			if tt.wantErr {
+				t.Fatal("expected error, got none")
 			}
 
 			if i != tt.want {
