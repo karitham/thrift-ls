@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
@@ -32,14 +33,16 @@ struct StrikeRouge {
 
 	// Cursor on "Gundam" (the definition name) in federation.gundam.thrift.
 	locations, err := Reference(t.Context(), view, "file:///tmp/federation.gundam.thrift", protocol.Position{Line: 0, Character: 7})
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	require.Len(t, locations, 1)
 
-	var uris []string
-	for _, loc := range locations {
-		uris = append(uris, string(loc.URI))
-	}
-
-	assert.Contains(t, uris, "file:///tmp/main.thrift", "bare reference in the including file must be found")
+	assert.Equal(t, protocol.Location{
+		URI: "file:///tmp/main.thrift",
+		Range: protocol.Range{
+			Start: protocol.Position{Line: 3, Character: 13},
+			End:   protocol.Position{Line: 3, Character: 19},
+		},
+	}, locations[0], "bare reference resolves to its exact range")
 }
 
 // TestReferenceQualifiedCrossFile covers find-references when the
@@ -61,14 +64,13 @@ struct StrikeRouge {
 	})
 
 	locations, err := Reference(t.Context(), view, "file:///tmp/federation.gundam.thrift", protocol.Position{Line: 0, Character: 7})
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	require.Len(t, locations, 1)
 
-	var uris []string
-	for _, loc := range locations {
-		uris = append(uris, string(loc.URI))
-	}
-
-	assert.Contains(t, uris, "file:///tmp/main.thrift", "qualified reference in the including file must be found")
+	assert.Equal(t, uri.URI("file:///tmp/main.thrift"), locations[0].URI)
+	assert.Equal(t, protocol.Position{Line: 3, Character: 13}, locations[0].Range.Start)
+	assert.Equal(t, protocol.Position{Line: 3, Character: 37}, locations[0].Range.End,
+		"qualified reference covers the full dotted name")
 }
 
 // TestDefinitionTransitiveInclude covers go-to-definition through a

@@ -89,25 +89,9 @@ struct S {
 	})
 
 	t.Run("hover", func(t *testing.T) {
-		tests := []struct {
-			name         string
-			pos          protocol.Position
-			wantContains string
-		}{
-			{
-				name:         "annotation name renders the annotation type",
-				pos:          inside(useRange),
-				wantContains: "struct Naming",
-			},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				got, err := Hover(t.Context(), view, file, tt.pos)
-				require.NoError(t, err)
-				assert.Contains(t, got, tt.wantContains)
-			})
-		}
+		got, err := Hover(t.Context(), view, file, inside(useRange))
+		require.NoError(t, err)
+		assert.Contains(t, got, "struct Naming")
 	})
 
 	t.Run("rename", func(t *testing.T) {

@@ -350,6 +350,34 @@ struct Person {
 			},
 			assertion: assert.NoError,
 		},
+		{
+			name: "unknown identifier resolves to nothing",
+			args: args{
+				ctx:  t.Context(),
+				view: view,
+				file: "file:///tmp/api.thrift",
+				pos: protocol.Position{
+					Line:      1,
+					Character: 1,
+				},
+			},
+			want:      []protocol.Location{},
+			assertion: assert.NoError,
+		},
+		{
+			name: "blank line resolves to nothing",
+			args: args{
+				ctx:  t.Context(),
+				view: view,
+				file: "file:///tmp/api.thrift",
+				pos: protocol.Position{
+					Line:      4,
+					Character: 0,
+				},
+			},
+			want:      []protocol.Location{},
+			assertion: assert.NoError,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

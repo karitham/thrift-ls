@@ -1,7 +1,6 @@
 package source
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -155,9 +154,9 @@ func TestFoldingRangesPositions(t *testing.T) {
 // TestFoldingRangesParseErrors ensures a broken document yields no ranges
 // instead of panicking.
 func TestFoldingRangesParseErrors(t *testing.T) {
+	var got []protocol.FoldingRange
 	assert.NotPanics(t, func() {
-		_ = foldingRanges(t, "struct S {")
+		got = foldingRanges(t, "struct S {")
 	})
+	assert.Empty(t, got)
 }
-
-var _ = context.Background

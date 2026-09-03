@@ -105,14 +105,16 @@ func TestRenameEnumValueResolutionMatched(t *testing.T) {
 	edit, err := Rename(t.Context(), view, "file:///tmp/main.thrift", protocol.Position{Line: 1, Character: 13}, "CRIMSON")
 	require.NoError(t, err)
 
-	var got []string
-	for _, te := range edit.Changes["file:///tmp/main.thrift"] {
-		got = append(got, te.NewText)
+	edits := edit.Changes["file:///tmp/main.thrift"]
+	require.Len(t, edits, 2)
+	assert.Equal(t, "Local.CRIMSON", edits[0].NewText)
+	assert.Equal(t, "CRIMSON", edits[1].NewText)
+	for _, e := range edits {
+		assert.Greater(t, e.Range.End.Character, e.Range.Start.Character, "every rename edit covers a range")
 	}
-
 	// The Local.RED qualifier keeps the enum name, and the definition
 	// changes; colors.Palette.RED does not.
-	assert.Equal(t, []string{"Local.CRIMSON", "CRIMSON"}, got)
+	assert.Empty(t, edit.Changes["file:///tmp/colors.thrift"])
 }
 
 // TestRenameEnumResolutionMatched pins that renaming an enum only touches
@@ -138,13 +140,14 @@ func TestRenameEnumResolutionMatched(t *testing.T) {
 	edit, err := Rename(t.Context(), view, "file:///tmp/main.thrift", protocol.Position{Line: 1, Character: 5}, "Hue")
 	require.NoError(t, err)
 
-	var got []string
-	for _, te := range edit.Changes["file:///tmp/main.thrift"] {
-		got = append(got, te.NewText)
+	edits := edit.Changes["file:///tmp/main.thrift"]
+	require.Len(t, edits, 2)
+	assert.Equal(t, "Hue", edits[0].NewText)
+	assert.Equal(t, "Hue", edits[1].NewText)
+	for _, e := range edits {
+		assert.Greater(t, e.Range.End.Character, e.Range.Start.Character, "every rename edit covers a range")
 	}
-
 	// The Color.BLUE qualifier and the definition change; colors.Color.RED
 	// is untouched.
-	assert.Equal(t, []string{"Hue", "Hue"}, got)
 	assert.Empty(t, edit.Changes["file:///tmp/colors.thrift"])
 }

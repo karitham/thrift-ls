@@ -676,6 +676,21 @@ const UserKind kind = "1"
 			},
 			assertion: assert.NoError,
 		},
+		{
+			name: "rename on basic type is rejected",
+			args: args{
+				ctx:  t.Context(),
+				view: view,
+				file: "file:///tmp/api.thrift",
+				pos: protocol.Position{
+					Line:      3,
+					Character: 68,
+				},
+				newText: "newtext",
+			},
+			wantRes:   nil,
+			assertion: assert.Error,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

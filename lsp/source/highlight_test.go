@@ -71,14 +71,14 @@ struct StrikeRouge {
 
 			highlights, err := Highlight(t.Context(), view, tt.files[0].URI, tt.pos)
 			require.NoError(t, err)
+			require.Len(t, highlights, len(tt.wantLines))
 
-			lines := make([]uint32, len(highlights))
 			for i, h := range highlights {
-				lines[i] = h.Range.Start.Line
+				assert.Equal(t, tt.wantLines[i], h.Range.Start.Line)
 				assert.Equal(t, protocol.DocumentHighlightKindText, h.Kind)
+				assert.Greater(t, h.Range.End.Character, h.Range.Start.Character,
+					"highlight %d covers a range", i)
 			}
-
-			assert.Equal(t, tt.wantLines, lines)
 		})
 	}
 }
@@ -93,5 +93,8 @@ func TestHighlightUnresolvableType(t *testing.T) {
 	highlights, err := Highlight(t.Context(), view, "file:///tmp/main.thrift", protocol.Position{Line: 1, Character: 20})
 	require.NoError(t, err)
 	require.Len(t, highlights, 1)
-	assert.Equal(t, uint32(1), highlights[0].Range.Start.Line)
+	assert.Equal(t, protocol.Range{
+		Start: protocol.Position{Line: 1, Character: 13},
+		End:   protocol.Position{Line: 1, Character: 24},
+	}, highlights[0].Range, "cursor word is highlighted exactly")
 }

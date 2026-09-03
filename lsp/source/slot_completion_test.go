@@ -130,24 +130,28 @@ func TestCompletionSlots(t *testing.T) {
 		notWant []string
 	}{
 		{
-			name:   "type slot suggests types and base keywords",
-			marker: "1: required ",
-			want:   []string{"Gundam", "i32"},
+			name:    "type slot suggests types and base keywords",
+			marker:  "1: required ",
+			want:    []string{"Gundam", "i32"},
+			notWant: []string{"Name", "LIMIT"},
 		},
 		{
-			name:   "field name slot suggests the field name",
-			marker: "1: required string Na",
-			want:   []string{"Name"},
+			name:    "field name slot suggests the field name",
+			marker:  "1: required string Na",
+			want:    []string{"Name"},
+			notWant: []string{"i32", "LIMIT"},
 		},
 		{
-			name:   "value slot suggests consts and enum values",
-			marker: "const i32 LIMIT = ",
-			want:   []string{"LIMIT", "ZAKU_I", "ZeonForces.ZAKU_I"},
+			name:    "value slot suggests consts and enum values",
+			marker:  "const i32 LIMIT = ",
+			want:    []string{"LIMIT", "ZAKU_I", "ZeonForces.ZAKU_I"},
+			notWant: []string{"i32", "Gundam"},
 		},
 		{
-			name:   "annotation key slot suggests known keys",
-			marker: "1: required string Name (c",
-			want:   []string{"color"},
+			name:    "annotation key slot suggests known keys",
+			marker:  "1: required string Name (c",
+			want:    []string{"color"},
+			notWant: []string{"i32", "Gundam"},
 		},
 	}
 
@@ -340,7 +344,7 @@ func TestCompletionNoPrefixUnderflow(t *testing.T) {
 	)
 
 	_, rng, _ := completionLabels(t, view, "file:///tmp/underflow.thrift", protocol.Position{Line: 0, Character: 9})
-	assert.LessOrEqual(t, rng.Start.Character, uint32(9), "edit range must not wrap")
+	assert.Equal(t, uint32(8), rng.Start.Character, "range covers the identifier prefix, not the whole line")
 }
 
 // TestCompletionNonASCIIPrefix: a non-ASCII line prefix must not corrupt the

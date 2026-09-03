@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
@@ -83,9 +84,11 @@ func TestDefinitionCrossProjectInclude(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			locs, err := Definition(t.Context(), view, appFile, posOf(tt.marker, tt.offset))
-			assert.NoError(t, err)
-			assert.Len(t, locs, 1, "should find the definition in the included file")
+			require.NoError(t, err)
+			require.Len(t, locs, 1, "should find the definition in the included file")
 			assert.Equal(t, gundamFile, locs[0].URI)
+			assert.NotEqual(t, protocol.Position{}, locs[0].Range.Start, "definition carries a range")
+			assert.Greater(t, locs[0].Range.End.Character, locs[0].Range.Start.Character)
 		})
 	}
 }

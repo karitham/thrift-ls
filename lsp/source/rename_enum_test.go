@@ -82,9 +82,14 @@ func TestRenameEnumQualifiedValues(t *testing.T) {
 			require.NoError(t, err)
 
 			for file, wantNewTexts := range tt.want {
+				edits := edit.Changes[uri.URI(file)]
+				require.Len(t, edits, len(wantNewTexts), "edits for %s", file)
+
 				var got []string
-				for _, te := range edit.Changes[uri.URI(file)] {
+				for _, te := range edits {
 					got = append(got, te.NewText)
+					assert.Greater(t, te.Range.End.Character, te.Range.Start.Character,
+						"edit %q in %s covers a range", te.NewText, file)
 				}
 
 				assert.Equal(t, wantNewTexts, got, "edits for %s", file)

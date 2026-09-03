@@ -41,8 +41,9 @@ func TestCompletionEndToEnd(t *testing.T) {
 		Fh:  fh,
 		Pos: protocol.Position{Line: 5, Character: 16}, // after "Us" in "1: required Us"
 	}
-	items, _, _, err := DefaultTokenCompletion.Completion(t.Context(), view, cmp)
+	items, rng, truncated, err := DefaultTokenCompletion.Completion(t.Context(), view, cmp)
 	assert.NoError(t, err)
+	assert.False(t, truncated, "single-file completion fits")
 
 	labels := make([]string, 0, len(items))
 	for _, item := range items {
@@ -50,4 +51,6 @@ func TestCompletionEndToEnd(t *testing.T) {
 	}
 	// The type position completes the struct name from the same file.
 	assert.Contains(t, labels, "User")
+	assert.NotContains(t, labels, "id", "field names leak into type slots")
+	assert.Equal(t, protocol.Position{Line: 5, Character: 14}, rng.Start, "edit range covers the typed prefix")
 }

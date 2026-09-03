@@ -697,6 +697,20 @@ const UserKind kind = "1"
 			},
 			assertion: assert.NoError,
 		},
+		{
+			name: "unknown identifier finds nothing",
+			args: args{
+				ctx:  t.Context(),
+				view: view,
+				file: "file:///tmp/api.thrift",
+				pos: protocol.Position{
+					Line:      1,
+					Character: 1,
+				},
+			},
+			want:      []protocol.Location{},
+			assertion: assert.NoError,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
