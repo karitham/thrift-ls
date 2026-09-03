@@ -24,8 +24,7 @@ type CompletionItem struct {
 	InsertText       string
 	InsertTextFormat protocol.InsertTextFormat
 
-	Kind       protocol.CompletionItemKind
-	Deprecated bool
+	Kind protocol.CompletionItemKind
 
 	// Documentation holds document text for this completion
 	Documentation string

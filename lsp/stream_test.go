@@ -181,7 +181,7 @@ func (h *clientHarness) send(t *testing.T, v any) {
 // close hangs up the transport and waits for both harness goroutines.
 func (h *clientHarness) close() {
 	close(h.outbound)
-	h.conn.Close()
+	_ = h.conn.Close()
 	h.wg.Wait()
 }
 

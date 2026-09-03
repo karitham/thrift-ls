@@ -375,8 +375,18 @@ func dumpIncludes(ctx context.Context, file string, cmd *cli.Command) error {
 
 	w := cmd.Writer
 
+	// A broken pipe must fail the command, not silently truncate the
+	// report: the first write error sticks and is returned at the end.
+	var werr error
+	printf := func(format string, args ...any) {
+		if werr != nil {
+			return
+		}
+		_, werr = fmt.Fprintf(w, format, args...)
+	}
+
 	for _, e := range pf.Errors() {
-		fmt.Fprintf(w, "parse error: %v\n", e)
+		printf("parse error: %v\n", e)
 	}
 
 	resolver := view.Resolver()
@@ -388,10 +398,10 @@ func dumpIncludes(ctx context.Context, file string, cmd *cli.Command) error {
 		}
 
 		candidates := resolver.ResolveIncludeCandidates(ctx, u, path)
-		fmt.Fprintf(w, "%s\n", path)
+		printf("%s\n", path)
 
 		if len(candidates) == 0 {
-			fmt.Fprintf(w, "  not found\n")
+			printf("  not found\n")
 
 			continue
 		}
@@ -399,17 +409,17 @@ func dumpIncludes(ctx context.Context, file string, cmd *cli.Command) error {
 		target, terr := view.Parse(ctx, candidates[0])
 		switch {
 		case terr != nil:
-			fmt.Fprintf(w, "  resolved: %s (unreadable: %v)\n", candidates[0].FsPath(), terr)
+			printf("  resolved: %s (unreadable: %v)\n", candidates[0].FsPath(), terr)
 		default:
-			fmt.Fprintf(w, "  resolved: %s (%d parse errors)\n", candidates[0].FsPath(), len(target.Errors()))
+			printf("  resolved: %s (%d parse errors)\n", candidates[0].FsPath(), len(target.Errors()))
 		}
 
 		for _, cand := range candidates[1:] {
-			fmt.Fprintf(w, "  also matches: %s\n", cand.FsPath())
+			printf("  also matches: %s\n", cand.FsPath())
 		}
 	}
 
-	return nil
+	return werr
 }
 
 // checkAction reports the diagnostics the language server computes for a
@@ -475,12 +485,22 @@ func checkAction(ctx context.Context, cmd *cli.Command) error {
 
 	w := cmd.Writer
 
+	// A broken pipe must fail the command, not silently truncate the
+	// report: the first write error sticks and is returned at the end.
+	var werr error
+	printf := func(format string, args ...any) {
+		if werr != nil {
+			return
+		}
+		_, werr = fmt.Fprintf(w, format, args...)
+	}
+
 	if result.Fix != nil {
-		fmt.Fprintf(w, "applied %d fix(es) in %d file(s) over %d pass(es)\n",
+		printf("applied %d fix(es) in %d file(s) over %d pass(es)\n",
 			result.Fix.Applied, len(result.Fix.Files), result.Fix.Passes)
 
 		for _, s := range result.Fix.Skipped {
-			fmt.Fprintf(w, "skipped %s  %s  (%s)\n", relPath(s.File), s.Title, s.Reason)
+			printf("skipped %s  %s  (%s)\n", relPath(s.File), s.Title, s.Reason)
 		}
 	}
 
@@ -496,8 +516,12 @@ func checkAction(ctx context.Context, cmd *cli.Command) error {
 				warnCount++
 			}
 
-			fmt.Fprintf(w, "%s:%d:%d  %s  %s\n", relPath(file), d.Line, d.Col, sev, d.Message)
+			printf("%s:%d:%d  %s  %s\n", relPath(file), d.Line, d.Col, sev, d.Message)
 		}
+	}
+
+	if werr != nil {
+		return werr
 	}
 
 	if errCount > 0 {

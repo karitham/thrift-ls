@@ -24,7 +24,9 @@ func TestMain(m *testing.M) {
 	}
 
 	code := runTests(m, dir)
-	os.RemoveAll(dir)
+	if err := os.RemoveAll(dir); err != nil {
+		fmt.Fprintln(os.Stderr, "rmtemp:", err)
+	}
 	os.Exit(code)
 }
 

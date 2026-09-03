@@ -131,7 +131,6 @@ func New(command []string, dir string, opts Options) (*Server, error) {
 	defer cancel()
 
 	initParams := &protocol.InitializeParams{
-		RootURI:      &root,
 		Capabilities: protocol.ClientCapabilities{},
 	}
 	initParams.WorkspaceFolders = protocol.NewNullable([]protocol.WorkspaceFolder{

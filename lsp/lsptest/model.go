@@ -123,7 +123,7 @@ func messageText(m protocol.InlayHintTooltip) string {
 }
 
 // hoverText extracts readable text from a hover result, reporting false when
-// there is nothing to show.
+// there is nothing to show. Only the shapes our server emits.
 func hoverText(h *protocol.Hover) (string, bool) {
 	if h == nil {
 		return "", false
@@ -134,24 +134,6 @@ func hoverText(h *protocol.Hover) (string, bool) {
 		return string(v), len(v) > 0
 	case *protocol.MarkupContent:
 		return v.Value, v.Value != ""
-	case *protocol.MarkedStringWithLanguage:
-		return v.Value, v.Value != ""
-	case protocol.MarkedStringSlice:
-		var b strings.Builder
-
-		for _, m := range v {
-			switch mv := m.(type) {
-			case protocol.String:
-				b.WriteString(string(mv))
-			case *protocol.MarkedStringWithLanguage:
-				b.WriteString(mv.Value)
-			}
-			b.WriteByte('\n')
-		}
-
-		s := b.String()
-
-		return s, len(s) > 0
 	default:
 		return "", false
 	}

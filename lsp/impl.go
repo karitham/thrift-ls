@@ -191,7 +191,6 @@ func toLspCompletionList(items []*source.CompletionItem, rng protocol.Range, tru
 			InsertTextFormat: items[i].InsertTextFormat,
 			SortText:         protocol.NewOptional(fmt.Sprintf("%05d", i)),
 			Preselect:        protocol.NewOptional(i == 0),
-			Deprecated:       protocol.NewOptional(items[i].Deprecated),
 			Documentation:    protocol.String(items[i].Documentation),
 		}
 		list.Items = append(list.Items, item)
