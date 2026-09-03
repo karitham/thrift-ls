@@ -49,8 +49,8 @@ struct Xtruct3
 	})
 
 	t.Run("unreadable content fails the call", func(t *testing.T) {
-		u := "file:///tmp/ghost.thrift"
-		fh, err := NewDiskFS().ReadFile(t.Context(), uri.File(u))
+		u := uri.URI("file:///tmp/ghost.thrift")
+		fh, err := NewDiskFS().ReadFile(t.Context(), u)
 		require.NoError(t, err)
 
 		got, err := Parse(fh)
