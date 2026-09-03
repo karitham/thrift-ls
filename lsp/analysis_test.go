@@ -12,6 +12,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/options"
+	"github.com/karitham/thrift-ls/resolver/resolvertest"
 	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/syntax"
 )
@@ -202,7 +203,7 @@ func TestRetiredViewDropsInFlightAnalysis(t *testing.T) {
 	client := &testClient{}
 	analyzer := &countingAnalyzer{}
 	srv := newSyncServerWithOptions(client,
-		seedFiles(map[string]string{"/workspace/project/api.thrift": "struct VersionOne {}"}),
+		resolvertest.Map{"/workspace/project/api.thrift": []byte("struct VersionOne {}")}.URIs(),
 		Options{
 			Analysis:     Analysis{Analyzers: []sema.Analyzer{analyzer}},
 			ConfigSource: options.PinnedSource(nil),

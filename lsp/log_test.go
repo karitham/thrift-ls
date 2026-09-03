@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/resolver/resolvertest"
 )
 
 // TestLoggerForwardsToClientAfterHandshake verifies that log records reach
@@ -52,7 +54,7 @@ func TestLoggerForwardingSurvivesConfigRelevel(t *testing.T) {
 	InitLogger(3)
 	defer setLogClient(nil)
 
-	files := seedFiles(map[string]string{"/ws/proj/thrift-ls.json": `{"logLevel": 5}`})
+	files := resolvertest.Map{"/ws/proj/thrift-ls.json": []byte(`{"logLevel": 5}`)}.URIs()
 
 	client := &testClient{}
 	srv := newSyncServerWithOptions(client, files, Options{})

@@ -14,16 +14,17 @@ import (
 
 	"github.com/karitham/thrift-ls/lsp/cache"
 	"github.com/karitham/thrift-ls/options"
+	"github.com/karitham/thrift-ls/resolver/resolvertest"
 )
 
 // Workspace lifecycle: initialize defers the load, folders add/remove.
 
 func TestWorkspaceLifecycle(t *testing.T) {
 	t.Run("initialize defers the load until the sync load runs", func(t *testing.T) {
-		files := seedFiles(map[string]string{
-			"/ws/a.thrift":        "struct FromA {}",
-			"/ws/nested/b.thrift": "struct FromB {}",
-		})
+		files := resolvertest.Map{
+			"/ws/a.thrift":        []byte("struct FromA {}"),
+			"/ws/nested/b.thrift": []byte("struct FromB {}"),
+		}.URIs()
 
 		srv := newSyncServerWithOptions(nil, files, Options{})
 
@@ -45,10 +46,10 @@ func TestWorkspaceLifecycle(t *testing.T) {
 
 	t.Run("adding and removing folders loads and drops views", func(t *testing.T) {
 		ctx := t.Context()
-		files := seedFiles(map[string]string{
-			"/ws-a/a.thrift": "struct FromA {}",
-			"/ws-b/b.thrift": "struct FromB {}",
-		})
+		files := resolvertest.Map{
+			"/ws-a/a.thrift": []byte("struct FromA {}"),
+			"/ws-b/b.thrift": []byte("struct FromB {}"),
+		}.URIs()
 
 		srv := newSyncServerWithOptions(nil, files, Options{})
 
@@ -90,10 +91,10 @@ func TestNestedWorkspaceFolderRouting(t *testing.T) {
 			nested := uri.File("/workspace/service/api.thrift")
 
 			srv := newSyncServerWithOptions(nil,
-				seedFiles(map[string]string{
-					"/workspace/root.thrift":        "struct Root {}",
-					"/workspace/service/api.thrift": "struct Nested {}",
-				}),
+				resolvertest.Map{
+					"/workspace/root.thrift":        []byte("struct Root {}"),
+					"/workspace/service/api.thrift": []byte("struct Nested {}"),
+				}.URIs(),
 				Options{})
 
 			folders := []uri.URI{outer}
@@ -145,7 +146,7 @@ func TestDidOpenNewFileInsideLoadedRoot(t *testing.T) {
 	nested := uri.File("/ws/sub/new.thrift")
 
 	srv := newSyncServerWithOptions(nil,
-		seedFiles(map[string]string{"/ws/a.thrift": "struct A {}"}),
+		resolvertest.Map{"/ws/a.thrift": []byte("struct A {}")}.URIs(),
 		Options{})
 	initWorkspace(t, srv, []uri.URI{outer}, nil)
 	require.Len(t, srv.session.Views(), 1)
@@ -169,11 +170,11 @@ func TestWorkspaceLoaderDefersViewsAndIndexesOverlayInMostSpecificProject(t *tes
 	externalFile := uri.File("/dependencies/shared.thrift")
 
 	srv := newSyncServerWithOptions(nil,
-		seedFiles(map[string]string{
-			"/workspace/root.thrift":        "struct Root {}",
-			"/workspace/service/api.thrift": "struct DiskVersion {}",
-			"/dependencies/shared.thrift":   "struct Shared {}",
-		}),
+		resolvertest.Map{
+			"/workspace/root.thrift":        []byte("struct Root {}"),
+			"/workspace/service/api.thrift": []byte("struct DiskVersion {}"),
+			"/dependencies/shared.thrift":   []byte("struct Shared {}"),
+		}.URIs(),
 		Options{ConfigSource: options.PinnedSource(nil)})
 	initCustomFolders(t, srv, []uri.URI{workspace})
 	assert.Empty(t, srv.session.Views(), "no views before the snapshot")
@@ -235,7 +236,7 @@ func TestWorkspaceLoaderFailureDoesNotCreateFallbackView(t *testing.T) {
 	file := uri.File("/workspace/api.thrift")
 
 	srv := newSyncServerWithOptions(nil,
-		seedFiles(map[string]string{"/workspace/api.thrift": "struct DiskVersion {}"}),
+		resolvertest.Map{"/workspace/api.thrift": []byte("struct DiskVersion {}")}.URIs(),
 		Options{ConfigSource: options.PinnedSource(nil)})
 	initCustomFolders(t, srv, []uri.URI{workspace})
 	installSnapshot(t, srv, workspace, WorkspaceSnapshot{})
@@ -269,7 +270,7 @@ func TestWorkspaceLoaderPublishesIssuesWithoutDroppingProjects(t *testing.T) {
 	client := &testClient{}
 
 	srv := newSyncServerWithOptions(client,
-		seedFiles(map[string]string{"/workspace/api.thrift": "struct API {}"}),
+		resolvertest.Map{"/workspace/api.thrift": []byte("struct API {}")}.URIs(),
 		Options{ConfigSource: options.PinnedSource(nil)})
 	initCustomFolders(t, srv, []uri.URI{workspace})
 	installSnapshot(t, srv, workspace, WorkspaceSnapshot{
@@ -332,10 +333,10 @@ func TestWorkspaceLoaderHandlesWorkspaceFolderChanges(t *testing.T) {
 	}
 
 	srv := newSyncServerWithOptions(nil,
-		seedFiles(map[string]string{
-			"/workspace-a/service/api.thrift": "struct A {}",
-			"/workspace-b/service/api.thrift": "struct B {}",
-		}),
+		resolvertest.Map{
+			"/workspace-a/service/api.thrift": []byte("struct A {}"),
+			"/workspace-b/service/api.thrift": []byte("struct B {}"),
+		}.URIs(),
 		Options{ConfigSource: options.PinnedSource(nil)})
 	initCustomFolders(t, srv, []uri.URI{folderA})
 	installSnapshot(t, srv, folderA, WorkspaceSnapshot{Projects: []Project{{
@@ -385,12 +386,12 @@ func TestWorkspaceLoaderRejectsInvalidProjectsAndConflictingRoots(t *testing.T) 
 	client := &testClient{}
 
 	srv := newSyncServerWithOptions(client,
-		seedFiles(map[string]string{
-			"/workspace/service/api.thrift":         "struct Valid {}",
-			"/invalid-root/api.thrift":              "struct InvalidRoot {}",
-			"/invalid-config/api.thrift":            "struct InvalidConfig {}",
-			"/workspace/service/conflicting.thrift": "struct Conflicting {}",
-		}),
+		resolvertest.Map{
+			"/workspace/service/api.thrift":         []byte("struct Valid {}"),
+			"/invalid-root/api.thrift":              []byte("struct InvalidRoot {}"),
+			"/invalid-config/api.thrift":            []byte("struct InvalidConfig {}"),
+			"/workspace/service/conflicting.thrift": []byte("struct Conflicting {}"),
+		}.URIs(),
 		Options{ConfigSource: options.PinnedSource(nil)})
 	initCustomFolders(t, srv, []uri.URI{workspace})
 	installSnapshot(t, srv, workspace, WorkspaceSnapshot{Projects: []Project{
@@ -471,7 +472,7 @@ func TestCustomDocumentChangesDuringWorkspaceLoad(t *testing.T) {
 			file := uri.File("/workspace/api.thrift")
 
 			srv := newSyncServerWithOptions(nil,
-				seedFiles(map[string]string{"/workspace/api.thrift": "struct DiskVersion {}"}),
+				resolvertest.Map{"/workspace/api.thrift": []byte("struct DiskVersion {}")}.URIs(),
 				Options{ConfigSource: options.PinnedSource(nil)})
 			initCustomFolders(t, srv, []uri.URI{workspace})
 
@@ -508,7 +509,7 @@ func TestCustomChangesNeverUseAnotherWorkspaceFallback(t *testing.T) {
 	goodFile := uri.File("/good/api.thrift")
 
 	srv := newSyncServerWithOptions(nil,
-		seedFiles(map[string]string{"/good/api.thrift": "struct Good {}"}),
+		resolvertest.Map{"/good/api.thrift": []byte("struct Good {}")}.URIs(),
 		Options{ConfigSource: options.PinnedSource(nil)})
 	initCustomFolders(t, srv, []uri.URI{badFolder, goodFolder})
 	installSnapshots(t, srv, map[uri.URI]WorkspaceSnapshot{
@@ -553,10 +554,10 @@ func TestCustomNonTargetHandling(t *testing.T) {
 		target := uri.File("/workspace/project/api.thrift")
 		nonTarget := uri.File("/workspace/project/stray.thrift")
 		srv := newSyncServerWithOptions(client,
-			seedFiles(map[string]string{
-				"/workspace/project/api.thrift":   "struct API {}",
-				"/workspace/project/stray.thrift": "struct DiskStray { 1: Missing value }",
-			}),
+			resolvertest.Map{
+				"/workspace/project/api.thrift":   []byte("struct API {}"),
+				"/workspace/project/stray.thrift": []byte("struct DiskStray { 1: Missing value }"),
+			}.URIs(),
 			Options{ConfigSource: options.PinnedSource(nil)})
 		initCustomFolders(t, srv, []uri.URI{root})
 		installSnapshot(t, srv, root, WorkspaceSnapshot{Projects: []Project{{
@@ -612,10 +613,10 @@ func TestCustomNonTargetHandling(t *testing.T) {
 		target := uri.File("/workspace/project/api.thrift")
 		included := uri.File("/workspace/project/stray.thrift")
 		srv := newSyncServerWithOptions(nil,
-			seedFiles(map[string]string{
-				"/workspace/project/api.thrift":   "include \"stray.thrift\"\nstruct API { 1: stray.Stray value }",
-				"/workspace/project/stray.thrift": "struct Stray {}",
-			}),
+			resolvertest.Map{
+				"/workspace/project/api.thrift":   []byte("include \"stray.thrift\"\nstruct API { 1: stray.Stray value }"),
+				"/workspace/project/stray.thrift": []byte("struct Stray {}"),
+			}.URIs(),
 			Options{ConfigSource: options.PinnedSource(nil)})
 		initCustomFolders(t, srv, []uri.URI{root})
 		installSnapshot(t, srv, root, WorkspaceSnapshot{Projects: []Project{{
@@ -649,8 +650,10 @@ func TestCustomWatchedFilesDoNotReadUnownedEvents(t *testing.T) {
 	target := uri.File("/workspace/project/api.thrift")
 	unowned := uri.File("/workspace/project/stray.thrift")
 	fs := &watchSpyFS{
-		FileSource: cache.NewMemFS(map[uri.URI][]byte{target: []byte("struct Before {}")}),
-		forbidden:  unowned,
+		FileSource: cache.NewMemFS(resolvertest.Map{
+			"/workspace/project/api.thrift": []byte("struct Before {}"),
+		}.URIs()),
+		forbidden: unowned,
 	}
 	srv := NewServer(nil, Options{Files: fs, ConfigSource: options.PinnedSource(nil)})
 	srv.diagSync = true
@@ -724,10 +727,10 @@ func TestWorkspaceTargetsAreIndexedOncePerView(t *testing.T) {
 	client := &testClient{}
 
 	srv := newSyncServerWithOptions(client,
-		seedFiles(map[string]string{
-			"/workspace/first.thrift":  "struct First {",
-			"/workspace/second.thrift": "struct Second {",
-		}),
+		resolvertest.Map{
+			"/workspace/first.thrift":  []byte("struct First {"),
+			"/workspace/second.thrift": []byte("struct Second {"),
+		}.URIs(),
 		Options{ConfigSource: options.PinnedSource(nil)})
 	initCustomFolders(t, srv, []uri.URI{workspace})
 	installSnapshot(t, srv, workspace, WorkspaceSnapshot{Projects: []Project{{
@@ -825,10 +828,10 @@ func TestSharedRootEvictsTargetsWhenFolderLosesOwnership(t *testing.T) {
 	client := &testClient{}
 
 	srv := newSyncServerWithOptions(client,
-		seedFiles(map[string]string{
-			"/shared/project/a.thrift": "struct A {}",
-			"/shared/project/b.thrift": "struct B { 1: Missing value }",
-		}),
+		resolvertest.Map{
+			"/shared/project/a.thrift": []byte("struct A {}"),
+			"/shared/project/b.thrift": []byte("struct B { 1: Missing value }"),
+		}.URIs(),
 		Options{ConfigSource: options.PinnedSource(nil)})
 	initCustomFolders(t, srv, []uri.URI{folderA, folderB})
 	installSnapshots(t, srv, map[uri.URI]WorkspaceSnapshot{
@@ -868,7 +871,7 @@ func TestRemovingFinalCustomViewClearsDiagnostics(t *testing.T) {
 	client := &testClient{}
 
 	srv := newSyncServerWithOptions(client,
-		seedFiles(map[string]string{"/workspace/project/api.thrift": "struct A { 1: Missing value }"}),
+		resolvertest.Map{"/workspace/project/api.thrift": []byte("struct A { 1: Missing value }")}.URIs(),
 		Options{ConfigSource: options.PinnedSource(nil)})
 	initCustomFolders(t, srv, []uri.URI{folder})
 	installSnapshot(t, srv, folder, WorkspaceSnapshot{Projects: []Project{{
@@ -894,7 +897,7 @@ func TestCustomOpenOverlayMovesToNewOwner(t *testing.T) {
 	file := uri.File("/workspace/service/api.thrift")
 
 	srv := newSyncServerWithOptions(nil,
-		seedFiles(map[string]string{"/workspace/service/api.thrift": "struct DiskVersion {}"}),
+		resolvertest.Map{"/workspace/service/api.thrift": []byte("struct DiskVersion {}")}.URIs(),
 		Options{ConfigSource: options.PinnedSource(nil)})
 	initCustomFolders(t, srv, []uri.URI{outerFolder})
 	installSnapshot(t, srv, outerFolder, WorkspaceSnapshot{Projects: []Project{{

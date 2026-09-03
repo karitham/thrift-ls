@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/resolver/resolvertest"
 )
 
 // TestCodeAction folds every built-in quickfix/refactor case into one
@@ -136,9 +138,9 @@ func TestCodeActionAddMissingInclude(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			files := seedFiles(map[string]string{
-				"/ws/shared.thrift": "struct User { 1: i32 id }\n",
-			})
+			files := resolvertest.Map{
+				"/ws/shared.thrift": []byte("struct User { 1: i32 id }\n"),
+			}.URIs()
 
 			srv := newSyncServerWithOptions(nil, files, Options{})
 			fileURI := uri.File("/ws/user.thrift")

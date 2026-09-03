@@ -30,10 +30,10 @@ func TestConfigDiscoveryPerWorkspaceFolder(t *testing.T) {
 	t.Setenv("THRIFT_LS_CONFIG", "")
 
 	dirA, dirB := "/ws/a", "/ws/b"
-	files := seedFiles(map[string]string{
-		"/ws/a/thrift-ls.json": `{"printWidth": 30}`,
-		"/ws/b/thrift-ls.json": `{"printWidth": 100}`,
-	})
+	files := resolvertest.Map{
+		"/ws/a/thrift-ls.json": []byte(`{"printWidth": 30}`),
+		"/ws/b/thrift-ls.json": []byte(`{"printWidth": 100}`),
+	}.URIs()
 
 	srv := newSyncServerWithOptions(nil, files, Options{})
 	initWorkspace(t, srv, []uri.URI{uri.File(dirA), uri.File(dirB)}, nil)
@@ -74,11 +74,11 @@ func TestConfigDiscovery(t *testing.T) {
 				folder = "/ws/root/packages/app"
 			}
 
-			entries := map[string]string{}
+			entries := resolvertest.Map{}
 			if tt.config != "" {
-				entries["/ws/root/thrift-ls.json"] = tt.config
+				entries["/ws/root/thrift-ls.json"] = []byte(tt.config)
 			}
-			files := seedFiles(entries)
+			files := entries.URIs()
 
 			var srv *Server
 			if tt.pinned {
@@ -105,7 +105,7 @@ func TestConfigDiscoveryWorkspaceSettingsOverlay(t *testing.T) {
 	t.Setenv("THRIFT_LS_CONFIG", "")
 
 	dir := "/ws/proj"
-	files := seedFiles(map[string]string{"/ws/proj/thrift-ls.json": `{"printWidth": 30}`})
+	files := resolvertest.Map{"/ws/proj/thrift-ls.json": []byte(`{"printWidth": 30}`)}.URIs()
 
 	srv := newSyncServerWithOptions(nil, files, Options{})
 	initWorkspace(t, srv, []uri.URI{uri.File(dir)}, []byte(`{"printWidth": 100}`))
@@ -131,7 +131,7 @@ func TestConfigDiscoveryLogLevel(t *testing.T) {
 	t.Setenv("THRIFT_LS_CONFIG", "")
 
 	dir := "/ws/proj"
-	files := seedFiles(map[string]string{"/ws/proj/thrift-ls.json": `{"logLevel": 5}`})
+	files := resolvertest.Map{"/ws/proj/thrift-ls.json": []byte(`{"logLevel": 5}`)}.URIs()
 
 	srv := newSyncServerWithOptions(nil, files, Options{})
 	initWorkspace(t, srv, nil, nil)
@@ -169,7 +169,7 @@ func TestConfigDiscoveryAppliesConfiguredDefaults(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("THRIFT_LS_CONFIG", "")
 
-			files := seedFiles(map[string]string{"/ws/root/thrift-ls.json": tt.config})
+			files := resolvertest.Map{"/ws/root/thrift-ls.json": []byte(tt.config)}.URIs()
 			srv := newSyncServerWithOptions(nil, files, Options{Defaults: defaults})
 			initWorkspace(t, srv, []uri.URI{uri.File("/ws/root")}, nil)
 
@@ -207,7 +207,7 @@ func TestProjectConfigLayering(t *testing.T) {
 			cliPatch.IncludePaths = &[]string{"/cli/includes"}
 
 			srv := newSyncServerWithOptions(nil,
-				seedFiles(map[string]string{"/workspace/proj/api.thrift": "struct API {}"}),
+				resolvertest.Map{"/workspace/proj/api.thrift": []byte("struct API {}")}.URIs(),
 				Options{
 					ConfigSource: options.PinnedSource(fileDoc),
 					CLI:          cliPatch,
@@ -238,11 +238,11 @@ func TestWorkspaceLoaderUsesConfigSourcePerProjectRoot(t *testing.T) {
 	widths := []int{91, 92}
 	patches := make(map[string]*options.Patch, len(roots))
 	projects := make([]Project, len(roots))
-	entries := map[string]string{}
+	entries := resolvertest.Map{}
 	for i, root := range roots {
 		width := widths[i]
 		patches[root] = &options.Patch{FormatPatch: formatter.FormatPatch{PrintWidth: &width}}
-		entries[root+"/api.thrift"] = "struct API {}"
+		entries[root+"/api.thrift"] = []byte("struct API {}")
 		projects[i] = Project{
 			ConfigURI:   uri.File(root + "/project.json"),
 			RootURI:     uri.File(root),
@@ -256,7 +256,7 @@ func TestWorkspaceLoaderUsesConfigSourcePerProjectRoot(t *testing.T) {
 
 		return options.Resolved{Patch: patches[root]}, nil
 	}
-	srv := newSyncServerWithOptions(nil, seedFiles(entries), Options{ConfigSource: source})
+	srv := newSyncServerWithOptions(nil, entries.URIs(), Options{ConfigSource: source})
 	initCustomFolders(t, srv, []uri.URI{uri.File("/ws")})
 	installSnapshot(t, srv, uri.File("/ws"), WorkspaceSnapshot{Projects: projects})
 
@@ -278,7 +278,7 @@ func TestPinnedSourceBypassesDiscovery(t *testing.T) {
 	pinned := options.Patch{FormatPatch: formatter.FormatPatch{PrintWidth: &width}}
 
 	srv := newSyncServerWithOptions(nil,
-		seedFiles(map[string]string{"/workspace/project/api.thrift": "struct API {}"}),
+		resolvertest.Map{"/workspace/project/api.thrift": []byte("struct API {}")}.URIs(),
 		Options{ConfigSource: options.PinnedSource(&pinned)})
 	initCustomFolders(t, srv, []uri.URI{uri.File("/workspace")})
 	installSnapshot(t, srv, uri.File("/workspace"), WorkspaceSnapshot{Projects: []Project{{
@@ -328,10 +328,10 @@ func TestCustomProjectIncludePathsAreAuthoritative(t *testing.T) {
 	settingsIncludes := "/ws/settings-includes"
 
 	fileDoc := &options.Patch{IncludePaths: &[]string{configIncludes}}
-	files := seedFiles(map[string]string{
-		"/ws/project/api.thrift":             `include "shared.thrift"`,
-		"/ws/project-includes/shared.thrift": "struct Shared {}",
-	})
+	files := resolvertest.Map{
+		"/ws/project/api.thrift":             []byte(`include "shared.thrift"`),
+		"/ws/project-includes/shared.thrift": []byte("struct Shared {}"),
+	}.URIs()
 	srv := newSyncServerWithOptions(nil, files, Options{
 		CLI:          options.Patch{IncludePaths: &[]string{cliIncludes}},
 		ConfigSource: options.PinnedSource(fileDoc),

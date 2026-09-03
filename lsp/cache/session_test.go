@@ -6,6 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/resolver/resolvertest"
 )
 
 func TestSessionViews(t *testing.T) {
@@ -186,9 +188,9 @@ func TestSessionViewOf(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := NewSession(NewMemFS(map[uri.URI][]byte{
-				externalFile: []byte("struct Shared {}"),
-			}))
+			s := NewSession(NewMemFS(resolvertest.Map{
+				"/dependencies/shared.thrift": []byte("struct Shared {}"),
+			}.URIs()))
 			tt.setup(s)
 
 			view, err := s.ViewOf(tt.file)

@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/resolver/resolvertest"
 )
 
 const (
@@ -189,10 +191,10 @@ func TestOverlayLifecycle(t *testing.T) {
 		dependent := uri.File("/ws/strike_rouge.thrift")
 		included := uri.File("/ws/federation.gundam.thrift")
 
-		files := seedFiles(map[string]string{
-			"/ws/federation.gundam.thrift": disk,
-			"/ws/strike_rouge.thrift":      dependentText,
-		})
+		files := resolvertest.Map{
+			"/ws/federation.gundam.thrift": []byte(disk),
+			"/ws/strike_rouge.thrift":      []byte(dependentText),
+		}.URIs()
 		srv := newSyncServerWithOptions(nil, files, Options{})
 		openDocument(t, srv, dependent, dependentText)
 		openDocument(t, srv, included, overlay)
@@ -226,7 +228,7 @@ func TestOverlayLifecycle(t *testing.T) {
 		overlay := "struct Gundam {\n\t1: required string Name,\n\t2: optional i32 SerialNumber\n}"
 		file := uri.File("/ws/federation.gundam.thrift")
 
-		files := seedFiles(map[string]string{"/ws/federation.gundam.thrift": disk})
+		files := resolvertest.Map{"/ws/federation.gundam.thrift": []byte(disk)}.URIs()
 		srv := newSyncServerWithOptions(nil, files, Options{})
 		openDocument(t, srv, file, overlay)
 

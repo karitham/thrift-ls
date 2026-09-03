@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"sync"
 	"testing"
 
@@ -174,23 +173,6 @@ func newSyncServerWithOptions(client protocol.Client, files map[uri.URI][]byte, 
 	srv.diagSync = true
 
 	return srv
-}
-
-// seedFiles builds a MemFS seed from absolute path to content. Paths must
-// be absolute so FileConfigSource discovery (filepath.Abs passthrough)
-// and MemFS walks resolve against memory.
-func seedFiles(entries map[string]string) map[uri.URI][]byte {
-	out := make(map[uri.URI][]byte, len(entries))
-	for p, c := range entries {
-		out[uri.File(p)] = []byte(c)
-	}
-
-	return out
-}
-
-// configURI returns the MemFS URI of the thrift-ls.json in dir.
-func configURI(dir string) uri.URI {
-	return uri.File(filepath.Join(dir, "thrift-ls.json"))
 }
 
 func openDocument(t *testing.T, srv *Server, fileURI uri.URI, content string) {

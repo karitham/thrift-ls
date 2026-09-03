@@ -50,7 +50,7 @@ func Test_IncludeShadowCheck(t *testing.T) {
 			require.NoError(t, os.MkdirAll(filepath.Join(folder, "camp"), 0o755))
 			filePath := writeThrift(t, folder, filepath.Join("camp", "main.thrift"), content)
 
-			view := buildFolderSnapshotForTestWithPaths(t, folder, []string{
+			view := cache.BuildViewForTestWithPaths([]string{
 				filepath.Join(folder, "laios"),
 				filepath.Join(folder, "senshi"),
 			}, []*cache.FileChange{
@@ -73,22 +73,4 @@ func Test_IncludeShadowCheck(t *testing.T) {
 			}
 		})
 	}
-}
-
-// buildFolderSnapshotForTestWithPaths is buildFolderSnapshotForTest with
-// configured include paths, for include-path shadowing tests.
-func buildFolderSnapshotForTestWithPaths(t *testing.T, folder string, includePaths []string, files []*cache.FileChange) *cache.View {
-	t.Helper()
-
-	c := cache.NewMemoizedFS()
-	fs := cache.NewOverlayFS(c)
-	_ = fs.Update(t.Context(), files)
-
-	view := cache.NewView(uri.File(folder), fs, includePaths)
-
-	for _, f := range files {
-		_, _ = view.Parse(t.Context(), f.URI)
-	}
-
-	return view
 }
