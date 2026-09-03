@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"go.lsp.dev/uri"
+
+	"github.com/karitham/thrift-ls/resolver"
 )
 
 // A FileID uniquely identifies a file in the file system.
@@ -42,7 +44,18 @@ type FileHandle interface {
 	Content() ([]byte, error)
 }
 
-// A FileSource maps URIs to FileHandles.
+// Checker tests file existence by OS path, without reading content.
+// It is the existence half of the resolving system: the include resolver
+// probes candidates through it, and frontends with a custom file layout
+// (build systems, virtual trees) plug in by serving it from their graph.
+// A FileSource that also implements Checker gets cheap probes for free.
+type Checker = resolver.Checker
+
+// A FileSource maps URIs to FileHandles. It is the only filesystem seam:
+// disk in production, in-memory in tests, build-system backed internally.
+// A source may optionally implement Checker (Exists by OS path) to answer
+// include probes without reading file bodies; sources that don't get a
+// ReadFile fallback.
 type FileSource interface {
 	// ReadFile returns the FileHandle for a given URI, either by
 	// reading the content of the file or by obtaining it from a cache.

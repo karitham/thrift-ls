@@ -37,7 +37,7 @@ func Links(ctx context.Context, view *cache.View, file uri.URI) []protocol.Docum
 			return
 		}
 
-		target := resolver.ResolveInclude(file, text)
+		target := resolver.ResolveInclude(ctx, file, text)
 		out = append(out, protocol.DocumentLink{
 			Range:  tokenRange(pf, path),
 			Target: &target,

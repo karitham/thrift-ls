@@ -90,7 +90,7 @@ func getIncludes(ctx context.Context, view *cache.View, file uri.URI, includesMa
 			continue
 		}
 
-		includeURI := resolver.ResolveInclude(file, includes[i].PathText())
+		includeURI := resolver.ResolveInclude(ctx, file, includes[i].PathText())
 		(*includesMap)[file] = append((*includesMap)[file], Include{
 			file:    includeURI,
 			include: includes[i],

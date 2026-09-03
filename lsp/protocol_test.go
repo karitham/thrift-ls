@@ -15,7 +15,7 @@ func TestInitializeReportsConfiguredVersion(t *testing.T) {
 		version string
 		want    string
 	}{
-		{name: "configured", version: "tbuild-test-version", want: "tbuild-test-version"},
+		{name: "configured", version: "custom-test-version", want: "custom-test-version"},
 		{name: "fallback", want: ServerVersion},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

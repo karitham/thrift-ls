@@ -1,37 +1,28 @@
 package cache
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"go.lsp.dev/uri"
 
+	"github.com/karitham/thrift-ls/resolver/resolvertest"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
 func TestResolver(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "resolver-test")
-	assert.NoError(t, err)
-
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	baseDir := filepath.Join(tmpDir, "base")
-	sharedDir := filepath.Join(tmpDir, "shared")
-	err = os.MkdirAll(baseDir, 0o755)
-	assert.NoError(t, err)
-	err = os.MkdirAll(sharedDir, 0o755)
-	assert.NoError(t, err)
-
+	root := filepath.Join(string(filepath.Separator), "mem")
+	baseDir := filepath.Join(root, "base")
+	sharedDir := filepath.Join(root, "shared")
 	sharedThrift := filepath.Join(sharedDir, "shared.thrift")
-	err = os.WriteFile(sharedThrift, []byte(""), 0o644)
-	assert.NoError(t, err)
 
-	c := NewMemoizedFS()
-	fs := NewOverlayFS(c)
+	tree := resolvertest.Map{
+		sharedThrift: []byte("struct Shared {}"),
+	}
+	fs := NewOverlayFS(NewMemFS(tree.URIs()))
 
-	view := NewView(uri.File(tmpDir), fs, []string{sharedDir})
+	view := NewView(uri.File(root), fs, []string{sharedDir})
 
 	resolver := view.Resolver()
 
@@ -43,11 +34,9 @@ func TestResolver(t *testing.T) {
 			name: "ResolveInclude/relative_to_current_file",
 			fn: func(t *testing.T) {
 				currentFile := filepath.Join(baseDir, "current.thrift")
-				err := os.WriteFile(currentFile, []byte(""), 0o644)
-				assert.NoError(t, err)
 
 				currentURI := uri.File(currentFile)
-				result := resolver.ResolveInclude(currentURI, "local.thrift")
+				result := resolver.ResolveInclude(t.Context(), currentURI, "local.thrift")
 
 				expected := uri.File(filepath.Join(baseDir, "local.thrift"))
 				assert.Equal(t, expected, result)
@@ -57,25 +46,37 @@ func TestResolver(t *testing.T) {
 			name: "ResolveInclude/using_include_paths",
 			fn: func(t *testing.T) {
 				currentFile := filepath.Join(baseDir, "current.thrift")
-				err := os.WriteFile(currentFile, []byte(""), 0o644)
-				assert.NoError(t, err)
 
 				currentURI := uri.File(currentFile)
-				result := resolver.ResolveInclude(currentURI, "shared.thrift")
+				result := resolver.ResolveInclude(t.Context(), currentURI, "shared.thrift")
 
 				expected := uri.File(sharedThrift)
 				assert.Equal(t, expected, result)
 			},
 		},
 		{
+			name: "ResolveInclude/finds_an_open_overlay_missing_from_disk",
+			fn: func(t *testing.T) {
+				// The include lives only in the editor overlay: an unsaved
+				// buffer resolves even with no disk copy.
+				overlayURI := uri.File(filepath.Join(sharedDir, "overlay.thrift"))
+				assert.NoError(t, fs.Update(t.Context(), []*FileChange{
+					{URI: overlayURI, Version: 1, Content: []byte("struct Overlay {}"), From: FileChangeTypeDidOpen},
+				}))
+				t.Cleanup(func() { fs.Forget(overlayURI) })
+
+				currentURI := uri.File(filepath.Join(baseDir, "current.thrift"))
+				assert.Equal(t, overlayURI, resolver.ResolveInclude(t.Context(), currentURI, "overlay.thrift"))
+				assert.Contains(t, resolver.ResolveIncludeCandidates(t.Context(), currentURI, "overlay.thrift"), overlayURI)
+			},
+		},
+		{
 			name: "ResolveInclude/fallback_uri_when_not_found",
 			fn: func(t *testing.T) {
 				currentFile := filepath.Join(baseDir, "current.thrift")
-				err := os.WriteFile(currentFile, []byte(""), 0o644)
-				assert.NoError(t, err)
 
 				currentURI := uri.File(currentFile)
-				result := resolver.ResolveInclude(currentURI, "nonexistent.thrift")
+				result := resolver.ResolveInclude(t.Context(), currentURI, "nonexistent.thrift")
 
 				expected := uri.File(filepath.Join(baseDir, "nonexistent.thrift"))
 				assert.Equal(t, expected, result)
@@ -124,8 +125,6 @@ func TestResolver(t *testing.T) {
 			name: "GetIncludeURI/returns_correct_uri",
 			fn: func(t *testing.T) {
 				currentFile := filepath.Join(baseDir, "current.thrift")
-				err := os.WriteFile(currentFile, []byte(""), 0o644)
-				assert.NoError(t, err)
 
 				currentURI := uri.File(currentFile)
 				doc := &syntax.Document{
@@ -134,7 +133,7 @@ func TestResolver(t *testing.T) {
 					},
 				}
 
-				result := resolver.GetIncludeURI(currentURI, doc, "shared")
+				result := resolver.GetIncludeURI(t.Context(), currentURI, doc, "shared")
 
 				expected := uri.File(sharedThrift)
 				assert.Equal(t, expected, result)
@@ -144,8 +143,6 @@ func TestResolver(t *testing.T) {
 			name: "GetIncludeURI/not_found_returns_empty",
 			fn: func(t *testing.T) {
 				currentFile := filepath.Join(baseDir, "current.thrift")
-				err := os.WriteFile(currentFile, []byte(""), 0o644)
-				assert.NoError(t, err)
 
 				currentURI := uri.File(currentFile)
 				doc := &syntax.Document{
@@ -154,7 +151,7 @@ func TestResolver(t *testing.T) {
 					},
 				}
 
-				result := resolver.GetIncludeURI(currentURI, doc, "shared")
+				result := resolver.GetIncludeURI(t.Context(), currentURI, doc, "shared")
 
 				assert.Equal(t, uri.URI(""), result)
 			},

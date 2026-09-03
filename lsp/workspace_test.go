@@ -168,16 +168,16 @@ func TestWorkspaceLoaderDefersViewsAndIndexesOverlayInMostSpecificProject(t *tes
 	installSnapshot(t, srv, workspace, WorkspaceSnapshot{
 		Projects: []Project{
 			{
-				ConfigURI:   uri.File("/workspace/project.json"),
-				RootURI:     workspace,
-				TargetFiles: []uri.URI{outerFile, innerFile},
-				Config:      options.Patch{IncludePaths: &[]string{"/outer/includes"}},
+				ConfigURI:    uri.File("/workspace/project.json"),
+				RootURI:      workspace,
+				TargetFiles:  []uri.URI{outerFile, innerFile},
+				IncludePaths: []string{"/outer/includes"},
 			},
 			{
-				ConfigURI:   uri.File("/workspace/service/project.json"),
-				RootURI:     innerRoot,
-				TargetFiles: []uri.URI{externalFile},
-				Config:      options.Patch{IncludePaths: &[]string{"/inner/includes"}},
+				ConfigURI:    uri.File("/workspace/service/project.json"),
+				RootURI:      innerRoot,
+				TargetFiles:  []uri.URI{externalFile},
+				IncludePaths: []string{"/inner/includes"},
 			},
 		},
 	})
@@ -381,16 +381,16 @@ func TestWorkspaceLoaderRejectsInvalidProjectsAndConflictingRoots(t *testing.T) 
 			TargetFiles: []uri.URI{invalidConfigTarget},
 		},
 		{
-			ConfigURI:   uri.File("/workspace/service.json"),
-			RootURI:     validRoot,
-			TargetFiles: []uri.URI{validTarget},
-			Config:      options.Patch{IncludePaths: &[]string{"/first/includes"}},
+			ConfigURI:    uri.File("/workspace/service.json"),
+			RootURI:      validRoot,
+			TargetFiles:  []uri.URI{validTarget},
+			IncludePaths: []string{"/first/includes"},
 		},
 		{
-			ConfigURI:   uri.File("/workspace/conflicting.json"),
-			RootURI:     validRoot,
-			TargetFiles: []uri.URI{conflictingTarget},
-			Config:      options.Patch{IncludePaths: &[]string{"/second/includes"}},
+			ConfigURI:    uri.File("/workspace/conflicting.json"),
+			RootURI:      validRoot,
+			TargetFiles:  []uri.URI{conflictingTarget},
+			IncludePaths: []string{"/second/includes"},
 		},
 	}})
 
@@ -537,7 +537,7 @@ func TestCustomNonTargetHandling(t *testing.T) {
 			Options{ConfigSource: options.PinnedSource(nil)})
 		initCustomFolders(t, srv, []uri.URI{root})
 		installSnapshot(t, srv, root, WorkspaceSnapshot{Projects: []Project{{
-			ConfigURI:   uri.File("/workspace/project/tbuild.yaml"),
+			ConfigURI:   uri.File("/workspace/project/project.json"),
 			RootURI:     root,
 			TargetFiles: []uri.URI{target},
 		}}})
@@ -596,7 +596,7 @@ func TestCustomNonTargetHandling(t *testing.T) {
 			Options{ConfigSource: options.PinnedSource(nil)})
 		initCustomFolders(t, srv, []uri.URI{root})
 		installSnapshot(t, srv, root, WorkspaceSnapshot{Projects: []Project{{
-			ConfigURI:   uri.File("/workspace/project/tbuild.yaml"),
+			ConfigURI:   uri.File("/workspace/project/project.json"),
 			RootURI:     root,
 			TargetFiles: []uri.URI{target},
 		}}})
@@ -637,7 +637,7 @@ func TestCustomWatchedFilesDoNotReadUnownedEvents(t *testing.T) {
 	_, err := srv.Initialize(t.Context(), testInitializeParams([]protocol.WorkspaceFolder{{URI: root}}))
 	require.NoError(t, err)
 	installSnapshot(t, srv, root, WorkspaceSnapshot{Projects: []Project{{
-		ConfigURI:   uri.File("/workspace/project/tbuild.yaml"),
+		ConfigURI:   uri.File("/workspace/project/project.json"),
 		RootURI:     root,
 		TargetFiles: []uri.URI{target},
 	}}})

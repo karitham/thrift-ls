@@ -31,6 +31,17 @@ func (m *memFS) ReadFile(_ context.Context, u uri.URI) (FileHandle, error) {
 	return &DiskFile{uri: u, content: content}, nil
 }
 
+// Exists reports whether path is a seeded file, without reading content.
+func (m *memFS) Exists(ctx context.Context, path string) bool {
+	if err := ctx.Err(); err != nil {
+		return false
+	}
+
+	_, ok := m.files[uri.File(path)]
+
+	return ok
+}
+
 // WalkFiles calls fn for every seeded file under root, in lexical order.
 func (m *memFS) WalkFiles(_ context.Context, root uri.URI, fn func(uri.URI) error) error {
 	rootPath := filepath.Clean(root.Path())

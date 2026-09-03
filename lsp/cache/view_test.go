@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
@@ -21,7 +22,7 @@ const (
 
 // resolveTestInclude resolves an include path relative to the including
 // file's directory, mirroring the snapshot resolver's relative fallback.
-func resolveTestInclude(cur uri.URI, includePath string) uri.URI {
+func resolveTestInclude(_ context.Context, cur uri.URI, includePath string) uri.URI {
 	return uri.File(filepath.Join(filepath.Dir(cur.Path()), includePath))
 }
 
@@ -36,7 +37,7 @@ func seedEdges(t *testing.T, v *View, edges map[string][]string) {
 			inc = append(inc, &syntax.Include{Path: &syntax.Token{Text: includePath}})
 		}
 
-		v.setEntry(uri.URI(file), &viewEntry{}, resolveIncludes(uri.URI(file), inc, resolveTestInclude))
+		v.setEntry(uri.URI(file), &viewEntry{}, resolveIncludes(t.Context(), uri.URI(file), inc, resolveTestInclude))
 	}
 }
 

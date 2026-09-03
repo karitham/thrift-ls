@@ -131,7 +131,7 @@ func (v *View) Parse(ctx context.Context, u uri.URI) (*ParsedFile, error) {
 
 	var includes []uri.URI
 	if pf.AST() != nil {
-		includes = resolveIncludes(u, pf.AST().Includes(), v.Resolver().ResolveInclude)
+		includes = resolveIncludes(ctx, u, pf.AST().Includes(), v.Resolver().ResolveInclude)
 	}
 
 	v.mu.Lock()
@@ -439,7 +439,7 @@ func (v *View) affected(uris []uri.URI) []uri.URI {
 
 // resolveIncludes dedupes include statements by path text (first wins) and
 // resolves each to a URI, sorted ascending.
-func resolveIncludes(file uri.URI, includes []*syntax.Include, resolve func(uri.URI, string) uri.URI) []uri.URI {
+func resolveIncludes(ctx context.Context, file uri.URI, includes []*syntax.Include, resolve func(context.Context, uri.URI, string) uri.URI) []uri.URI {
 	seen := make(map[string]struct{}, len(includes))
 	uris := make([]uri.URI, 0, len(includes))
 
@@ -455,7 +455,7 @@ func resolveIncludes(file uri.URI, includes []*syntax.Include, resolve func(uri.
 
 		seen[text] = struct{}{}
 
-		uris = append(uris, resolve(file, text))
+		uris = append(uris, resolve(ctx, file, text))
 	}
 
 	slices.Sort(uris)

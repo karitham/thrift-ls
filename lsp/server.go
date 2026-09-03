@@ -213,24 +213,22 @@ func (s *Server) viewConfig(folder uri.URI) options.Patch {
 	return s.cli.Apply(patch.Apply(s.defaults))
 }
 
-// projectViewConfig resolves the config for a loader-discovered project.
-// Format, lint and friends layer as defaults + document + Project.Config +
-// CLI, so flags keep working over build-system settings. Include paths are
-// the exception: a Project.Config that sets them is authoritative over the
-// file document and CLI, because the build system owns resolution and a
-// stray -I must not break it. A project without opinions (empty Config)
-// falls back to the file document, preserving thrift-ls.json behavior.
+// projectViewConfig resolves the config for a loader-discovered project:
+// defaults + ConfigSource document + CLI. Format and lint never come from
+// the loader; include paths do. A non-empty Project.IncludePaths is
+// authoritative over the file document and CLI, because the build system
+// owns resolution and a stray -I must not break it. An empty list falls
+// back to the file document, preserving thrift-ls.json behavior.
 func (s *Server) projectViewConfig(project Project) options.Patch {
 	filePatch := s.loadFilePatch(project.RootURI)
 	merged := s.defaults
 	if filePatch != nil {
 		merged = filePatch.Apply(merged)
 	}
-	merged = project.Config.Apply(merged)
 	merged = s.cli.Apply(merged)
 
-	if project.Config.IncludePaths != nil {
-		merged.IncludePaths = project.Config.IncludePaths
+	if len(project.IncludePaths) > 0 {
+		merged.IncludePaths = &project.IncludePaths
 	}
 
 	return merged

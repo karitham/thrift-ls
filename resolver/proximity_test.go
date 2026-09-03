@@ -2,30 +2,21 @@ package resolver
 
 import (
 	"testing"
+
+	"github.com/karitham/thrift-ls/resolver/resolvertest"
 )
 
-// The fixtures give two dungeon kitchens the same relative layout: the
+// dungeonFiles gives two dungeon kitchens the same relative layout: the
 // same include path exists under several include paths, so search order
 // decides which file wins. The far kitchen (laios) comes first in the
 // include paths.
-func dungeonFS(t *testing.T) map[string][]byte {
-	t.Helper()
-
-	files := []string{
-		"/dungeon/senshi/kitchen/recipes/hotpot.thrift",
-		"/dungeon/senshi/kitchen/dishes.thrift",
-		"/dungeon/senshi/pantry/hotpot.thrift",
-		"/dungeon/laios/kitchen/recipes/hotpot.thrift",
-		"/dungeon/laios/kitchen/dishes.thrift",
-		"/dungeon/laios/pantry/hotpot.thrift",
-	}
-
-	m := make(map[string][]byte, len(files))
-	for _, f := range files {
-		m[f] = []byte("struct Monster {}")
-	}
-
-	return m
+var dungeonFiles = []string{
+	"/dungeon/senshi/kitchen/recipes/hotpot.thrift",
+	"/dungeon/senshi/kitchen/dishes.thrift",
+	"/dungeon/senshi/pantry/hotpot.thrift",
+	"/dungeon/laios/kitchen/recipes/hotpot.thrift",
+	"/dungeon/laios/kitchen/dishes.thrift",
+	"/dungeon/laios/pantry/hotpot.thrift",
 }
 
 func dungeonIncludePaths() []string {
@@ -38,9 +29,9 @@ func dungeonIncludePaths() []string {
 }
 
 func TestCandidatesNearestIncludePathWins(t *testing.T) {
-	r := NewWithFS(dungeonIncludePaths(), absMapFS(dungeonFS(t)))
+	r := New(dungeonIncludePaths(), WithFS(resolvertest.Seed(dungeonFiles...)))
 
-	got := r.Candidates("/dungeon/senshi/kitchen/recipes/stew.thrift", "recipes/hotpot.thrift")
+	got := r.Candidates(t.Context(), "/dungeon/senshi/kitchen/recipes/stew.thrift", "recipes/hotpot.thrift")
 	want := []string{
 		"/dungeon/senshi/kitchen/recipes/hotpot.thrift",
 		"/dungeon/laios/kitchen/recipes/hotpot.thrift",
@@ -58,9 +49,9 @@ func TestCandidatesNearestIncludePathWins(t *testing.T) {
 }
 
 func TestCandidatesOrderedNearestFirst(t *testing.T) {
-	r := NewWithFS(dungeonIncludePaths(), absMapFS(dungeonFS(t)))
+	r := New(dungeonIncludePaths(), WithFS(resolvertest.Seed(dungeonFiles...)))
 
-	got := r.Candidates("/dungeon/senshi/kitchen/recipes/stew.thrift", "dishes.thrift")
+	got := r.Candidates(t.Context(), "/dungeon/senshi/kitchen/recipes/stew.thrift", "dishes.thrift")
 	want := []string{
 		"/dungeon/senshi/kitchen/dishes.thrift",
 		"/dungeon/laios/kitchen/dishes.thrift",
@@ -80,9 +71,9 @@ func TestCandidatesOrderedNearestFirst(t *testing.T) {
 func TestCandidatesTiesKeepConfigOrder(t *testing.T) {
 	// From a sibling floor, every root ties on shared prefix, so the
 	// include path order decides.
-	r := NewWithFS(dungeonIncludePaths(), absMapFS(dungeonFS(t)))
+	r := New(dungeonIncludePaths(), WithFS(resolvertest.Seed(dungeonFiles...)))
 
-	got := r.Candidates("/dungeon/floor4/main.thrift", "hotpot.thrift")
+	got := r.Candidates(t.Context(), "/dungeon/floor4/main.thrift", "hotpot.thrift")
 	want := []string{
 		"/dungeon/laios/pantry/hotpot.thrift",
 		"/dungeon/senshi/pantry/hotpot.thrift",
@@ -100,19 +91,19 @@ func TestCandidatesTiesKeepConfigOrder(t *testing.T) {
 }
 
 func TestResolveUsesNearestCandidate(t *testing.T) {
-	r := NewWithFS(dungeonIncludePaths(), absMapFS(dungeonFS(t)))
+	r := New(dungeonIncludePaths(), WithFS(resolvertest.Seed(dungeonFiles...)))
 
-	got := r.Resolve("/dungeon/senshi/kitchen/recipes/stew.thrift", "dishes.thrift")
+	got := r.Resolve(t.Context(), "/dungeon/senshi/kitchen/recipes/stew.thrift", "dishes.thrift")
 	if want := "/dungeon/senshi/kitchen/dishes.thrift"; got != want {
 		t.Errorf("Resolve = %q, want %q", got, want)
 	}
 }
 
 func TestResolveFallsBackToFileDir(t *testing.T) {
-	r := NewWithFS(dungeonIncludePaths(), absMapFS(dungeonFS(t)))
+	r := New(dungeonIncludePaths(), WithFS(resolvertest.Seed(dungeonFiles...)))
 
 	cur := "/dungeon/senshi/kitchen/recipes/stew.thrift"
-	got := r.Resolve(cur, "missing.thrift")
+	got := r.Resolve(t.Context(), cur, "missing.thrift")
 	if want := "/dungeon/senshi/kitchen/recipes/missing.thrift"; got != want {
 		t.Errorf("Resolve = %q, want %q", got, want)
 	}
@@ -139,15 +130,15 @@ func TestSortByProximityKeepsInputOrder(t *testing.T) {
 // depth. The senshi root shares more components with the file's directory
 // and wins, though the config lists laios first.
 func TestCandidatesParentRootOutranksFarRoot(t *testing.T) {
-	r := NewWithFS([]string{
+	r := New([]string{
 		"/dungeon/laios/recipes", // farther
 		"/dungeon/senshi/recipes",
-	}, absMapFS(map[string][]byte{
-		"/dungeon/laios/recipes/stew.thrift":  []byte("struct Monster {}"),
-		"/dungeon/senshi/recipes/stew.thrift": []byte("struct Monster {}"),
-	}))
+	}, WithFS(resolvertest.Seed(
+		"/dungeon/laios/recipes/stew.thrift",
+		"/dungeon/senshi/recipes/stew.thrift",
+	)))
 
-	got := r.Resolve("/dungeon/senshi/recipes/chapter2/stew.thrift", "stew.thrift")
+	got := r.Resolve(t.Context(), "/dungeon/senshi/recipes/chapter2/stew.thrift", "stew.thrift")
 	if want := "/dungeon/senshi/recipes/stew.thrift"; got != want {
 		t.Errorf("Resolve = %q, want %q", got, want)
 	}
@@ -157,15 +148,15 @@ func TestCandidatesParentRootOutranksFarRoot(t *testing.T) {
 // first (3 shared components vs 2), filepath.Rel depth ranks the laios
 // root first. Shared prefix wins.
 func TestCandidatesSharedPrefixNotRelDepth(t *testing.T) {
-	r := NewWithFS([]string{
+	r := New([]string{
 		"/dungeon/laios", // shallower by filepath.Rel
 		"/dungeon/senshi/kitchen2/monsters/beasts",
-	}, absMapFS(map[string][]byte{
-		"/dungeon/laios/stew.thrift":                           []byte("struct Monster {}"),
-		"/dungeon/senshi/kitchen2/monsters/beasts/stew.thrift": []byte("struct Monster {}"),
-	}))
+	}, WithFS(resolvertest.Seed(
+		"/dungeon/laios/stew.thrift",
+		"/dungeon/senshi/kitchen2/monsters/beasts/stew.thrift",
+	)))
 
-	got := r.Resolve("/dungeon/senshi/kitchen/stew.thrift", "stew.thrift")
+	got := r.Resolve(t.Context(), "/dungeon/senshi/kitchen/stew.thrift", "stew.thrift")
 	if want := "/dungeon/senshi/kitchen2/monsters/beasts/stew.thrift"; got != want {
 		t.Errorf("Resolve = %q, want %q", got, want)
 	}

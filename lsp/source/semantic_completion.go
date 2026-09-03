@@ -21,7 +21,7 @@ func typeCandidates(ctx context.Context, view *cache.View, file uri.URI, c Conte
 	if i := strings.LastIndexByte(c.Prefix, '.'); i >= 0 {
 		includeName := c.Prefix[:i]
 
-		incURI := view.Resolver().GetIncludeURI(file, c.Doc, includeName)
+		incURI := view.Resolver().GetIncludeURI(ctx, file, c.Doc, includeName)
 		if incURI == "" {
 			return nil
 		}

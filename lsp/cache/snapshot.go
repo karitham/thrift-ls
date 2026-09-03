@@ -1,13 +1,10 @@
 package cache
 
 import (
-	"bytes"
 	"context"
-	"io/fs"
 	"log/slog"
 	"slices"
 	"strings"
-	"time"
 
 	"go.lsp.dev/uri"
 
@@ -22,12 +19,38 @@ type Resolver struct {
 }
 
 // newResolver builds a Resolver resolving against src: open files by their
-// overlay content, the rest through the memoized disk source.
+// overlay presence, the rest through cheap existence checks. No content is
+// read to test existence.
 func newResolver(includePaths []string, src FileSource) *Resolver {
 	return &Resolver{
 		includePaths: includePaths,
-		central:      resolver.NewWithFS(includePaths, viewFS{fs: src}),
+		central:      resolver.New(includePaths, resolver.WithChecker(fileChecker{src: src})),
 	}
+}
+
+// fileChecker translates the resolver's string paths to URIs at the cache
+// boundary. Known sources answer cheaply; unknown ones fall back to a read.
+type fileChecker struct {
+	src FileSource
+}
+
+func (c fileChecker) Exists(ctx context.Context, path string) bool {
+	if err := ctx.Err(); err != nil {
+		return false
+	}
+
+	if ex, ok := c.src.(Checker); ok {
+		return ex.Exists(ctx, path)
+	}
+
+	fh, err := c.src.ReadFile(ctx, uri.File(path))
+	if err != nil {
+		return false
+	}
+
+	_, err = fh.Content()
+
+	return err == nil
 }
 
 // IncludePaths returns the include paths configured for this resolver.
@@ -37,11 +60,11 @@ func (r *Resolver) IncludePaths() []string {
 
 // ResolveInclude resolves an include path to a file URI.
 // It first tries relative to the current file, then tries each include path.
-func (r *Resolver) ResolveInclude(cur uri.URI, includePath string) uri.URI {
+func (r *Resolver) ResolveInclude(ctx context.Context, cur uri.URI, includePath string) uri.URI {
 	// FsPath, not Path: Path keeps the leading slash before a Windows drive
 	// letter ("/c:/dir/x.thrift"), which breaks the resolver's filepath ops.
 	filePath := cur.FsPath()
-	resolvedPath := r.central.Resolve(filePath, includePath)
+	resolvedPath := r.central.Resolve(ctx, filePath, includePath)
 
 	slog.Debug("include resolved", "file", filePath, "include", includePath, "resolved", resolvedPath)
 
@@ -51,15 +74,15 @@ func (r *Resolver) ResolveInclude(cur uri.URI, includePath string) uri.URI {
 // ResolveIncludeCandidates returns the existing locations of includePath
 // for cur, nearest first. More than one location means the include path is
 // shadowed by another include path.
-func (r *Resolver) ResolveIncludeCandidates(cur uri.URI, includePath string) []uri.URI {
+func (r *Resolver) ResolveIncludeCandidates(ctx context.Context, cur uri.URI, includePath string) []uri.URI {
 	filePath := cur.FsPath()
 
-	paths := r.central.Candidates(filePath, includePath)
+	paths := r.central.Candidates(ctx, filePath, includePath)
 	slog.Debug("include candidates", "file", filePath, "include", includePath, "paths", paths)
 
-	uris := make([]uri.URI, 0, len(paths))
-	for _, p := range paths {
-		uris = append(uris, uri.File(p))
+	uris := make([]uri.URI, len(paths))
+	for i, p := range paths {
+		uris[i] = uri.File(p)
 	}
 
 	return uris
@@ -86,13 +109,13 @@ func (r *Resolver) GetIncludePath(ast *syntax.Document, includeName string) stri
 
 // GetIncludeURI returns the URI for an included file by include name.
 // Returns empty URI if not found.
-func (r *Resolver) GetIncludeURI(cur uri.URI, ast *syntax.Document, includeName string) uri.URI {
+func (r *Resolver) GetIncludeURI(ctx context.Context, cur uri.URI, ast *syntax.Document, includeName string) uri.URI {
 	path := r.GetIncludePath(ast, includeName)
 	if path == "" {
 		return ""
 	}
 
-	return r.ResolveInclude(cur, path)
+	return r.ResolveInclude(ctx, cur, path)
 }
 
 // getIncludeNameFromPath extracts the include name from a path like "base.thrift"
@@ -102,65 +125,6 @@ func getIncludeNameFromPath(path string) string {
 
 	return strings.TrimSuffix(name, ".thrift")
 }
-
-// viewFS adapts a FileSource to fs.FS for include resolution: files open in
-// the editor resolve by their overlay content, everything else falls
-// through to the memoized disk source. This lets includes resolve for files
-// that are open but not yet saved.
-type viewFS struct {
-	fs FileSource
-}
-
-func (f viewFS) Stat(name string) (fs.FileInfo, error) {
-	content, err := readThrough(name, f.fs)
-	if err != nil {
-		return nil, err
-	}
-
-	return viewFileInfo{name: name, size: int64(len(content))}, nil
-}
-
-func (f viewFS) Open(name string) (fs.File, error) {
-	content, err := readThrough(name, f.fs)
-	if err != nil {
-		return nil, err
-	}
-
-	info := viewFileInfo{name: name, size: int64(len(content))}
-
-	return &viewFile{Reader: bytes.NewReader(content), info: info}, nil
-}
-
-// readThrough reads name as an absolute OS path through src, surfacing
-// read failures (missing files report their error via Content).
-func readThrough(name string, src FileSource) ([]byte, error) {
-	fh, err := src.ReadFile(context.Background(), uri.File(name))
-	if err != nil {
-		return nil, err
-	}
-
-	return fh.Content()
-}
-
-type viewFileInfo struct {
-	name string
-	size int64
-}
-
-func (i viewFileInfo) Name() string       { return i.name }
-func (i viewFileInfo) Size() int64        { return i.size }
-func (i viewFileInfo) Mode() fs.FileMode  { return 0o644 }
-func (i viewFileInfo) ModTime() time.Time { return time.Time{} }
-func (i viewFileInfo) IsDir() bool        { return false }
-func (i viewFileInfo) Sys() any           { return nil }
-
-type viewFile struct {
-	*bytes.Reader
-	info fs.FileInfo
-}
-
-func (f *viewFile) Stat() (fs.FileInfo, error) { return f.info, nil }
-func (f *viewFile) Close() error               { return nil }
 
 func BuildViewForTest(files []*FileChange) *View {
 	return BuildViewForTestWithPaths(nil, files)

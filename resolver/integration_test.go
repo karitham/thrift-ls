@@ -64,7 +64,7 @@ struct User {
 	r := New([]string{includeDir})
 
 	// Resolve middle.thrift from main.thrift's perspective
-	filename := r.Resolve(mainFile, "middle.thrift")
+	filename := r.Resolve(t.Context(), mainFile, "middle.thrift")
 	if filename != middleFile {
 		t.Errorf("expected %q, got %q", middleFile, filename)
 	}
@@ -92,7 +92,7 @@ struct User {
 	}
 
 	// Resolve base.thrift from middle.thrift's perspective
-	filename2 := r.Resolve(middleFile, strings.Trim(includePath, "\"'"))
+	filename2 := r.Resolve(t.Context(), middleFile, strings.Trim(includePath, "\"'"))
 	if filename2 != baseFile {
 		t.Errorf("expected %q, got %q", baseFile, filename2)
 	}
@@ -207,7 +207,7 @@ struct A {
 			t.Fatalf("%s: expected one include, got %v", chain[i], includes)
 		}
 
-		next := r.Resolve(chain[i], includes[0])
+		next := r.Resolve(t.Context(), chain[i], includes[0])
 		if next != chain[i+1] {
 			t.Errorf("expected %q, got %q", chain[i+1], next)
 		}

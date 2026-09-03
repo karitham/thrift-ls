@@ -238,7 +238,7 @@ func searchDefRefs(ctx context.Context, ix *sema.Index, view *cache.View, file u
 
 			resolver := view.Resolver()
 			if path := resolver.GetIncludePath(pf.AST(), include); path != "" {
-				file = resolver.ResolveInclude(file, path)
+				file = resolver.ResolveInclude(ctx, file, path)
 			}
 		} else {
 			svcName = fmt.Sprintf("%s.%s", sema.IncludeNameOf(file), svcName)

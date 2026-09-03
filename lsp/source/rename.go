@@ -79,7 +79,7 @@ func Rename(ctx context.Context, view *cache.View, file uri.URI, pos protocol.Po
 
 			resolver := view.Resolver()
 			if path := resolver.GetIncludePath(pf.AST(), include); path != "" {
-				file = resolver.ResolveInclude(file, path)
+				file = resolver.ResolveInclude(ctx, file, path)
 			}
 		}
 

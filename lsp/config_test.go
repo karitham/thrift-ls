@@ -12,6 +12,7 @@ import (
 
 	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/options"
+	"github.com/karitham/thrift-ls/resolver/resolvertest"
 )
 
 // Probe: printWidth 80 keeps the long struct on one line, 30 breaks it.
@@ -177,27 +178,25 @@ func TestConfigDiscoveryAppliesConfiguredDefaults(t *testing.T) {
 	}
 }
 
-// TestProjectConfigLayering pins the loader-project precedence: the
-// project's format settings beat the file document, CLI flags beat the
-// project, and project include paths stay authoritative throughout.
+// TestProjectConfigLayering pins the loader-project precedence: the loader
+// carries include paths only — formatting comes from the file document and
+// CLI. Project include paths stay authoritative over both.
 func TestProjectConfigLayering(t *testing.T) {
 	for _, tt := range []struct {
 		name      string
 		file      int
-		project   int
 		cli       int
 		wantWidth int
 		wantText  string
 	}{
-		{name: "project beats file", file: 100, project: 30, wantWidth: 30, wantText: probeBroken},
-		{name: "cli beats project", file: 100, project: 30, cli: 100, wantWidth: 100, wantText: probeOneLine},
+		{name: "file sets format, project sets includes", file: 30, wantWidth: 30, wantText: probeBroken},
+		{name: "cli beats file", file: 30, cli: 100, wantWidth: 100, wantText: probeOneLine},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			root := uri.File("/workspace/proj")
 			target := uri.File("/workspace/proj/api.thrift")
-			fileWidth, projectWidth := tt.file, tt.project
+			fileWidth := tt.file
 			fileDoc := &options.Patch{FormatPatch: formatter.FormatPatch{PrintWidth: &fileWidth}}
-			projectCfg := options.Patch{FormatPatch: formatter.FormatPatch{PrintWidth: &projectWidth}}
 			var cliPatch options.Patch
 			if tt.cli > 0 {
 				cliWidth := tt.cli
@@ -206,7 +205,6 @@ func TestProjectConfigLayering(t *testing.T) {
 			projectIncludes := []string{"/build/includes"}
 			fileDoc.IncludePaths = &[]string{"/file/includes"}
 			cliPatch.IncludePaths = &[]string{"/cli/includes"}
-			projectCfg.IncludePaths = &projectIncludes
 
 			srv := newSyncServerWithOptions(nil,
 				seedFiles(map[string]string{"/workspace/proj/api.thrift": "struct API {}"}),
@@ -216,10 +214,10 @@ func TestProjectConfigLayering(t *testing.T) {
 				})
 			initCustomFolders(t, srv, []uri.URI{uri.File("/workspace")})
 			installSnapshot(t, srv, uri.File("/workspace"), WorkspaceSnapshot{Projects: []Project{{
-				ConfigURI:   uri.File("/workspace/proj.json"),
-				RootURI:     root,
-				TargetFiles: []uri.URI{target},
-				Config:      projectCfg,
+				ConfigURI:    uri.File("/workspace/proj.json"),
+				RootURI:      root,
+				TargetFiles:  []uri.URI{target},
+				IncludePaths: projectIncludes,
 			}}})
 
 			cfg := srv.folderConfig(root)
@@ -246,7 +244,7 @@ func TestWorkspaceLoaderUsesConfigSourcePerProjectRoot(t *testing.T) {
 		patches[root] = &options.Patch{FormatPatch: formatter.FormatPatch{PrintWidth: &width}}
 		entries[root+"/api.thrift"] = "struct API {}"
 		projects[i] = Project{
-			ConfigURI:   uri.File(root + "/tbuild.yaml"),
+			ConfigURI:   uri.File(root + "/project.json"),
 			RootURI:     uri.File(root),
 			TargetFiles: []uri.URI{uri.File(root + "/api.thrift")},
 		}
@@ -284,7 +282,7 @@ func TestPinnedSourceBypassesDiscovery(t *testing.T) {
 		Options{ConfigSource: options.PinnedSource(&pinned)})
 	initCustomFolders(t, srv, []uri.URI{uri.File("/workspace")})
 	installSnapshot(t, srv, uri.File("/workspace"), WorkspaceSnapshot{Projects: []Project{{
-		ConfigURI:   uri.File("/workspace/project/tbuild.yaml"),
+		ConfigURI:   uri.File("/workspace/project/project.json"),
 		RootURI:     root,
 		TargetFiles: []uri.URI{target},
 	}}})
@@ -300,10 +298,10 @@ func TestPinnedSourceBypassesDiscovery(t *testing.T) {
 func TestConfigFileIncludePaths(t *testing.T) {
 	t.Setenv("THRIFT_LS_CONFIG", "")
 
-	files := seedFiles(map[string]string{
-		"/ws/proj/thrift-ls.json":     `{"includePaths": ["base"]}`,
-		"/ws/proj/base/shared.thrift": "struct Shared {}",
-	})
+	files := resolvertest.Map{
+		"/ws/proj/thrift-ls.json":     []byte(`{"includePaths": ["base"]}`),
+		"/ws/proj/base/shared.thrift": []byte("struct Shared {}"),
+	}.URIs()
 
 	srv := newSyncServerWithOptions(nil, files, Options{})
 	initWorkspace(t, srv, []uri.URI{uri.File("/ws/proj")}, nil)
@@ -314,7 +312,7 @@ func TestConfigFileIncludePaths(t *testing.T) {
 
 	assert.Equal(t, []string{"/ws/proj/base"}, view.Resolver().IncludePaths())
 
-	resolved := view.Resolver().ResolveInclude(app, "shared.thrift")
+	resolved := view.Resolver().ResolveInclude(t.Context(), app, "shared.thrift")
 	assert.Equal(t, uri.File("/ws/proj/base/shared.thrift"), resolved)
 }
 
@@ -344,16 +342,16 @@ func TestCustomProjectIncludePathsAreAuthoritative(t *testing.T) {
 	require.NoError(t, err)
 
 	installSnapshot(t, srv, uri.File("/ws"), WorkspaceSnapshot{Projects: []Project{{
-		ConfigURI:   uri.File("/ws/project/tbuild.yaml"),
-		RootURI:     root,
-		TargetFiles: []uri.URI{target},
-		Config:      options.Patch{IncludePaths: &[]string{projectIncludes}},
+		ConfigURI:    uri.File("/ws/project/project.json"),
+		RootURI:      root,
+		TargetFiles:  []uri.URI{target},
+		IncludePaths: []string{projectIncludes},
 	}}})
 
 	view, err := srv.session.ViewOf(target)
 	require.NoError(t, err)
 	assert.Equal(t, []string{projectIncludes}, view.Resolver().IncludePaths())
-	assert.Equal(t, uri.File("/ws/project-includes/shared.thrift"), view.Resolver().ResolveInclude(target, "shared.thrift"))
+	assert.Equal(t, uri.File("/ws/project-includes/shared.thrift"), view.Resolver().ResolveInclude(t.Context(), target, "shared.thrift"))
 
 	_ = context.Background
 }

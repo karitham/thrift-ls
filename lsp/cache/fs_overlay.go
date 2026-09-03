@@ -37,6 +37,38 @@ func (fs *overlayFS) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, err
 	return fs.delegate.ReadFile(ctx, uri)
 }
 
+// Exists reports whether path names an open overlay or an existing delegate
+// file, without reading content. Open files count even when the disk copy
+// is missing, so includes resolve for unsaved buffers.
+func (fs *overlayFS) Exists(ctx context.Context, path string) bool {
+	if err := ctx.Err(); err != nil {
+		return false
+	}
+
+	u := uri.File(path)
+
+	fs.mu.Lock()
+	_, ok := fs.overlays[u]
+	fs.mu.Unlock()
+
+	if ok {
+		return true
+	}
+
+	if ex, ok := fs.delegate.(Checker); ok {
+		return ex.Exists(ctx, path)
+	}
+
+	fh, err := fs.delegate.ReadFile(ctx, u)
+	if err != nil {
+		return false
+	}
+
+	_, err = fh.Content()
+
+	return err == nil
+}
+
 // WalkFiles enumerates the delegate's tree, not the overlay: the walk
 // discovers files on the underlying source, while open files are already
 // known to the session via their didOpen.

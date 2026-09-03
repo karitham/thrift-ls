@@ -41,6 +41,22 @@ func (h *DiskFile) URI() uri.URI { return h.uri }
 func (h *DiskFile) Version() int32           { return 0 }
 func (h *DiskFile) Content() ([]byte, error) { return h.content, h.err }
 
+// Exists reports whether path names an existing regular file, without
+// reading content. It stats only, so include probing never pulls file
+// bodies into memory.
+func (m *memoizedFS) Exists(ctx context.Context, path string) bool {
+	if err := ctx.Err(); err != nil {
+		return false
+	}
+
+	st, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+
+	return !st.IsDir()
+}
+
 // WalkFiles calls fn for every file under root in lexical order. Entries
 // that fail to stat are skipped: one unreadable or deleted file must not
 // kill the walk.

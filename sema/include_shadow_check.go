@@ -28,7 +28,7 @@ func (c *IncludeShadowCheck) AnalyzeFile(ctx context.Context, f File) ([]Diagnos
 			continue
 		}
 
-		candidates := resolver.ResolveIncludeCandidates(f.URI, path)
+		candidates := resolver.ResolveIncludeCandidates(ctx, f.URI, path)
 		if len(candidates) < 2 {
 			continue
 		}

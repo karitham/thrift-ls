@@ -38,7 +38,7 @@ func RenameFileEdits(ctx context.Context, view *cache.View, oldURI, newURI uri.U
 				continue
 			}
 
-			if resolver.ResolveInclude(f, inc.PathText()) != oldURI {
+			if resolver.ResolveInclude(ctx, f, inc.PathText()) != oldURI {
 				continue
 			}
 

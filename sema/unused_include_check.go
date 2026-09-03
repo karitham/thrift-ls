@@ -100,7 +100,7 @@ func usedIncludes(ctx context.Context, f File, pf *cache.ParsedFile) map[*syntax
 
 	for _, inc := range pf.AST().Includes() {
 		if p := inc.PathText(); p != "" {
-			includeByFile[resolver.ResolveInclude(f.URI, p)] = inc
+			includeByFile[resolver.ResolveInclude(ctx, f.URI, p)] = inc
 		}
 	}
 

@@ -10,14 +10,16 @@ import (
 //
 //	defaults (options.Default)
 //	+ Frontend.Defaults (per-installation or build-system defaults)
-//	+ Project.Config, or the ConfigSource document for the project root
+//	+ the ConfigSource document for the project root
 //	  (thrift-ls.json via lsp.FileConfigSource, or a build-system patch)
 //	+ CLI overlay (--config pinning is a ConfigSource, -I/--printWidth are CLI)
 //	+ LSP workspace settings (initializationOptions, didChangeConfiguration)
 //
-// Exception: include paths from a loader Project.Config are authoritative
+// Exception: a non-empty Project.IncludePaths from a loader is authoritative
 // over the file document and CLI, because the build system owns resolution
 // and a stray -I must not break it. All other keys follow the order above.
+// The loader never carries formatting or lint: those come from the document
+// and CLI layers only.
 
 // ConfigSource resolves the config document for a project root directory.
 // It returns the patch plus its origin, so build-system frontends can serve

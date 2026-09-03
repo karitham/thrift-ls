@@ -1,15 +1,12 @@
 package resolver
 
 import (
-	"bytes"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
-	"testing/fstest"
-	"time"
 
 	"github.com/karitham/thrift-ls/options"
+	"github.com/karitham/thrift-ls/resolver/resolvertest"
 )
 
 // TestConfigRelativeIncludePaths verifies that include paths in a config are
@@ -37,56 +34,27 @@ func TestConfigRelativeIncludePaths(t *testing.T) {
 		t.Errorf("includePaths[0] = %q, want %q", got, want)
 	}
 
-	// Resolution works from any CWD, against a hermetic in-memory fs. The
-	// config-relative include path is absolute, so the map keys are too
-	// (fstest.MapFS only supports relative keys).
+	// Resolution works from any CWD against an in-memory tree. The
+	// config-relative include path is absolute, so the seed keys are too.
 	baseFile := filepath.Join(dir, "project", "base", "types.thrift")
-	fsys := absMapFS{baseFile: []byte("struct T {}")}
-	r := NewWithFS(*cfg.IncludePaths, fsys)
+	r := New(*cfg.IncludePaths, WithFS(resolvertest.Seed(baseFile)))
 
 	cur := filepath.Join(dir, "project", "app.thrift")
-	if got := r.Resolve(cur, "types.thrift"); got != baseFile {
+	if got := r.Resolve(t.Context(), cur, "types.thrift"); got != baseFile {
 		t.Errorf("Resolve = %q, want %q", got, baseFile)
 	}
 }
 
-// absMapFS is an in-memory fs.FS keyed by absolute paths, for hermetic tests
-// of absolute include-path resolution.
-type absMapFS map[string][]byte
+// TestWithFSStripsAbsolutePrefix verifies relative-keyed trees (os.DirFS,
+// fstest.MapFS) resolve absolute candidates: the lookup retries without
+// the leading slash.
+func TestWithFSStripsAbsolutePrefix(t *testing.T) {
+	r := New([]string{"/base"}, WithFS(resolvertest.Seed("base/shared.thrift")))
 
-func (m absMapFS) Stat(name string) (fs.FileInfo, error) {
-	if _, ok := m[name]; !ok {
-		return nil, &fs.PathError{Op: "stat", Path: name, Err: fs.ErrNotExist}
+	if got := r.Resolve(t.Context(), "/work/app.thrift", "shared.thrift"); got != "/base/shared.thrift" {
+		t.Errorf("Resolve = %q, want %q", got, "/base/shared.thrift")
 	}
-
-	return absMapFileInfo{name: name}, nil
 }
-
-func (m absMapFS) Open(name string) (fs.File, error) {
-	data, ok := m[name]
-	if !ok {
-		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
-	}
-
-	return &absMapFile{Reader: bytes.NewReader(data), info: absMapFileInfo{name: name}}, nil
-}
-
-type absMapFileInfo struct{ name string }
-
-func (absMapFileInfo) Name() string       { return "" }
-func (absMapFileInfo) Size() int64        { return 0 }
-func (absMapFileInfo) Mode() fs.FileMode  { return 0 }
-func (absMapFileInfo) ModTime() time.Time { return time.Time{} }
-func (absMapFileInfo) IsDir() bool        { return false }
-func (absMapFileInfo) Sys() any           { return nil }
-
-type absMapFile struct {
-	*bytes.Reader
-	info fs.FileInfo
-}
-
-func (f *absMapFile) Stat() (fs.FileInfo, error) { return f.info, nil }
-func (f *absMapFile) Close() error               { return nil }
 
 // TestConfigAbsoluteIncludePaths keeps absolute paths as-is.
 func TestConfigAbsoluteIncludePaths(t *testing.T) {
@@ -108,17 +76,16 @@ func TestConfigAbsoluteIncludePaths(t *testing.T) {
 	}
 }
 
-// TestResolveOrder verifies resolution order against a hermetic fs:
+// TestResolveOrder verifies resolution order against an in-memory tree:
 // relative to the current file first, then each include path.
 func TestResolveOrder(t *testing.T) {
-	fsys := fstest.MapFS{
-		"proj/service/types.thrift":      &fstest.MapFile{Data: []byte("local")},
-		"proj/base/types.thrift":         &fstest.MapFile{Data: []byte("base")},
-		"proj/base/other.thrift":         &fstest.MapFile{Data: []byte("base")},
-		"proj/vendor/types.thrift":       &fstest.MapFile{Data: []byte("vendor")},
-		"proj/vendor/deep/nested.thrift": &fstest.MapFile{Data: []byte("nested")},
-	}
-	r := NewWithFS([]string{"proj/base", "proj/vendor"}, fsys)
+	r := New([]string{"proj/base", "proj/vendor"}, WithFS(resolvertest.Seed(
+		"proj/service/types.thrift",
+		"proj/base/types.thrift",
+		"proj/base/other.thrift",
+		"proj/vendor/types.thrift",
+		"proj/vendor/deep/nested.thrift",
+	)))
 	cur := "proj/service/order.thrift"
 
 	tests := []struct {
@@ -133,7 +100,7 @@ func TestResolveOrder(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := r.Resolve(cur, tt.includePath); got != tt.want {
+			if got := r.Resolve(t.Context(), cur, tt.includePath); got != tt.want {
 				t.Errorf("Resolve(%q) = %q, want %q", tt.includePath, got, tt.want)
 			}
 		})

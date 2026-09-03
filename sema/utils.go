@@ -41,7 +41,7 @@ func definitionFiles(ctx context.Context, view *cache.View, file uri.URI, ast *s
 			return []uri.URI{file}
 		}
 
-		return []uri.URI{resolver.ResolveInclude(file, path)}
+		return []uri.URI{resolver.ResolveInclude(ctx, file, path)}
 	}
 
 	files := []uri.URI{file}
@@ -64,7 +64,7 @@ func definitionFiles(ctx context.Context, view *cache.View, file uri.URI, ast *s
 
 		for _, inc := range doc.Includes() {
 			if path := inc.PathText(); path != "" {
-				incFile := resolver.ResolveInclude(f, path)
+				incFile := resolver.ResolveInclude(ctx, f, path)
 				if seen[incFile] {
 					continue
 				}
