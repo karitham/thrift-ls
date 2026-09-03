@@ -17,7 +17,6 @@ import (
 	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 type Server struct {
@@ -84,7 +83,7 @@ type Server struct {
 func NewServer(client protocol.Client, opts Options) *Server {
 	fs := opts.Files
 	if fs == nil {
-		fs = vfs.NewMemoizedFS()
+		fs = store.NewDiskFS()
 	}
 	configSource := opts.ConfigSource
 	if configSource == nil {
@@ -553,7 +552,7 @@ func (s *Server) Implementation(ctx context.Context, params *protocol.Implementa
 }
 
 func (s *Server) OnTypeFormatting(ctx context.Context, params *protocol.DocumentOnTypeFormattingParams) (result []protocol.TextEdit, err error) {
-	return withFile(ctx, s.viewOf, params.TextDocument.URI, func(view *store.View, fh vfs.FileHandle) ([]protocol.TextEdit, error) {
+	return withFile(ctx, s.viewOf, params.TextDocument.URI, func(view *store.View, fh store.FileHandle) ([]protocol.TextEdit, error) {
 		return source.OnTypeFormat(ctx, view, fh, s.formatOptions(view), params.Position)
 	})
 }

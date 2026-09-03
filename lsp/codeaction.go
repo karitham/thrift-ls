@@ -9,7 +9,6 @@ import (
 
 	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // codeAction returns the code actions for the document: quickfixes for the
@@ -18,7 +17,7 @@ import (
 // fixes a reported diagnostic is also offered as a quickfix. Actions are
 // filtered to the kinds the client requested.
 func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionParams) ([]protocol.CommandOrCodeAction, error) {
-	return withFile(ctx, s.viewOf, params.TextDocument.URI, func(view *store.View, fh vfs.FileHandle) ([]protocol.CommandOrCodeAction, error) {
+	return withFile(ctx, s.viewOf, params.TextDocument.URI, func(view *store.View, fh store.FileHandle) ([]protocol.CommandOrCodeAction, error) {
 		pf, err := view.Parse(ctx, params.TextDocument.URI)
 		if err != nil {
 			return nil, err

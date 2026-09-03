@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/karitham/thrift-ls/vfs"
+	"github.com/karitham/thrift-ls/store"
 )
 
 // TestCompletionTypeSlotNoLeaks pins that type slots only suggest types:
@@ -40,8 +40,8 @@ struct Album {
 			content := "include \"songs.thrift\"\nstruct Club {\n\t" + tt.marker + "\n}"
 
 			view := buildSnapshot(t, nil,
-				&vfs.FileChange{URI: "file:///tmp/songs.thrift", Version: 0, Content: []byte(inc), From: vfs.FileChangeTypeDidOpen},
-				&vfs.FileChange{URI: "file:///tmp/club.thrift", Version: 0, Content: []byte(content), From: vfs.FileChangeTypeDidOpen},
+				&store.FileChange{URI: "file:///tmp/songs.thrift", Version: 0, Content: []byte(inc), From: store.FileChangeTypeDidOpen},
+				&store.FileChange{URI: "file:///tmp/club.thrift", Version: 0, Content: []byte(content), From: store.FileChangeTypeDidOpen},
 			)
 
 			pos := lspPosOf(t, content, tt.marker)
@@ -63,8 +63,8 @@ func TestCompletionImportedTypesQualified(t *testing.T) {
 	content := "include \"songs.thrift\"\nstruct Club {\n\t1: required so\n}"
 
 	view := buildSnapshot(t, nil,
-		&vfs.FileChange{URI: "file:///tmp/songs.thrift", Version: 0, Content: []byte("struct Album {\n\t1: required string title\n}\n"), From: vfs.FileChangeTypeDidOpen},
-		&vfs.FileChange{URI: "file:///tmp/club.thrift", Version: 0, Content: []byte(content), From: vfs.FileChangeTypeDidOpen},
+		&store.FileChange{URI: "file:///tmp/songs.thrift", Version: 0, Content: []byte("struct Album {\n\t1: required string title\n}\n"), From: store.FileChangeTypeDidOpen},
+		&store.FileChange{URI: "file:///tmp/club.thrift", Version: 0, Content: []byte(content), From: store.FileChangeTypeDidOpen},
 	)
 
 	pos := lspPosOf(t, content, "required so")

@@ -3,7 +3,7 @@ package lsp
 import (
 	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/sema"
-	"github.com/karitham/thrift-ls/vfs"
+	"github.com/karitham/thrift-ls/store"
 )
 
 // Layering, lowest to highest precedence:
@@ -40,12 +40,11 @@ type Analysis struct {
 
 // Options is the complete frontend bundle for one server process.
 // Files is the only filesystem seam: disk in production, in-memory in
-// tests, build-system backed internally. Nil Files means the memoized disk
-// source.
+// tests, build-system backed internally. Nil Files means the disk source.
 type Options struct {
-	// Files serves file content and directory walks. Nil uses the memoized
-	// disk source.
-	Files vfs.FileSource
+	// Files serves file content and directory walks. Nil uses the disk
+	// source.
+	Files store.FileSource
 	// Defaults sits directly above the builtin defaults. An empty patch
 	// uses the package defaults.
 	Defaults options.Patch

@@ -16,7 +16,6 @@ import (
 	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // Request is one check run over materialized files.
@@ -133,10 +132,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 // semantic analysis, and lints — over files opened in a session rooted at
 // folder, and returns the diagnostics per file, keyed by absolute path.
 func runDiagnostics(ctx context.Context, files []string, folder string, includePaths []string, lint sema.Config, analyzers []sema.Analyzer) (map[string][]Diagnostic, error) {
-	_, view, uris, err := store.OpenDisk(ctx, files, folder, includePaths)
-	if err != nil {
-		return nil, err
-	}
+	_, view, uris := store.OpenDisk(files, folder, includePaths)
 
 	out := make(map[string][]Diagnostic, len(files))
 
@@ -164,27 +160,13 @@ func runDiagnostics(ctx context.Context, files []string, folder string, includeP
 // folder — while resolution reads the whole view, so fixing a greenfield
 // module resolves its types against the tree without touching the tree.
 func runFix(ctx context.Context, files []string, folder string, includePaths []string, lint sema.Config, analyzers []sema.Analyzer) (Result, error) {
-	sess, view, uris, err := store.OpenDisk(ctx, files, folder, includePaths)
-	if err != nil {
-		return Result{}, err
-	}
+	_, view, uris := store.OpenDisk(files, folder, includePaths)
 
-	// Fix passes land within the same mtime tick the memoized disk source
-	// may have cached, so the fixed content flows back through the
-	// session overlay: the next pass always re-parses what was written.
-	version := 0
-
+	// Reads hit the disk, so the next pass re-parses what was written
+	// with no overlay round-trip.
 	persist := func(ctx context.Context, u uri.URI, content []byte) error {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("check canceled: %w", err)
-		}
-
-		version++
-
-		if err := sess.Update(ctx, []*vfs.FileChange{
-			{URI: u, Version: version, Content: content, From: vfs.FileChangeTypeDidChange},
-		}); err != nil {
-			return err
 		}
 
 		perms := os.FileMode(0o644)

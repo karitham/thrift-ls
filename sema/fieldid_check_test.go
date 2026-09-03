@@ -9,7 +9,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 func Test_FieldIDCheck_Diagnostic(t *testing.T) {
@@ -40,12 +39,12 @@ service Demo {
 }
 `
 
-	view := buildSnapshotForTest(t, []*vfs.FileChange{
+	view := buildSnapshotForTest(t, []*store.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
 			Content: []byte(file1),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 	})
 

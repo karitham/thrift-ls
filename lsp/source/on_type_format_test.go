@@ -9,7 +9,6 @@ import (
 
 	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // TestOnTypeFormat verifies that typing a closing brace formats the
@@ -19,12 +18,12 @@ func TestOnTypeFormat(t *testing.T) {
 	// The closing brace was just typed at the end of the document.
 	pos := protocol.Position{Line: 0, Character: uint32(len(src) - 1)}
 
-	view := store.BuildViewForTest([]*vfs.FileChange{
+	view := store.BuildViewForTest([]*store.FileChange{
 		{
 			URI:     "file:///tmp/f.thrift",
 			Version: 0,
 			Content: []byte(src),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 	})
 	fh, err := view.ReadFile(t.Context(), "file:///tmp/f.thrift")
@@ -44,12 +43,12 @@ func TestOnTypeFormatSkipsBrokenDocument(t *testing.T) {
 	src := "struct S { 1: "
 	pos := protocol.Position{Line: 0, Character: uint32(len(src))}
 
-	view := store.BuildViewForTest([]*vfs.FileChange{
+	view := store.BuildViewForTest([]*store.FileChange{
 		{
 			URI:     "file:///tmp/f.thrift",
 			Version: 0,
 			Content: []byte(src),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 	})
 	fh, err := view.ReadFile(t.Context(), "file:///tmp/f.thrift")
@@ -65,12 +64,12 @@ func TestOnTypeFormatSkipsBrokenDocument(t *testing.T) {
 func TestFormatSkipsBrokenDocument(t *testing.T) {
 	src := "struct S { 1: "
 
-	view := store.BuildViewForTest([]*vfs.FileChange{
+	view := store.BuildViewForTest([]*store.FileChange{
 		{
 			URI:     "file:///tmp/f.thrift",
 			Version: 0,
 			Content: []byte(src),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 	})
 	fh, err := view.ReadFile(t.Context(), "file:///tmp/f.thrift")

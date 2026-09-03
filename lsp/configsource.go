@@ -11,7 +11,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/options"
-	"github.com/karitham/thrift-ls/vfs"
+	"github.com/karitham/thrift-ls/store"
 )
 
 // FileConfigSource discovers thrift-ls.json through src: THRIFT_LS_CONFIG
@@ -24,7 +24,7 @@ import (
 // Reads use context.Background: resolution runs at view creation, outside
 // any request scope. A missing candidate simply continues the walk; any
 // other read or parse failure aborts with the candidate path attached.
-func FileConfigSource(src vfs.FileSource) ConfigSource {
+func FileConfigSource(src store.FileSource) ConfigSource {
 	return func(dir string) (options.Resolved, error) {
 		if env := os.Getenv("THRIFT_LS_CONFIG"); env != "" {
 			abs, err := filepath.Abs(env)
@@ -64,7 +64,7 @@ func FileConfigSource(src vfs.FileSource) ConfigSource {
 // readConfigDocument reads and parses one candidate config file through src.
 // found is false when the file does not exist; any other failure carries
 // the candidate path for diagnostics.
-func readConfigDocument(src vfs.FileSource, path string) (options.Resolved, bool, error) {
+func readConfigDocument(src store.FileSource, path string) (options.Resolved, bool, error) {
 	fh, err := src.ReadFile(context.Background(), uri.File(path))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {

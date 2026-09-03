@@ -9,16 +9,15 @@ import (
 	"go.lsp.dev/protocol"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // buildSnapshot builds a view from file contents with optional include
 // paths.
-func buildSnapshot(t *testing.T, includePaths []string, files ...*vfs.FileChange) *store.View {
+func buildSnapshot(t *testing.T, includePaths []string, files ...*store.FileChange) *store.View {
 	t.Helper()
 
-	c := vfs.NewMemoizedFS()
-	fs := vfs.NewOverlayFS(c)
+	c := store.NewDiskFS()
+	fs := store.NewOverlayFS(c)
 	_ = fs.Update(t.Context(), files)
 	view := store.NewView(uri.File("/tmp"), fs, includePaths)
 
@@ -32,7 +31,7 @@ func buildSnapshot(t *testing.T, includePaths []string, files ...*vfs.FileChange
 func TestCompletionEndToEnd(t *testing.T) {
 	content := "struct User {\n  1: required i64 id\n}\n\nstruct Profile {\n  1: required Us\n}"
 	view := buildSnapshot(t, nil,
-		&vfs.FileChange{URI: "file:///tmp/test.thrift", Version: 0, Content: []byte(content), From: vfs.FileChangeTypeDidOpen},
+		&store.FileChange{URI: "file:///tmp/test.thrift", Version: 0, Content: []byte(content), From: store.FileChangeTypeDidOpen},
 	)
 
 	fh, err := view.ReadFile(t.Context(), "file:///tmp/test.thrift")

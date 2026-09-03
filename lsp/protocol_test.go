@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/karitham/thrift-ls/vfs"
+	"github.com/karitham/thrift-ls/store"
 )
 
 func TestInitializeReportsConfiguredVersion(t *testing.T) {
@@ -19,7 +19,7 @@ func TestInitializeReportsConfiguredVersion(t *testing.T) {
 		{name: "fallback", want: ServerVersion},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			srv := NewServer(nil, Options{Files: vfs.NewMemFS(nil), Version: tt.version})
+			srv := NewServer(nil, Options{Files: store.NewMemFS(nil), Version: tt.version})
 			result, err := srv.Initialize(t.Context(), testInitializeParams(nil))
 			require.NoError(t, err)
 			version, ok := result.ServerInfo.Version.Get()

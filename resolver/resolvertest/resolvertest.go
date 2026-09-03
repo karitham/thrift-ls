@@ -5,7 +5,7 @@
 //	resolvertest.Seed("/base/shared.thrift")        // existence only
 //	resolver.New(paths, resolver.WithFS(tree))      // fs.FS shape
 //	resolver.New(paths, resolver.WithChecker(tree)) // Checker shape
-//	vfs.NewMemFS(tree.URIs())                     // FileSource shape
+//	store.NewMemFS(tree.URIs())                     // FileSource shape
 //
 // The production path stays string paths end to end; URIs converts keys
 // for FileSource-based suites only.

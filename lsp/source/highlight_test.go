@@ -8,7 +8,6 @@ import (
 	"go.lsp.dev/protocol"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // TestHighlightSameFile pins document highlighting: the identifier at the
@@ -16,13 +15,13 @@ import (
 func TestHighlightSameFile(t *testing.T) {
 	tests := []struct {
 		name      string
-		files     []*vfs.FileChange
+		files     []*store.FileChange
 		pos       protocol.Position // cursor position in the first file
 		wantLines []uint32          // highlighted lines in the first file
 	}{
 		{
 			name: "type name highlights definition and usages",
-			files: []*vfs.FileChange{
+			files: []*store.FileChange{
 				{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(`struct Gundam {
 	1: required string Name
 }
@@ -30,36 +29,36 @@ func TestHighlightSameFile(t *testing.T) {
 struct StrikeRouge {
 	1: required Gundam pack
 	2: optional Gundam beamSaber
-}`), From: vfs.FileChangeTypeDidOpen},
+}`), From: store.FileChangeTypeDidOpen},
 			},
 			pos:       protocol.Position{Line: 0, Character: 7},
 			wantLines: []uint32{0, 5, 6},
 		},
 		{
 			name: "usage highlights the definition too",
-			files: []*vfs.FileChange{
+			files: []*store.FileChange{
 				{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(`struct Gundam {
 	1: required string Name
 }
 
 struct StrikeRouge {
 	1: required Gundam pack
-}`), From: vfs.FileChangeTypeDidOpen},
+}`), From: store.FileChangeTypeDidOpen},
 			},
 			pos:       protocol.Position{Line: 5, Character: 14},
 			wantLines: []uint32{0, 5},
 		},
 		{
 			name: "cross-file references are excluded",
-			files: []*vfs.FileChange{
+			files: []*store.FileChange{
 				{URI: "file:///tmp/gundam.thrift", Version: 0, Content: []byte(`struct Gundam {
 	1: required string Name
-}`), From: vfs.FileChangeTypeDidOpen},
+}`), From: store.FileChangeTypeDidOpen},
 				{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(`include "gundam.thrift"
 
 struct StrikeRouge {
 	1: required Gundam pack
-}`), From: vfs.FileChangeTypeDidOpen},
+}`), From: store.FileChangeTypeDidOpen},
 			},
 			pos:       protocol.Position{Line: 0, Character: 7},
 			wantLines: []uint32{0},
@@ -87,8 +86,8 @@ struct StrikeRouge {
 // TestHighlightUnresolvableType pins the minimal result for an identifier
 // without references: only the cursor word itself is highlighted.
 func TestHighlightUnresolvableType(t *testing.T) {
-	view := store.BuildViewForTest([]*vfs.FileChange{
-		{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte("struct Gundam {\n\t1: required UnknownType pack\n}"), From: vfs.FileChangeTypeDidOpen},
+	view := store.BuildViewForTest([]*store.FileChange{
+		{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte("struct Gundam {\n\t1: required UnknownType pack\n}"), From: store.FileChangeTypeDidOpen},
 	})
 
 	highlights, err := Highlight(t.Context(), view, "file:///tmp/main.thrift", protocol.Position{Line: 1, Character: 20})

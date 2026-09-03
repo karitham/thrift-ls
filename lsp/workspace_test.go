@@ -14,7 +14,7 @@ import (
 
 	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/resolver/resolvertest"
-	"github.com/karitham/thrift-ls/vfs"
+	"github.com/karitham/thrift-ls/store"
 )
 
 // Workspace lifecycle: initialize defers the load, folders add/remove.
@@ -650,7 +650,7 @@ func TestCustomWatchedFilesDoNotReadUnownedEvents(t *testing.T) {
 	target := uri.File("/workspace/project/api.thrift")
 	unowned := uri.File("/workspace/project/stray.thrift")
 	fs := &watchSpyFS{
-		FileSource: vfs.NewMemFS(resolvertest.Map{
+		FileSource: store.NewMemFS(resolvertest.Map{
 			"/workspace/project/api.thrift": []byte("struct Before {}"),
 		}.URIs()),
 		forbidden: unowned,
@@ -689,13 +689,13 @@ func TestCustomWatchedFilesDoNotReadUnownedEvents(t *testing.T) {
 }
 
 type watchSpyFS struct {
-	vfs.FileSource
+	store.FileSource
 	forbidden uri.URI
 	reads     atomic.Int32
 	contents  atomic.Int32
 }
 
-func (fs *watchSpyFS) ReadFile(ctx context.Context, file uri.URI) (vfs.FileHandle, error) {
+func (fs *watchSpyFS) ReadFile(ctx context.Context, file uri.URI) (store.FileHandle, error) {
 	fs.reads.Add(1)
 	if file == fs.forbidden {
 		return nil, errors.New("unowned file was read")
@@ -710,7 +710,7 @@ func (fs *watchSpyFS) ReadFile(ctx context.Context, file uri.URI) (vfs.FileHandl
 }
 
 type watchSpyHandle struct {
-	vfs.FileHandle
+	store.FileHandle
 	contents *atomic.Int32
 }
 

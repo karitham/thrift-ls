@@ -10,7 +10,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 func Test_IncludeShadowCheck(t *testing.T) {
@@ -54,12 +53,12 @@ func Test_IncludeShadowCheck(t *testing.T) {
 			view := store.BuildViewForTestWithPaths([]string{
 				filepath.Join(folder, "laios"),
 				filepath.Join(folder, "senshi"),
-			}, []*vfs.FileChange{
+			}, []*store.FileChange{
 				{
 					URI:     uri.File(filePath),
 					Version: 0,
 					Content: []byte(content),
-					From:    vfs.FileChangeTypeDidOpen,
+					From:    store.FileChangeTypeDidOpen,
 				},
 			})
 

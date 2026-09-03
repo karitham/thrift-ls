@@ -9,7 +9,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 func TestDefinition_EnumValueInConstList(t *testing.T) {
@@ -24,12 +23,12 @@ func TestDefinition_EnumValueInConstList(t *testing.T) {
 
 const list<MyEnum> my_list = [MyEnum.Value1, MyEnum.Value2]`
 
-	view := store.BuildViewForTest([]*vfs.FileChange{
+	view := store.BuildViewForTest([]*store.FileChange{
 		{
 			URI:     "file:///tmp/test.thrift",
 			Version: 0,
 			Content: []byte(file),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 	})
 

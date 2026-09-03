@@ -10,7 +10,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // TestDefinitionCrossProjectInclude verifies go-to-definition across project
@@ -27,18 +26,18 @@ func TestDefinitionCrossProjectInclude(t *testing.T) {
 	appFile := uri.File(filepath.Join(appDir, "char.thrift"))
 	appContent := "include \"gundam.thrift\"\n\nstruct Hangar {\n  1: optional list<gundam.MobileSuit> suits,\n}\n\nstruct Garrison {\n  1: optional MobileSuit ace,\n}\n"
 
-	view := store.BuildViewForTestWithPaths([]string{includeDir}, []*vfs.FileChange{
+	view := store.BuildViewForTestWithPaths([]string{includeDir}, []*store.FileChange{
 		{
 			URI:     gundamFile,
 			Version: 0,
 			Content: []byte("namespace * gundam\n\nstruct MobileSuit {\n  1: string model\n}"),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 		{
 			URI:     appFile,
 			Version: 0,
 			Content: []byte(appContent),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 	})
 

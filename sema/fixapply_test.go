@@ -10,7 +10,6 @@ import (
 
 	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 func spanOf(start, end int) Span {
@@ -190,7 +189,7 @@ func TestFixAllGreenfield(t *testing.T) {
 		uri.File(folder + "/c.thrift"): []byte("include \"a.thrift\"\n\nstruct Other {}\n"),
 	}
 
-	view := store.NewView(uri.File(folder), vfs.NewMemFS(files), nil)
+	view := store.NewView(uri.File(folder), store.NewMemFS(files), nil)
 
 	b := uri.File(folder + "/b.thrift")
 	written := make(map[uri.URI][]byte)
@@ -232,7 +231,7 @@ func TestFixAllParseErrorGuard(t *testing.T) {
 		uri.File(folder + "/broken.thrift"): []byte("include \"a.thrift\"\n\nstruct Broken {\n  1: i32 a\n  @@@\n}\n"),
 	}
 
-	view := store.NewView(uri.File(folder), vfs.NewMemFS(files), nil)
+	view := store.NewView(uri.File(folder), store.NewMemFS(files), nil)
 
 	broken := uri.File(folder + "/broken.thrift")
 
@@ -268,7 +267,7 @@ func TestFixAllPersistFailure(t *testing.T) {
 		uri.File(folder + "/c.thrift"): []byte("struct Foo {}\n"),
 	}
 
-	view := store.NewView(uri.File(folder), vfs.NewMemFS(files), nil)
+	view := store.NewView(uri.File(folder), store.NewMemFS(files), nil)
 
 	persist := func(_ context.Context, u uri.URI, content []byte) error {
 		files[u] = content

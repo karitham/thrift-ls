@@ -6,32 +6,30 @@ import (
 	"testing"
 
 	"go.lsp.dev/uri"
-
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // benchChain builds a linear include chain: chain_0 includes chain_1, ...
 // Content lives in overlays, so the benchmark exercises store logic only —
 // no disk access.
-func benchChain(b *testing.B, n int) (*View, []*vfs.FileChange) {
+func benchChain(b *testing.B, n int) (*View, []*FileChange) {
 	b.Helper()
 
-	files := make([]*vfs.FileChange, 0, n)
+	files := make([]*FileChange, 0, n)
 	for i := range n {
 		content := fmt.Sprintf("include \"chain_%d.thrift\"\n\nstruct S%d {\n\t1: required string Name\n}\n", i+1, i)
 		if i == n-1 {
 			content = fmt.Sprintf("struct S%d {\n\t1: required string Name\n}\n", i)
 		}
 
-		files = append(files, &vfs.FileChange{
+		files = append(files, &FileChange{
 			URI:     uri.File(fmt.Sprintf("/tmp/chain_%d.thrift", i)),
 			Version: 0,
 			Content: []byte(content),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    FileChangeTypeDidOpen,
 		})
 	}
 
-	fs := vfs.NewOverlayFS(vfs.NewMemoizedFS())
+	fs := NewOverlayFS(NewDiskFS())
 	if err := fs.Update(context.Background(), files); err != nil {
 		b.Fatal(err)
 	}

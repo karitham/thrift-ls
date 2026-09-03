@@ -1,4 +1,4 @@
-package vfs
+package store
 
 import (
 	"context"
@@ -86,7 +86,7 @@ func (fs *OverlayFS) Update(_ context.Context, changes []*FileChange) error {
 			continue
 		}
 
-		overlay := NewOverlay(change.URI, change.FullContent(), int32(change.Version))
+		overlay := NewOverlay(change.URI, change.Content, int32(change.Version))
 
 		slog.Debug("new overlay content", "content", string(overlay.content), "uri", change.URI)
 

@@ -1,27 +1,12 @@
-package vfs
+package store
 
 import (
 	"context"
-	"time"
 
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/resolver"
 )
-
-// A FileID uniquely identifies a file in the file system.
-//
-// If GetFileID(name1) returns the same ID as GetFileID(name2), the two file
-// names denote the same file.
-// A FileID is comparable, and thus suitable for use as a map key.
-type FileID struct {
-	device, inode uint64
-}
-
-// GetFileID returns the file system's identifier for the file, and its
-// modification time.
-// Like os.Stat, it reads through symbolic links.
-func GetFileID(filename string) (FileID, time.Time, error) { return getFileID(filename) }
 
 // A FileHandle represents the URI, content, and optional version of a file
 // tracked by the LSP session.
@@ -81,8 +66,4 @@ type FileChange struct {
 	Version int
 	Content []byte
 	From    FileChangeType
-}
-
-func (f *FileChange) FullContent() []byte {
-	return f.Content
 }

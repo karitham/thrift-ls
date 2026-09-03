@@ -8,15 +8,14 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // buildSnapshot parses src as the file at URI and returns the snapshot.
 func buildLinksSnapshot(t *testing.T, file uri.URI, src string) *store.View {
 	t.Helper()
 
-	view := store.BuildViewForTest([]*vfs.FileChange{
-		{URI: file, Version: 0, Content: []byte(src), From: vfs.FileChangeTypeDidOpen},
+	view := store.BuildViewForTest([]*store.FileChange{
+		{URI: file, Version: 0, Content: []byte(src), From: store.FileChangeTypeDidOpen},
 	})
 
 	return view

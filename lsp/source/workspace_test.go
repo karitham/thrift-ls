@@ -13,7 +13,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // writeTree writes the file contents under dir and returns the directory.
@@ -51,11 +50,11 @@ func openTree(t *testing.T, session *store.Session, dir string, only map[string]
 		content, err := os.ReadFile(path)
 		require.NoError(t, err)
 
-		view.Update(t.Context(), &vfs.FileChange{
+		view.Update(t.Context(), &store.FileChange{
 			URI:     uri.File(path),
 			Version: 0,
 			Content: content,
-			From:    vfs.FileChangeTypeInitialize,
+			From:    store.FileChangeTypeInitialize,
 		})
 
 		return nil
@@ -192,7 +191,7 @@ struct C { 1: string x }`,
 		t.Run(tt.name, func(t *testing.T) {
 			dir := writeTree(t, tt.files)
 
-			session := store.NewSession(vfs.NewMemoizedFS())
+			session := store.NewSession(store.NewDiskFS())
 
 			if tt.nested {
 				// Each top-level directory is a workspace folder.
@@ -241,7 +240,7 @@ const i32 DEFAULT_HP = 100,
 typedef string PilotName`,
 	})
 
-	session := store.NewSession(vfs.NewMemoizedFS())
+	session := store.NewSession(store.NewDiskFS())
 	openTree(t, session, dir, nil)
 
 	file := uri.File(filepath.Join(dir, "shapes.thrift"))
@@ -299,7 +298,7 @@ service Federation {
 }`,
 	})
 
-	session := store.NewSession(vfs.NewMemoizedFS())
+	session := store.NewSession(store.NewDiskFS())
 	openTree(t, session, dir, nil)
 
 	tests := []struct {
@@ -353,7 +352,7 @@ exception BayFull {
 }`,
 	})
 
-	session := store.NewSession(vfs.NewMemoizedFS())
+	session := store.NewSession(store.NewDiskFS())
 	openTree(t, session, dir, nil)
 
 	syms := allWorkspaceSymbols(t.Context(), session, "", 0)

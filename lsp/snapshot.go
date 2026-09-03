@@ -6,7 +6,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 type viewResolver func(uri.URI) (*store.View, error)
@@ -25,7 +24,7 @@ func withView[T any](resolve viewResolver, file uri.URI, fn func(*store.View) (T
 }
 
 // withFile is withView plus the file handle for file.
-func withFile[T any](ctx context.Context, resolve viewResolver, file uri.URI, fn func(*store.View, vfs.FileHandle) (T, error)) (T, error) {
+func withFile[T any](ctx context.Context, resolve viewResolver, file uri.URI, fn func(*store.View, store.FileHandle) (T, error)) (T, error) {
 	return withView(resolve, file, func(view *store.View) (T, error) {
 		fh, err := view.ReadFile(ctx, file)
 		if err != nil {

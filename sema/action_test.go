@@ -9,7 +9,6 @@ import (
 	"go.lsp.dev/protocol"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // applyEdits applies edits to content by byte offset, last-first. The
@@ -110,12 +109,12 @@ enum E {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*vfs.FileChange{
+			view := buildSnapshotForTest(t, []*store.FileChange{
 				{
 					URI:     "file:///tmp/user.thrift",
 					Version: 0,
 					Content: []byte(tt.content),
-					From:    vfs.FileChangeTypeDidOpen,
+					From:    store.FileChangeTypeDidOpen,
 				},
 			})
 
@@ -143,12 +142,12 @@ enum E {
 func Test_EnumValuesProvider_QuickFixPromotion(t *testing.T) {
 	content := "enum E { A, B = 1 }\n"
 
-	view := buildSnapshotForTest(t, []*vfs.FileChange{
+	view := buildSnapshotForTest(t, []*store.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
 			Content: []byte(content),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 	})
 
@@ -183,12 +182,12 @@ func Test_EnumValuesProvider_QuickFixPromotion(t *testing.T) {
 func Test_FieldQualifierProvider(t *testing.T) {
 	content := "struct S {\n  1: i32 a,\n  2: required string b,\n  3: optional i64 c,\n}\n"
 
-	view := buildSnapshotForTest(t, []*vfs.FileChange{
+	view := buildSnapshotForTest(t, []*store.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
 			Content: []byte(content),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 	})
 

@@ -9,7 +9,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 var _ func(Config) *Pipeline = DefaultPipeline
@@ -63,11 +62,11 @@ func cmpAll(ds []Diagnostic) []diagCmp {
 
 // buildFolderSnapshotForTest builds a snapshot whose view root is folder,
 // with the given files opened in the overlay.
-func buildFolderSnapshotForTest(t *testing.T, folder string, files []*vfs.FileChange) *store.View {
+func buildFolderSnapshotForTest(t *testing.T, folder string, files []*store.FileChange) *store.View {
 	t.Helper()
 
-	c := vfs.NewMemoizedFS()
-	fs := vfs.NewOverlayFS(c)
+	c := store.NewDiskFS()
+	fs := store.NewOverlayFS(c)
 	_ = fs.Update(t.Context(), files)
 
 	view := store.NewView(uri.File(folder), fs, nil)

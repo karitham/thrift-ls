@@ -6,7 +6,6 @@ import (
 	"go.lsp.dev/protocol"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 func TestResolveTargetClassification(t *testing.T) {
@@ -27,12 +26,12 @@ service Svc extends Base {
   User getUser(1: i64 id, 2: string name) throws (NotFound e)
 }
 `
-	view := store.BuildViewForTest([]*vfs.FileChange{
+	view := store.BuildViewForTest([]*store.FileChange{
 		{
 			URI:     "file:///tmp/test.thrift",
 			Version: 0,
 			Content: []byte(src),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 	})
 
@@ -93,12 +92,12 @@ service Svc extends Base {
 }
 
 func TestResolveTargetNoNode(t *testing.T) {
-	view := store.BuildViewForTest([]*vfs.FileChange{
+	view := store.BuildViewForTest([]*store.FileChange{
 		{
 			URI:     "file:///tmp/test.thrift",
 			Version: 0,
 			Content: []byte("struct S {\n  1: i32 a\n}\n\nconst i32 X = 1\n"),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 	})
 	// Position in the blank line between definitions: resolves to the

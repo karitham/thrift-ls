@@ -7,8 +7,8 @@ import (
 
 	"go.lsp.dev/uri"
 
+	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // maxFixPasses bounds FixAll's fixpoint loop. One pass may unlock another
@@ -111,7 +111,7 @@ func (p *Pipeline) FixAll(ctx context.Context, view Store, targets []uri.URI, pe
 
 		res.Remaining = report
 
-		changes := make([]*vfs.FileChange, 0, len(targets))
+		changes := make([]*store.FileChange, 0, len(targets))
 		passSkipped := make([]SkippedFix, 0, len(res.Skipped))
 		applied := 0
 
@@ -173,7 +173,7 @@ func (p *Pipeline) FixAll(ctx context.Context, view Store, targets []uri.URI, pe
 			applied += len(ok)
 			res.Applied += len(ok)
 
-			changes = append(changes, &vfs.FileChange{URI: u, Version: pass + 1, Content: out, From: vfs.FileChangeTypeDidChange})
+			changes = append(changes, &store.FileChange{URI: u, Version: pass + 1, Content: out, From: store.FileChangeTypeDidChange})
 			changed[u] = struct{}{}
 		}
 

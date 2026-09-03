@@ -6,7 +6,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // Graph is the read surface analysis needs from the document store: parse
@@ -28,7 +27,7 @@ type Graph interface {
 // Graph, land each pass through Update.
 type Store interface {
 	Graph
-	Update(ctx context.Context, changes ...*vfs.FileChange) store.ChangeResult
+	Update(ctx context.Context, changes ...*store.FileChange) store.ChangeResult
 }
 
 var (

@@ -9,16 +9,15 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // openChange opens one file with content in a view.
-func openChange(path, content string) []*vfs.FileChange {
-	return []*vfs.FileChange{{
+func openChange(path, content string) []*store.FileChange {
+	return []*store.FileChange{{
 		URI:     uri.File(path),
 		Version: 0,
 		Content: []byte(content),
-		From:    vfs.FileChangeTypeDidOpen,
+		From:    store.FileChangeTypeDidOpen,
 	}}
 }
 
@@ -127,7 +126,7 @@ func TestFixAllEnumValues(t *testing.T) {
 		b: []byte("enum Color {\n  RED,\n  GREEN = 2,\n  BLUE,\n}\n"),
 	}
 
-	view := store.NewView(uri.File(folder), vfs.NewMemFS(files), nil)
+	view := store.NewView(uri.File(folder), store.NewMemFS(files), nil)
 
 	var written []byte
 

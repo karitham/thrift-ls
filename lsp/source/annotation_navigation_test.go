@@ -11,7 +11,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // Test_StructuredAnnotationNavigation covers the cursor features on
@@ -30,12 +29,12 @@ struct S {
 }
 `
 
-	view := store.BuildViewForTest([]*vfs.FileChange{
+	view := store.BuildViewForTest([]*store.FileChange{
 		{
 			URI:     "file:///tmp/anno.thrift",
 			Version: 0,
 			Content: []byte(content),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 	})
 

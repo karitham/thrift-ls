@@ -9,7 +9,6 @@ import (
 	"go.lsp.dev/protocol"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // decodedToken is one semantic token in absolute coordinates.
@@ -47,8 +46,8 @@ func decode(data []uint32) []decodedToken {
 func semanticTokens(t *testing.T, src string) []decodedToken {
 	t.Helper()
 
-	view := store.BuildViewForTest([]*vfs.FileChange{
-		{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(src), From: vfs.FileChangeTypeDidOpen},
+	view := store.BuildViewForTest([]*store.FileChange{
+		{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(src), From: store.FileChangeTypeDidOpen},
 	})
 
 	data, err := Tokens(t.Context(), view, "file:///tmp/main.thrift")
@@ -148,8 +147,8 @@ enum ZeonForces {
 // TestSemanticTokensEncoding pins the delta encoding: tokens on the same
 // line carry relative characters, tokens on new lines carry absolute ones.
 func TestSemanticTokensEncoding(t *testing.T) {
-	view := store.BuildViewForTest([]*vfs.FileChange{
-		{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte("const i32 A = 1\nconst i32 B = 2"), From: vfs.FileChangeTypeDidOpen},
+	view := store.BuildViewForTest([]*store.FileChange{
+		{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte("const i32 A = 1\nconst i32 B = 2"), From: store.FileChangeTypeDidOpen},
 	})
 
 	data, err := Tokens(t.Context(), view, "file:///tmp/main.thrift")

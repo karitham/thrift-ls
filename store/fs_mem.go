@@ -1,4 +1,4 @@
-package vfs
+package store
 
 import (
 	"context"
@@ -25,10 +25,10 @@ func NewMemFS(files map[uri.URI][]byte) FileSource {
 func (m *memFS) ReadFile(_ context.Context, u uri.URI) (FileHandle, error) {
 	content, ok := m.files[u]
 	if !ok {
-		return &DiskFile{uri: u, err: os.ErrNotExist}, nil
+		return &diskFile{uri: u, err: os.ErrNotExist}, nil
 	}
 
-	return &DiskFile{uri: u, content: content}, nil
+	return &diskFile{uri: u, content: content}, nil
 }
 
 // Exists reports whether path is a seeded file, without reading content.

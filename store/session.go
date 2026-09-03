@@ -6,14 +6,12 @@ import (
 	"sync"
 
 	"go.lsp.dev/uri"
-
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 type Session struct {
 	// fs is the underlying file source (disk in production, in-memory in
 	// tests); the embedded OverlayFS serves open-editor content over it.
-	fs vfs.FileSource
+	fs FileSource
 
 	viewMu  sync.Mutex
 	views   []*View
@@ -21,15 +19,15 @@ type Session struct {
 
 	// The session owns the OverlayFS: open-editor content lives here, and
 	// views read through it.
-	*vfs.OverlayFS
+	*OverlayFS
 }
 
-func NewSession(fs vfs.FileSource) *Session {
+func NewSession(fs FileSource) *Session {
 	sess := &Session{
 		fs:        fs,
 		views:     make([]*View, 0),
 		viewMap:   make(map[uri.URI]*View),
-		OverlayFS: vfs.NewOverlayFS(fs),
+		OverlayFS: NewOverlayFS(fs),
 	}
 
 	return sess

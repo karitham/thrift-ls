@@ -10,7 +10,6 @@ import (
 
 	"github.com/karitham/thrift-ls/resolver"
 	"github.com/karitham/thrift-ls/syntax"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // Resolver provides centralized include path resolution.
@@ -22,7 +21,7 @@ type Resolver struct {
 // newResolver builds a Resolver resolving against src: open files by their
 // overlay presence, the rest through cheap existence checks. No content is
 // read to test existence.
-func newResolver(includePaths []string, src vfs.FileSource) *Resolver {
+func newResolver(includePaths []string, src FileSource) *Resolver {
 	return &Resolver{
 		includePaths: includePaths,
 		central:      resolver.New(includePaths, resolver.WithChecker(fileChecker{src: src})),
@@ -32,7 +31,7 @@ func newResolver(includePaths []string, src vfs.FileSource) *Resolver {
 // fileChecker translates the resolver's string paths to URIs at the store boundary
 // boundary. Known sources answer cheaply; unknown ones fall back to a read.
 type fileChecker struct {
-	src vfs.FileSource
+	src FileSource
 }
 
 func (c fileChecker) Exists(ctx context.Context, path string) bool {
@@ -40,7 +39,7 @@ func (c fileChecker) Exists(ctx context.Context, path string) bool {
 		return false
 	}
 
-	if ex, ok := c.src.(vfs.Checker); ok {
+	if ex, ok := c.src.(Checker); ok {
 		return ex.Exists(ctx, path)
 	}
 
@@ -127,15 +126,15 @@ func getIncludeNameFromPath(path string) string {
 	return strings.TrimSuffix(name, ".thrift")
 }
 
-func BuildViewForTest(files []*vfs.FileChange) *View {
+func BuildViewForTest(files []*FileChange) *View {
 	return BuildViewForTestWithPaths(nil, files)
 }
 
 // BuildViewForTestWithPaths is BuildViewForTest with configured include
 // paths, for cross-project include resolution tests.
-func BuildViewForTestWithPaths(includePaths []string, files []*vfs.FileChange) *View {
-	c := vfs.NewMemoizedFS()
-	fs := vfs.NewOverlayFS(c)
+func BuildViewForTestWithPaths(includePaths []string, files []*FileChange) *View {
+	c := NewDiskFS()
+	fs := NewOverlayFS(c)
 	_ = fs.Update(context.TODO(), files)
 
 	view := NewView("file:///tmp", fs, includePaths)

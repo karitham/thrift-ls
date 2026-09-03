@@ -9,7 +9,6 @@ import (
 
 	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 func TestIndex_ResolveType_SameFile(t *testing.T) {
@@ -174,8 +173,8 @@ func TestRefKindsFor(t *testing.T) {
 
 func snap(t *testing.T, file, content string) *store.View {
 	t.Helper()
-	return store.BuildViewForTest([]*vfs.FileChange{{
-		URI: fu(file), Version: 0, Content: []byte(content), From: vfs.FileChangeTypeDidOpen,
+	return store.BuildViewForTest([]*store.FileChange{{
+		URI: fu(file), Version: 0, Content: []byte(content), From: store.FileChangeTypeDidOpen,
 	}})
 }
 
@@ -183,9 +182,9 @@ func snap(t *testing.T, file, content string) *store.View {
 // (includes first), so the include graph resolves correctly.
 func crossSnap(t *testing.T, fa, ca, fb, cb string) *store.View {
 	t.Helper()
-	view := store.BuildViewForTest([]*vfs.FileChange{
-		{URI: fu(fb), Version: 0, Content: []byte(cb), From: vfs.FileChangeTypeDidOpen},
-		{URI: fu(fa), Version: 0, Content: []byte(ca), From: vfs.FileChangeTypeDidOpen},
+	view := store.BuildViewForTest([]*store.FileChange{
+		{URI: fu(fb), Version: 0, Content: []byte(cb), From: store.FileChangeTypeDidOpen},
+		{URI: fu(fa), Version: 0, Content: []byte(ca), From: store.FileChangeTypeDidOpen},
 	})
 	return view
 }

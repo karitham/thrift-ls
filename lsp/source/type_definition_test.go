@@ -9,7 +9,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 func TestTypeDefinition(t *testing.T) {
@@ -52,18 +51,18 @@ typedef user.UserType UserKind
 const user.UserType usermale = "male"
 `
 
-	view := store.BuildViewForTest([]*vfs.FileChange{
+	view := store.BuildViewForTest([]*store.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
 			Content: []byte(file1),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 		{
 			URI:     "file:///tmp/api.thrift",
 			Version: 0,
 			Content: []byte(file2),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 	})
 

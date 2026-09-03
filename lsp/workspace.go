@@ -13,7 +13,6 @@ import (
 
 	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // WorkspaceLoader discovers the projects in one LSP workspace folder. A
@@ -453,7 +452,7 @@ func (w *workspace) loadSync(ctx context.Context, folders []uri.URI) {
 // *.thrift file under the folder is a target, with no opinions of its own
 // so each root resolves through the ConfigSource. It keeps folder-based
 // sessions working with the workspace as the only workspace.
-func defaultLoader(src vfs.FileSource) WorkspaceLoader {
+func defaultLoader(src store.FileSource) WorkspaceLoader {
 	return func(ctx context.Context, folder uri.URI) (WorkspaceSnapshot, error) {
 		var targets []uri.URI
 
@@ -582,16 +581,16 @@ func (w *workspace) updateViewsLocked(ctx context.Context, changes map[uri.URI][
 		files := changes[root]
 		slices.Sort(files)
 		files = slices.Compact(files)
-		updates := make([]*vfs.FileChange, len(files))
+		updates := make([]*store.FileChange, len(files))
 		for i, file := range files {
-			updates[i] = &vfs.FileChange{URI: file, From: vfs.FileChangeTypeInitialize}
+			updates[i] = &store.FileChange{URI: file, From: store.FileChangeTypeInitialize}
 		}
 
 		w.server.postDiagnostics(ctx, view, view.Update(ctx, updates...))
 	}
 }
 
-func (w *workspace) applyChanges(ctx context.Context, changes []*vfs.FileChange, overlay bool) error {
+func (w *workspace) applyChanges(ctx context.Context, changes []*store.FileChange, overlay bool) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -606,7 +605,7 @@ func (w *workspace) applyChanges(ctx context.Context, changes []*vfs.FileChange,
 	for _, change := range changes {
 		previousRoot, previouslyOwned := w.model.ownerOf(change.URI, w.documents)
 		if overlay {
-			if change.From == vfs.FileChangeTypeDidClose {
+			if change.From == store.FileChangeTypeDidClose {
 				delete(w.documents, change.URI)
 			} else {
 				w.documents[change.URI] = struct{}{}
@@ -618,7 +617,7 @@ func (w *workspace) applyChanges(ctx context.Context, changes []*vfs.FileChange,
 			continue
 		}
 
-		if change.From == vfs.FileChangeTypeDidClose && previouslyOwned {
+		if change.From == store.FileChangeTypeDidClose && previouslyOwned {
 			if view := w.views[previousRoot]; view != nil {
 				view.Evict(change.URI)
 				evicted = append(evicted, change.URI)

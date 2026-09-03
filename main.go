@@ -20,7 +20,6 @@ import (
 	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // rootCommand returns the thrift-ls urfave command.
@@ -197,7 +196,7 @@ func runLSP(ctx context.Context, cmd *cli.Command) error {
 	lsp.InitLogger(logLevelValue)
 
 	lspOpts := &lsp.Options{
-		Files: vfs.NewMemoizedFS(),
+		Files: store.NewDiskFS(),
 		CLI:   cliPatch,
 	}
 	// An explicit --config pins one document for every view, skipping
@@ -365,10 +364,7 @@ func dumpIncludes(ctx context.Context, file string, cmd *cli.Command) error {
 
 	patch = cliPatch.Apply(patch)
 
-	_, view, uris, err := store.OpenDisk(ctx, []string{abs}, filepath.Dir(abs), derefStrings(patch.IncludePaths))
-	if err != nil {
-		return err
-	}
+	_, view, uris := store.OpenDisk([]string{abs}, filepath.Dir(abs), derefStrings(patch.IncludePaths))
 
 	u := uris[0]
 

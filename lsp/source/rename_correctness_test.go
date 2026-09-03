@@ -8,31 +8,30 @@ import (
 	"go.lsp.dev/protocol"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // TestRenameTransitiveInclude pins that a definition reached through a
 // chain of includes (app → mid → base) is renamed everywhere it is
 // referenced — including in files that include it only transitively.
 func TestRenameTransitiveInclude(t *testing.T) {
-	view := store.BuildViewForTest([]*vfs.FileChange{
+	view := store.BuildViewForTest([]*store.FileChange{
 		{
 			URI:     "file:///tmp/base.thrift",
 			Version: 0,
 			Content: []byte("struct User { 1: i32 id }\n"),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 		{
 			URI:     "file:///tmp/mid.thrift",
 			Version: 0,
 			Content: []byte("include \"base.thrift\"\n"),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 		{
 			URI:     "file:///tmp/app.thrift",
 			Version: 0,
 			Content: []byte("include \"mid.thrift\"\nstruct S { 1: User u }\n"),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 	})
 
@@ -54,18 +53,18 @@ func TestRenameTransitiveInclude(t *testing.T) {
 // references to a same-named definition from another file untouched:
 // matches are resolved to their actual definition, not matched by name.
 func TestRenameResolutionMatched(t *testing.T) {
-	view := store.BuildViewForTest([]*vfs.FileChange{
+	view := store.BuildViewForTest([]*store.FileChange{
 		{
 			URI:     "file:///tmp/base.thrift",
 			Version: 0,
 			Content: []byte("struct User { 1: i32 id }\n"),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 		{
 			URI:     "file:///tmp/app.thrift",
 			Version: 0,
 			Content: []byte("include \"base.thrift\"\nstruct User { 1: string name }\nstruct S { 1: base.User x, 2: User y }\n"),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 	})
 
@@ -87,18 +86,18 @@ func TestRenameResolutionMatched(t *testing.T) {
 // only touches references that resolve to it: "colors.Palette.RED" must
 // survive a rename of the local enum's RED.
 func TestRenameEnumValueResolutionMatched(t *testing.T) {
-	view := store.BuildViewForTest([]*vfs.FileChange{
+	view := store.BuildViewForTest([]*store.FileChange{
 		{
 			URI:     "file:///tmp/colors.thrift",
 			Version: 0,
 			Content: []byte("enum Palette { RED }\n"),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 		{
 			URI:     "file:///tmp/main.thrift",
 			Version: 0,
 			Content: []byte("include \"colors.thrift\"\nenum Local { RED }\nstruct S {\n  1: i32 a = Local.RED,\n  2: i32 b = colors.Palette.RED,\n}\n"),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 	})
 
@@ -120,18 +119,18 @@ func TestRenameEnumValueResolutionMatched(t *testing.T) {
 // value references qualified with that enum: same-named enums in other
 // files are left alone.
 func TestRenameEnumResolutionMatched(t *testing.T) {
-	view := store.BuildViewForTest([]*vfs.FileChange{
+	view := store.BuildViewForTest([]*store.FileChange{
 		{
 			URI:     "file:///tmp/colors.thrift",
 			Version: 0,
 			Content: []byte("enum Color { RED }\n"),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 		{
 			URI:     "file:///tmp/main.thrift",
 			Version: 0,
 			Content: []byte("include \"colors.thrift\"\nenum Color { BLUE }\nstruct S {\n  1: i32 a = Color.BLUE,\n  2: i32 b = colors.Color.RED,\n}\n"),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 	})
 

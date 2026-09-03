@@ -9,7 +9,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 func Test_SemanticAnalysis_Diagnostic(t *testing.T) {
@@ -53,12 +52,12 @@ struct TestUUID {
 	1: required uuid id
 }
 `
-	view := buildSnapshotForTest(t, []*vfs.FileChange{
+	view := buildSnapshotForTest(t, []*store.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
 			Content: []byte(file1),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 	})
 
@@ -227,12 +226,12 @@ func Test_NonScalarMapKeyCheck(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*vfs.FileChange{
+			view := buildSnapshotForTest(t, []*store.FileChange{
 				{
 					URI:     "file:///tmp/user.thrift",
 					Version: 0,
 					Content: []byte(tt.content),
-					From:    vfs.FileChangeTypeDidOpen,
+					From:    store.FileChangeTypeDidOpen,
 				},
 			})
 
@@ -288,12 +287,12 @@ func Test_SemanticAnalysis_StructuredAnnotations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*vfs.FileChange{
+			view := buildSnapshotForTest(t, []*store.FileChange{
 				{
 					URI:     "file:///tmp/user.thrift",
 					Version: 0,
 					Content: []byte(tt.content),
-					From:    vfs.FileChangeTypeDidOpen,
+					From:    store.FileChangeTypeDidOpen,
 				},
 			})
 
@@ -354,12 +353,12 @@ func Test_SemanticAnalysis_WalkCoverage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*vfs.FileChange{
+			view := buildSnapshotForTest(t, []*store.FileChange{
 				{
 					URI:     "file:///tmp/user.thrift",
 					Version: 0,
 					Content: []byte(tt.content),
-					From:    vfs.FileChangeTypeDidOpen,
+					From:    store.FileChangeTypeDidOpen,
 				},
 			})
 
@@ -493,12 +492,12 @@ func Test_SemanticAnalysis_ConstValueType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*vfs.FileChange{
+			view := buildSnapshotForTest(t, []*store.FileChange{
 				{
 					URI:     "file:///tmp/orth.thrift",
 					Version: 0,
 					Content: []byte(tt.content),
-					From:    vfs.FileChangeTypeDidOpen,
+					From:    store.FileChangeTypeDidOpen,
 				},
 			})
 

@@ -6,8 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
-
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // The gundam test corpus: strike_rouge includes federation.gundam, which
@@ -19,8 +17,8 @@ const (
 	char        = "file:///tmp/char.thrift"
 )
 
-func gundamFiles() []*vfs.FileChange {
-	return []*vfs.FileChange{
+func gundamFiles() []*FileChange {
+	return []*FileChange{
 		{
 			URI: uri.URI(strikeRouge),
 			Content: []byte(`include "federation.gundam.thrift"
@@ -28,7 +26,7 @@ func gundamFiles() []*vfs.FileChange {
 exception BayFull {
 	1: string message
 }`),
-			From: vfs.FileChangeTypeDidOpen,
+			From: FileChangeTypeDidOpen,
 		},
 		{
 			URI: uri.URI(federation),
@@ -37,7 +35,7 @@ exception BayFull {
 struct Gundam {
 	1: required string Name
 }`),
-			From: vfs.FileChangeTypeDidOpen,
+			From: FileChangeTypeDidOpen,
 		},
 		{
 			URI: uri.URI(mobileSuit),
@@ -46,7 +44,7 @@ struct Gundam {
 	ZAKU_II,
 	GELGOOG
 }`),
-			From: vfs.FileChangeTypeDidOpen,
+			From: FileChangeTypeDidOpen,
 		},
 	}
 }
@@ -55,14 +53,14 @@ struct Gundam {
 // first, then routed through View.FileChange.
 type viewHarness struct {
 	view *View
-	fs   *vfs.OverlayFS
+	fs   *OverlayFS
 }
 
-func newViewHarness(t *testing.T, files []*vfs.FileChange) *viewHarness {
+func newViewHarness(t *testing.T, files []*FileChange) *viewHarness {
 	t.Helper()
 
-	c := vfs.NewMemoizedFS()
-	fs := vfs.NewOverlayFS(c)
+	c := NewDiskFS()
+	fs := NewOverlayFS(c)
 
 	if err := fs.Update(t.Context(), files); err != nil {
 		t.Fatal(err)
@@ -81,10 +79,10 @@ func newViewHarness(t *testing.T, files []*vfs.FileChange) *viewHarness {
 
 // change applies a change like the server's didChange: overlay first, then
 // Update, returning the affected URIs.
-func (h *viewHarness) change(t *testing.T, change *vfs.FileChange) []uri.URI {
+func (h *viewHarness) change(t *testing.T, change *FileChange) []uri.URI {
 	t.Helper()
 
-	if err := h.fs.Update(t.Context(), []*vfs.FileChange{change}); err != nil {
+	if err := h.fs.Update(t.Context(), []*FileChange{change}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -96,8 +94,8 @@ func (h *viewHarness) change(t *testing.T, change *vfs.FileChange) []uri.URI {
 func Test_FileChangeInvalidatesDependents(t *testing.T) {
 	for _, tt := range []struct {
 		name         string
-		files        []*vfs.FileChange
-		change       *vfs.FileChange
+		files        []*FileChange
+		change       *FileChange
 		wantAffected []uri.URI
 		wantFresh    map[uri.URI]string // changed files parse to this marker
 		wantKept     []uri.URI          // unchanged files keep their original parse
@@ -105,7 +103,7 @@ func Test_FileChangeInvalidatesDependents(t *testing.T) {
 		{
 			name:  "change mid-chain invalidates transitive dependents",
 			files: gundamFiles(),
-			change: &vfs.FileChange{
+			change: &FileChange{
 				URI:     uri.URI(federation),
 				Version: 1,
 				Content: []byte(`include "mobile_suit.zeon.thrift"
@@ -114,7 +112,7 @@ struct Gundam {
 	1: required string Name,
 	2: optional i32 SerialNumber
 }`),
-				From: vfs.FileChangeTypeDidChange,
+				From: FileChangeTypeDidChange,
 			},
 			wantAffected: []uri.URI{federation, strikeRouge},
 			wantFresh:    map[uri.URI]string{federation: "SerialNumber"},
@@ -123,7 +121,7 @@ struct Gundam {
 		{
 			name:  "change leaf invalidates whole chain",
 			files: gundamFiles(),
-			change: &vfs.FileChange{
+			change: &FileChange{
 				URI:     uri.URI(mobileSuit),
 				Version: 1,
 				Content: []byte(`enum ZeonForces {
@@ -132,7 +130,7 @@ struct Gundam {
 	GELGOOG,
 	CHARS_ZAKU
 }`),
-				From: vfs.FileChangeTypeDidChange,
+				From: FileChangeTypeDidChange,
 			},
 			wantAffected: []uri.URI{mobileSuit, federation, strikeRouge},
 			wantFresh:    map[uri.URI]string{mobileSuit: "CHARS_ZAKU"},
@@ -140,23 +138,23 @@ struct Gundam {
 		},
 		{
 			name: "change file with no dependents",
-			files: []*vfs.FileChange{
+			files: []*FileChange{
 				{
 					URI: uri.URI(char),
 					Content: []byte(`struct Char {
 	1: optional string Title
 }`),
-					From: vfs.FileChangeTypeDidOpen,
+					From: FileChangeTypeDidOpen,
 				},
 			},
-			change: &vfs.FileChange{
+			change: &FileChange{
 				URI:     uri.URI(char),
 				Version: 1,
 				Content: []byte(`struct Char {
 	1: optional string Title,
 	2: optional bool Newtype
 }`),
-				From: vfs.FileChangeTypeDidChange,
+				From: FileChangeTypeDidChange,
 			},
 			wantAffected: []uri.URI{char},
 			wantFresh:    map[uri.URI]string{char: "Newtype"},

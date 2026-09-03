@@ -12,7 +12,6 @@ import (
 
 	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // lspPosOf returns the LSP position (0-based line, UTF-16 character)
@@ -114,8 +113,8 @@ exception BayFull {
 }`
 
 	view := buildSnapshot(t, includePaths,
-		&vfs.FileChange{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(mainContent), From: vfs.FileChangeTypeDidOpen},
-		&vfs.FileChange{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte(incContent), From: vfs.FileChangeTypeDidOpen},
+		&store.FileChange{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(mainContent), From: store.FileChangeTypeDidOpen},
+		&store.FileChange{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte(incContent), From: store.FileChangeTypeDidOpen},
 	)
 
 	return view, mainContent
@@ -249,8 +248,8 @@ func TestCompletionQualifiedValue(t *testing.T) {
 	assert.NotEqual(t, mainContent, content)
 
 	view := buildSnapshot(t, nil,
-		&vfs.FileChange{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(content), From: vfs.FileChangeTypeDidOpen},
-		&vfs.FileChange{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte("struct MobileSuit {\n\t1: required string ModelName\n}"), From: vfs.FileChangeTypeDidOpen},
+		&store.FileChange{URI: "file:///tmp/main.thrift", Version: 0, Content: []byte(content), From: store.FileChangeTypeDidOpen},
+		&store.FileChange{URI: "file:///tmp/federation.gundam.thrift", Version: 0, Content: []byte("struct MobileSuit {\n\t1: required string ModelName\n}"), From: store.FileChangeTypeDidOpen},
 	)
 
 	dotPos := lspPosOf(t, content, "const i32 LIMIT = ZeonForces.")
@@ -276,7 +275,7 @@ func TestCompletionQualifiedValue(t *testing.T) {
 
 func TestCompletionKeywordFallback(t *testing.T) {
 	view := buildSnapshot(t, nil,
-		&vfs.FileChange{URI: "file:///tmp/empty.thrift", Version: 0, Content: []byte(""), From: vfs.FileChangeTypeDidOpen},
+		&store.FileChange{URI: "file:///tmp/empty.thrift", Version: 0, Content: []byte(""), From: store.FileChangeTypeDidOpen},
 	)
 
 	labels, _, truncated := completionLabels(t, view, "file:///tmp/empty.thrift", protocol.Position{Line: 0, Character: 0})
@@ -312,7 +311,7 @@ func TestCompletionIncludePath(t *testing.T) {
 	pos := lspPosOf(t, mainContent, "include \"fed")
 
 	view := buildSnapshot(t, []string{filepath.Join(dir, "zeon")},
-		&vfs.FileChange{URI: uri.File(filepath.Join(dir, "main.thrift")), Version: 0, Content: []byte(mainContent), From: vfs.FileChangeTypeDidOpen},
+		&store.FileChange{URI: uri.File(filepath.Join(dir, "main.thrift")), Version: 0, Content: []byte(mainContent), From: store.FileChangeTypeDidOpen},
 	)
 
 	labels, rng, _ := completionLabels(t, view, uri.File(filepath.Join(dir, "main.thrift")).String(), pos)
@@ -326,7 +325,7 @@ func TestCompletionIncludePath(t *testing.T) {
 	mainContent2 := "include \"zeon/m"
 	pos2 := lspPosOf(t, mainContent2, "include \"zeon/m")
 	ss2 := buildSnapshot(t, []string{filepath.Join(dir, "zeon")},
-		&vfs.FileChange{URI: uri.File(filepath.Join(dir, "main.thrift")), Version: 0, Content: []byte(mainContent2), From: vfs.FileChangeTypeDidOpen},
+		&store.FileChange{URI: uri.File(filepath.Join(dir, "main.thrift")), Version: 0, Content: []byte(mainContent2), From: store.FileChangeTypeDidOpen},
 	)
 
 	labels2, _, _ := completionLabels(t, ss2, uri.File(filepath.Join(dir, "main.thrift")).String(), pos2)
@@ -337,7 +336,7 @@ func TestCompletionIncludePath(t *testing.T) {
 // wrapped edit range (the old whole-file prefix fallback bug).
 func TestCompletionNoPrefixUnderflow(t *testing.T) {
 	view := buildSnapshot(t, nil,
-		&vfs.FileChange{URI: "file:///tmp/underflow.thrift", Version: 0, Content: []byte("const X=1"), From: vfs.FileChangeTypeDidOpen},
+		&store.FileChange{URI: "file:///tmp/underflow.thrift", Version: 0, Content: []byte("const X=1"), From: store.FileChangeTypeDidOpen},
 	)
 
 	_, rng, _ := completionLabels(t, view, "file:///tmp/underflow.thrift", protocol.Position{Line: 0, Character: 9})
@@ -351,7 +350,7 @@ func TestCompletionNonASCIIPrefix(t *testing.T) {
 	pos := lspPosOf(t, content, "const X=1 😀")
 
 	view := buildSnapshot(t, nil,
-		&vfs.FileChange{URI: "file:///tmp/emoji.thrift", Version: 0, Content: []byte(content), From: vfs.FileChangeTypeDidOpen},
+		&store.FileChange{URI: "file:///tmp/emoji.thrift", Version: 0, Content: []byte(content), From: store.FileChangeTypeDidOpen},
 	)
 
 	_, rng, _ := completionLabels(t, view, "file:///tmp/emoji.thrift", pos)

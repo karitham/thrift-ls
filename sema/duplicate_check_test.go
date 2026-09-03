@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/karitham/thrift-ls/vfs"
+	"github.com/karitham/thrift-ls/store"
 )
 
 func Test_DuplicateCheck_Diagnostic(t *testing.T) {
@@ -300,12 +300,12 @@ enum User {}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := buildSnapshotForTest(t, []*vfs.FileChange{
+			view := buildSnapshotForTest(t, []*store.FileChange{
 				{
 					URI:     "file:///tmp/user.thrift",
 					Version: 0,
 					Content: []byte(tt.content),
-					From:    vfs.FileChangeTypeDidOpen,
+					From:    store.FileChangeTypeDidOpen,
 				},
 			})
 

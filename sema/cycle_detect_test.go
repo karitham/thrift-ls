@@ -11,14 +11,13 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
-func buildSnapshotForTest(t *testing.T, files []*vfs.FileChange) *store.View {
+func buildSnapshotForTest(t *testing.T, files []*store.FileChange) *store.View {
 	t.Helper()
 
-	c := vfs.NewMemoizedFS()
-	fs := vfs.NewOverlayFS(c)
+	c := store.NewDiskFS()
+	fs := store.NewOverlayFS(c)
 	_ = fs.Update(t.Context(), files)
 
 	view := store.NewView("file:///tmp", fs, nil)
@@ -75,13 +74,13 @@ func runCycleCheck(t *testing.T, files map[string]string, root string) []cyclePa
 
 	names := slices.Sorted(maps.Keys(files))
 
-	changes := make([]*vfs.FileChange, 0, len(files))
+	changes := make([]*store.FileChange, 0, len(files))
 	for _, name := range names {
-		changes = append(changes, &vfs.FileChange{
+		changes = append(changes, &store.FileChange{
 			URI:     uri.URI("file:///tmp/" + name),
 			Version: 0,
 			Content: []byte(files[name]),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		})
 	}
 
@@ -228,24 +227,24 @@ include "./test/address.thrift"`
 	file2 := `include "../user.thrift"`
 	file3 := `include "../user.thrift"`
 
-	view := buildSnapshotForTest(t, []*vfs.FileChange{
+	view := buildSnapshotForTest(t, []*store.FileChange{
 		{
 			URI:     "file:///tmp/user.thrift",
 			Version: 0,
 			Content: []byte(file1),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 		{
 			URI:     "file:///tmp/test/goods.thrift",
 			Version: 0,
 			Content: []byte(file2),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 		{
 			URI:     "file:///tmp/test/address.thrift",
 			Version: 0,
 			Content: []byte(file3),
-			From:    vfs.FileChangeTypeDidOpen,
+			From:    store.FileChangeTypeDidOpen,
 		},
 	})
 

@@ -9,7 +9,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // TestRenameEnumQualifiedValues pins that renaming an enum also updates
@@ -67,13 +66,13 @@ func TestRenameEnumQualifiedValues(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			changes := make([]*vfs.FileChange, 0, len(tt.files))
+			changes := make([]*store.FileChange, 0, len(tt.files))
 			for file, src := range tt.files {
-				changes = append(changes, &vfs.FileChange{
+				changes = append(changes, &store.FileChange{
 					URI:     uri.URI(file),
 					Version: 0,
 					Content: []byte(src),
-					From:    vfs.FileChangeTypeDidOpen,
+					From:    store.FileChangeTypeDidOpen,
 				})
 			}
 

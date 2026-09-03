@@ -14,7 +14,6 @@ import (
 
 	"github.com/karitham/thrift-ls/lsp/source"
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocumentParams) error {
@@ -24,11 +23,11 @@ func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocume
 	}
 
 	fileURI := document.URI
-	change := &vfs.FileChange{
+	change := &store.FileChange{
 		URI:     fileURI,
 		Version: int(document.Version),
 		Content: []byte(document.Text),
-		From:    vfs.FileChangeTypeDidOpen,
+		From:    store.FileChangeTypeDidOpen,
 	}
 
 	// Opening a file no project owns loads its directory as a folder, so
@@ -40,7 +39,7 @@ func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocume
 		s.workspace.loadSync(ctx, []uri.URI{uri.File(filepath.Dir(fileURI.FsPath()))})
 	}
 
-	return s.applyChanges(ctx, []*vfs.FileChange{change}, true)
+	return s.applyChanges(ctx, []*store.FileChange{change}, true)
 }
 
 func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDocumentParams) error {
@@ -49,21 +48,21 @@ func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDo
 
 func (s *Server) didClose(ctx context.Context, params *protocol.DidCloseTextDocumentParams) error {
 	fileURI := params.TextDocument.URI
-	change := &vfs.FileChange{URI: fileURI, From: vfs.FileChangeTypeDidClose}
+	change := &store.FileChange{URI: fileURI, From: store.FileChangeTypeDidClose}
 
-	return s.applyChanges(ctx, []*vfs.FileChange{change}, true)
+	return s.applyChanges(ctx, []*store.FileChange{change}, true)
 }
 
 // applyChanges is the single path from file events to overlays and views.
 // Files route only through snapshot ownership: unowned files update the
 // overlay but reach no view.
-func (s *Server) applyChanges(ctx context.Context, changes []*vfs.FileChange, overlay bool) error {
+func (s *Server) applyChanges(ctx context.Context, changes []*store.FileChange, overlay bool) error {
 	if len(changes) == 0 {
 		return nil
 	}
 
 	for _, change := range changes {
-		if change.From == vfs.FileChangeTypeDidClose {
+		if change.From == store.FileChangeTypeDidClose {
 			s.forgetReport(change.URI)
 		}
 	}
@@ -72,7 +71,7 @@ func (s *Server) applyChanges(ctx context.Context, changes []*vfs.FileChange, ov
 }
 
 func (s *Server) didChangeWatchedFiles(ctx context.Context, params *protocol.DidChangeWatchedFilesParams) error {
-	var changes []*vfs.FileChange
+	var changes []*store.FileChange
 
 	for _, event := range params.Changes {
 		if !s.workspace.owns(event.URI) {
@@ -97,11 +96,11 @@ func (s *Server) didChangeWatchedFiles(ctx context.Context, params *protocol.Did
 }
 
 // watchedFileChange builds a FileChange from a disk event, reading the
-// current content through the memoized file source. Deleted files are
+// current content from disk. Deleted files are
 // reported as a close change.
-func (s *Server) watchedFileChange(ctx context.Context, event protocol.FileEvent) (*vfs.FileChange, error) {
+func (s *Server) watchedFileChange(ctx context.Context, event protocol.FileEvent) (*store.FileChange, error) {
 	if event.Type == protocol.FileChangeTypeDeleted {
-		return &vfs.FileChange{URI: event.URI, From: vfs.FileChangeTypeDidClose}, nil
+		return &store.FileChange{URI: event.URI, From: store.FileChangeTypeDidClose}, nil
 	}
 
 	fh, err := s.session.ReadFile(ctx, event.URI)
@@ -114,11 +113,11 @@ func (s *Server) watchedFileChange(ctx context.Context, event protocol.FileEvent
 		return nil, err
 	}
 
-	return &vfs.FileChange{
+	return &store.FileChange{
 		URI:     event.URI,
 		Version: int(fh.Version()),
 		Content: content,
-		From:    vfs.FileChangeTypeDidChange,
+		From:    store.FileChangeTypeDidChange,
 	}, nil
 }
 
@@ -158,7 +157,7 @@ func (s *Server) postDiagnostics(ctx context.Context, view *store.View, res stor
 }
 
 func (s *Server) completion(ctx context.Context, params *protocol.CompletionParams) (*protocol.CompletionList, error) {
-	return withFile(ctx, s.viewOf, params.TextDocument.URI, func(view *store.View, fh vfs.FileHandle) (*protocol.CompletionList, error) {
+	return withFile(ctx, s.viewOf, params.TextDocument.URI, func(view *store.View, fh store.FileHandle) (*protocol.CompletionList, error) {
 		items, rng, truncated, err := source.DefaultTokenCompletion.Completion(ctx, view, &source.CompletionRequest{
 			Pos: protocol.Position{
 				Line:      params.Position.Line,

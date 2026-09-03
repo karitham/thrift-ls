@@ -9,7 +9,6 @@ import (
 
 	"github.com/karitham/thrift-ls/lsp/source"
 	"github.com/karitham/thrift-ls/store"
-	"github.com/karitham/thrift-ls/vfs"
 )
 
 // willRenameFiles computes the edits re-pointing every include of each
@@ -71,8 +70,8 @@ func (s *Server) didRenameFiles(ctx context.Context, params *protocol.RenameFile
 		// Forget the editor overlay first, mirroring didClose: otherwise
 		// the stale buffer shadows the file system forever, and the
 		// watcher guard drops this rename's delete/create events.
-		change := &vfs.FileChange{URI: oldURI, From: vfs.FileChangeTypeDidClose}
-		if err := s.session.Update(ctx, []*vfs.FileChange{change}); err != nil {
+		change := &store.FileChange{URI: oldURI, From: store.FileChangeTypeDidClose}
+		if err := s.session.Update(ctx, []*store.FileChange{change}); err != nil {
 			return err
 		}
 
@@ -89,7 +88,7 @@ func (s *Server) didRenameFiles(ctx context.Context, params *protocol.RenameFile
 // without working file watchers. Overlay-backed includers are re-fed their
 // own current content: a cheap no-op re-parse.
 func (s *Server) refreshIncluders(ctx context.Context, view *store.View, oldURI uri.URI) {
-	var refreshes []*vfs.FileChange
+	var refreshes []*store.FileChange
 
 	for _, inc := range view.Includers(oldURI) {
 		fh, err := s.session.ReadFile(ctx, inc)
@@ -106,11 +105,11 @@ func (s *Server) refreshIncluders(ctx context.Context, view *store.View, oldURI 
 			continue
 		}
 
-		refreshes = append(refreshes, &vfs.FileChange{
+		refreshes = append(refreshes, &store.FileChange{
 			URI:     inc,
 			Version: int(fh.Version()),
 			Content: content,
-			From:    vfs.FileChangeTypeDidChange,
+			From:    store.FileChangeTypeDidChange,
 		})
 	}
 
