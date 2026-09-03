@@ -393,15 +393,25 @@ func TestLexTrivia(t *testing.T) {
 					t.Errorf("token %d kind: got %v, want %v", check.idx, tok.Kind, check.kind)
 				}
 
-				if IsComment(tok.Kind) && check.sameLine {
+				if IsComment(tok.Kind) {
 					prev := check.idx - 1
 					for prev >= 0 && IsComment(toks[prev].Kind) {
 						prev--
 					}
 
-					if prev < 0 || toks[prev].Line != tok.Line {
-						t.Errorf("token %d %q: want same line as token %d, got lines %d and %d",
-							check.idx, tok.Text, prev, tok.Line, lineOf(toks, prev))
+					prevLine := -1
+					if prev >= 0 {
+						prevLine = toks[prev].Line
+					}
+
+					if check.sameLine {
+						if prev < 0 || prevLine != tok.Line {
+							t.Errorf("token %d %q: want same line as token %d, got lines %d and %d",
+								check.idx, tok.Text, prev, tok.Line, prevLine)
+						}
+					} else if prev >= 0 && prevLine == tok.Line {
+						t.Errorf("token %d %q: want own line, shares line %d with token %d",
+							check.idx, tok.Text, tok.Line, prev)
 					}
 				}
 
@@ -411,14 +421,6 @@ func TestLexTrivia(t *testing.T) {
 			}
 		})
 	}
-}
-
-func lineOf(toks []Token, idx int) int {
-	if idx < 0 {
-		return -1
-	}
-
-	return toks[idx].Line
 }
 
 func TestLexTriviaKinds(t *testing.T) {

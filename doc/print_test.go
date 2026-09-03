@@ -319,26 +319,12 @@ func TestPrintIndentAndAlign(t *testing.T) {
 }
 
 func TestPrintTabIndent(t *testing.T) {
-	tests := []struct {
-		name string
-		doc  func(a *Arena) Doc
-		want string
-	}{
-		{
-			name: "tab indentation and measurement",
-			doc: func(a *Arena) Doc {
-				return a.GroupBreak(a.Concat(a.Text("a"), a.Indent(a.Concat(Line, a.Text("b")))))
-			},
-			want: "a\n\tb",
-		},
+	o := Options{PrintWidth: 80, Indent: "\t", TabWidth: 4, NewLine: "\n"}
+	doc := func(a *Arena) Doc {
+		return a.GroupBreak(a.Concat(a.Text("a"), a.Indent(a.Concat(Line, a.Text("b")))))
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			o := Options{PrintWidth: 80, Indent: "\t", TabWidth: 4, NewLine: "\n"}
-			if got := printT(t, tt.doc, o); got != tt.want {
-				t.Errorf("got %q, want %q", got, tt.want)
-			}
-		})
+	if got := printT(t, doc, o); got != "a\n\tb" {
+		t.Errorf("got %q, want %q", got, "a\n\tb")
 	}
 }
 
@@ -524,26 +510,33 @@ func TestStringWidth(t *testing.T) {
 func TestPrintIdempotentDocs(t *testing.T) {
 	// These docs must print identically at the same width twice in a row;
 	// break propagation must not change the result on the second pass.
-	builds := []func(a *Arena) Doc{
-		func(a *Arena) Doc { return a.Group(a.Concat(a.Text("a"), Line, a.Text("b"))) },
-		func(a *Arena) Doc {
+	builds := []struct {
+		name  string
+		build func(a *Arena) Doc
+		want  string
+	}{
+		{"group", func(a *Arena) Doc { return a.Group(a.Concat(a.Text("a"), Line, a.Text("b"))) }, "a\nb"},
+		{"hardline", func(a *Arena) Doc {
 			return a.Group(a.Concat(a.Text("a"), HardLine, a.Text("b"), SoftLine, a.Text("c")))
-		},
-		func(a *Arena) Doc {
+		}, "a\nb\nc"},
+		{"conditional", func(a *Arena) Doc {
 			return a.ConditionalGroup(0,
 				a.Concat(a.Text("a"), Line, a.Text("b"), Line, a.Text("c")),
 				a.Concat(a.Text("a"), Line, a.Text("b"), HardLineNoBreak, a.Text("c")),
 			)
-		},
+		}, "a\nb\nc"},
 	}
-	for _, build := range builds {
+	for _, tt := range builds {
 		var a Arena
 
-		d := build(&a)
+		d := tt.build(&a)
 
 		first, err := Print(d, testOpts(2))
 		if err != nil {
 			t.Fatalf("Print: %v", err)
+		}
+		if first != tt.want {
+			t.Errorf("%s: got %q, want %q", tt.name, first, tt.want)
 		}
 
 		second, err := Print(d, testOpts(2))
@@ -552,7 +545,7 @@ func TestPrintIdempotentDocs(t *testing.T) {
 		}
 
 		if first != second {
-			t.Errorf("not idempotent: %q vs %q", first, second)
+			t.Errorf("%s: not idempotent: %q vs %q", tt.name, first, second)
 		}
 	}
 }
@@ -570,6 +563,9 @@ func TestDocMutability(t *testing.T) {
 	}
 
 	first := printT(t, func(*Arena) Doc { return build() }, testOpts(80))
+	if first != "a\nb\nc" {
+		t.Fatalf("golden drift: got %q, want %q", first, "a\nb\nc")
+	}
 	for i := range 10 {
 		if got := printT(t, func(*Arena) Doc { return build() }, testOpts(80)); got != first {
 			t.Fatalf("iteration %d: got %q, want %q", i, got, first)

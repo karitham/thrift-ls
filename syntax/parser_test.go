@@ -1141,6 +1141,7 @@ func TestParseErrors(t *testing.T) {
 		name     string
 		src      string
 		wantErrs []string // substrings, one per expected error
+		check    func(t *testing.T, doc *Document)
 	}{
 		{
 			name:     "unterminated struct",
@@ -1206,11 +1207,25 @@ func TestParseErrors(t *testing.T) {
 			name:     "garbage at top level recovers",
 			src:      ", , ,\nstruct S {}",
 			wantErrs: []string{"unexpected token"},
+			check: func(t *testing.T, doc *Document) {
+				t.Helper()
+				st := top[*Struct](t, doc)
+				if st.Name.Text != "S" {
+					t.Errorf("recovered struct name = %q, want S", st.Name.Text)
+				}
+			},
 		},
 		{
 			name:     "bad field recovers to closing brace",
 			src:      "struct S {\n  1: void bad\n}",
 			wantErrs: []string{"expected type"},
+			check: func(t *testing.T, doc *Document) {
+				t.Helper()
+				st := top[*Struct](t, doc)
+				if st.Name.Text != "S" {
+					t.Errorf("recovered struct name = %q, want S", st.Name.Text)
+				}
+			},
 		},
 		{
 			name:     "missing const value",
@@ -1226,6 +1241,16 @@ func TestParseErrors(t *testing.T) {
 			name:     "bad function recovers",
 			src:      "service S {\n  void ()\n  void ok()\n}",
 			wantErrs: []string{"expected function name"},
+			check: func(t *testing.T, doc *Document) {
+				t.Helper()
+				svc := top[*Service](t, doc)
+				for _, fn := range svc.Functions {
+					if fn.Name.Text == "ok" {
+						return
+					}
+				}
+				t.Error("recovered service lost function ok")
+			},
 		},
 	}
 
@@ -1252,6 +1277,16 @@ func TestParseErrors(t *testing.T) {
 				if !strings.Contains(got[i], want) {
 					t.Errorf("error %d = %q, want substring %q", i, got[i], want)
 				}
+			}
+
+			for _, err := range errs {
+				if err.Severity == SeverityWarning {
+					t.Errorf("unexpected warning: %v", err)
+				}
+			}
+
+			if tt.check != nil {
+				tt.check(t, doc)
 			}
 		})
 	}
@@ -1299,6 +1334,12 @@ func TestParseWarnings(t *testing.T) {
 			for i, want := range tt.wantMsg {
 				if !strings.Contains(warns[i], want) {
 					t.Errorf("warning %d = %q, want substring %q", i, warns[i], want)
+				}
+			}
+
+			for _, err := range errs {
+				if err.Severity == SeverityError {
+					t.Errorf("unexpected error: %v", err)
 				}
 			}
 		})

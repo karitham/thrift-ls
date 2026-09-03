@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -79,6 +80,14 @@ func TestDocumentRanges(t *testing.T) {
 		t.Errorf("struct range = %+v..%+v", start, end)
 	}
 
+	if !doc.Contains(s, start) {
+		t.Error("range start should be contained")
+	}
+
+	if !doc.Contains(s, end) {
+		t.Error("range end should be contained")
+	}
+
 	if !doc.Contains(s, Position{Line: 2, Col: 7, Offset: 18}) {
 		t.Error("position inside struct should be contained")
 	}
@@ -104,7 +113,7 @@ const i32 X = SOME_VALUE
 
 	// Helper: position of the first occurrence of text in the source.
 	posOf := func(text string) Position {
-		idx := indexOf(src, text)
+		idx := strings.Index(src, text)
 		if idx < 0 {
 			t.Fatalf("text %q not found in source", text)
 		}
@@ -160,7 +169,7 @@ const i32 X = SOME_VALUE
 	}
 
 	// Position on nothing (blank line between definitions).
-	idx := indexOf(src, "const i32")
+	idx := strings.Index(src, "const i32")
 	if idx < 0 {
 		t.Fatal("const not found")
 	}
@@ -233,14 +242,4 @@ func pathNames(path []Node) []string {
 	}
 
 	return names
-}
-
-func indexOf(s, sub string) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return i
-		}
-	}
-
-	return -1
 }

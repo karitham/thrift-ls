@@ -244,6 +244,11 @@ func TestGetLSPEndPosition(t *testing.T) {
 		want    protocol.Position
 	}{
 		{
+			name:    "empty document",
+			content: "",
+			want:    protocol.Position{Line: 0, Character: 0},
+		},
+		{
 			name:    "single line",
 			content: "struct Gundam {}",
 			want:    protocol.Position{Line: 0, Character: 16},

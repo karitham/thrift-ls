@@ -6,19 +6,6 @@ import (
 	"testing"
 )
 
-// walkKinds collects the %T name of every node Walk visits.
-func walkKinds(doc *Document) []string {
-	var kinds []string
-
-	Walk(doc, func(n Node) bool {
-		kinds = append(kinds, reflect.TypeOf(n).String())
-
-		return true
-	})
-
-	return kinds
-}
-
 // TestWalkPreorder pins the traversal order over every child-bearing node
 // kind: Document, Namespace, Include, Const, Enum, Typedef, Struct, Service,
 // nested container types, const list/map values, and function signatures.
@@ -104,7 +91,12 @@ service Svc extends Base {
 		"*syntax.Identifier", // err
 	}
 
-	got := walkKinds(doc)
+	got := []string{}
+	Walk(doc, func(n Node) bool {
+		got = append(got, reflect.TypeOf(n).String())
+
+		return true
+	})
 	if !slices.Equal(got, want) {
 		t.Errorf("preorder mismatch:\n got (%d):\n%v\nwant (%d):\n%v", len(got), got, len(want), want)
 	}
@@ -191,6 +183,10 @@ func TestNodeChildrenLeaves(t *testing.T) {
 		if got := nodeChildren(leaf); got != nil {
 			t.Errorf("%T children = %v, want nil", leaf, got)
 		}
+	}
+
+	if got := nodeChildren(&StructuredAnnotation{Name: &Identifier{}}); len(got) != 1 {
+		t.Errorf("StructuredAnnotation children = %v, want [Name]", got)
 	}
 }
 
