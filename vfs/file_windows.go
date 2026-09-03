@@ -1,6 +1,6 @@
 //go:build windows
 
-package cache
+package vfs
 
 import (
 	"syscall"

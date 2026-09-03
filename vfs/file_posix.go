@@ -1,6 +1,6 @@
 //go:build !windows && !plan9
 
-package cache
+package vfs
 
 import (
 	"os"

@@ -1,4 +1,4 @@
-package cache
+package vfs
 
 import (
 	"context"
@@ -8,23 +8,23 @@ import (
 	"go.lsp.dev/uri"
 )
 
-// An overlayFS is a source.FileSource that keeps track of overlays on top of a
+// An OverlayFS is a FileSource that keeps track of overlays on top of a
 // delegate FileSource.
-type overlayFS struct {
+type OverlayFS struct {
 	delegate FileSource
 
 	mu       sync.Mutex
 	overlays map[uri.URI]*Overlay
 }
 
-func NewOverlayFS(delegate FileSource) *overlayFS {
-	return &overlayFS{
+func NewOverlayFS(delegate FileSource) *OverlayFS {
+	return &OverlayFS{
 		delegate: delegate,
 		overlays: make(map[uri.URI]*Overlay),
 	}
 }
 
-func (fs *overlayFS) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, error) {
+func (fs *OverlayFS) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, error) {
 	slog.Debug("reading uri", "uri", uri)
 	fs.mu.Lock()
 	overlay, ok := fs.overlays[uri]
@@ -40,7 +40,7 @@ func (fs *overlayFS) ReadFile(ctx context.Context, uri uri.URI) (FileHandle, err
 // Exists reports whether path names an open overlay or an existing delegate
 // file, without reading content. Open files count even when the disk copy
 // is missing, so includes resolve for unsaved buffers.
-func (fs *overlayFS) Exists(ctx context.Context, path string) bool {
+func (fs *OverlayFS) Exists(ctx context.Context, path string) bool {
 	if err := ctx.Err(); err != nil {
 		return false
 	}
@@ -72,13 +72,13 @@ func (fs *overlayFS) Exists(ctx context.Context, path string) bool {
 // WalkFiles enumerates the delegate's tree, not the overlay: the walk
 // discovers files on the underlying source, while open files are already
 // known to the session via their didOpen.
-func (fs *overlayFS) WalkFiles(ctx context.Context, root uri.URI, fn func(uri.URI) error) error {
+func (fs *OverlayFS) WalkFiles(ctx context.Context, root uri.URI, fn func(uri.URI) error) error {
 	return fs.delegate.WalkFiles(ctx, root, fn)
 }
 
 // Update applies changes to the overlay set. DidClose changes remove the
 // overlay; all other types create or replace it.
-func (fs *overlayFS) Update(_ context.Context, changes []*FileChange) error {
+func (fs *OverlayFS) Update(_ context.Context, changes []*FileChange) error {
 	for _, change := range changes {
 		if change.From == FileChangeTypeDidClose {
 			fs.Forget(change.URI)
@@ -99,7 +99,7 @@ func (fs *overlayFS) Update(_ context.Context, changes []*FileChange) error {
 }
 
 // HasOverlay reports whether uri has an open overlay.
-func (fs *overlayFS) HasOverlay(uri uri.URI) bool {
+func (fs *OverlayFS) HasOverlay(uri uri.URI) bool {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
@@ -109,7 +109,7 @@ func (fs *overlayFS) HasOverlay(uri uri.URI) bool {
 }
 
 // Forget drops the overlay for uri, falling back to disk content.
-func (fs *overlayFS) Forget(uri uri.URI) {
+func (fs *OverlayFS) Forget(uri uri.URI) {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
@@ -117,7 +117,7 @@ func (fs *overlayFS) Forget(uri uri.URI) {
 }
 
 // An Overlay is a file open in the editor. It may have unsaved edits.
-// It implements the source.FileHandle interface.
+// It implements the FileHandle interface.
 type Overlay struct {
 	uri     uri.URI
 	content []byte

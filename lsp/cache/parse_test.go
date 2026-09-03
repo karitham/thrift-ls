@@ -15,9 +15,7 @@ func TestParse(t *testing.T) {
 	}{
 		{
 			name: "normal",
-			fh: &Overlay{
-				uri: "file:///tmp/types.thrift",
-				content: []byte(`
+			fh: NewOverlay("file:///tmp/types.thrift", []byte(`
 #include "base.thrift"
 struct Xtruct3
 {
@@ -26,16 +24,12 @@ struct Xtruct3
   9:  i32    i32_thing,
   11: i64    i64_thing
 }
-				`),
-				version: 0,
-			},
+			`), 0),
 			assertion: assert.NoError,
 		},
 		{
 			name: "invalid ast",
-			fh: &Overlay{
-				uri: "file:///tmp/types.thrift",
-				content: []byte(`
+			fh: NewOverlay("file:///tmp/types.thrift", []byte(`
 #include "base.thrift"
 struct Xtruct3
 {
@@ -45,9 +39,7 @@ struct Xtruct3
   11: i64    i64_thing,
   12: 
 }
-				`),
-				version: 0,
-			},
+			`), 0),
 			assertion: assert.NoError,
 		},
 	}

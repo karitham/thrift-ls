@@ -1,4 +1,4 @@
-package cache
+package vfs
 
 import (
 	"context"
@@ -28,7 +28,7 @@ func NewMemoizedFS() FileSource {
 }
 
 // A DiskFile is a file on the filesystem, or a failure to read one.
-// It implements the source.FileHandle interface.
+// It implements the FileHandle interface.
 type DiskFile struct {
 	uri     uri.URI
 	modTime time.Time
