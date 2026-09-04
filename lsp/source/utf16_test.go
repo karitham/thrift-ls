@@ -20,6 +20,7 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
+	"github.com/karitham/thrift-ls/analyzers"
 	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
 )
@@ -88,7 +89,7 @@ func TestParseErrorDiagnosticUTF16(t *testing.T) {
 
 	view := utf16Snapshot(t, src)
 
-	report, err := sema.New(sema.Config{}, []sema.Analyzer{&sema.ParseCheck{}}).Run(t.Context(), view, []uri.URI{"file:///tmp/htt.thrift"})
+	report, err := sema.New(sema.Config{}, []sema.Analyzer{&analyzers.ParseCheck{}}).Run(t.Context(), view, []uri.URI{"file:///tmp/htt.thrift"})
 	require.NoError(t, err)
 
 	protoDiags, err := ToProtocolDiagnostics(t.Context(), view, "file:///tmp/htt.thrift", report["file:///tmp/htt.thrift"])

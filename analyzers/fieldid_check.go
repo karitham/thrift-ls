@@ -1,9 +1,10 @@
-package sema
+package analyzers
 
 import (
 	"context"
 	"strconv"
 
+	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -15,10 +16,10 @@ func (c *FieldIDCheck) Name() string {
 	return "FieldIDCheck"
 }
 
-func (c *FieldIDCheck) AnalyzeFile(ctx context.Context, f File) ([]Diagnostic, error) {
+func (c *FieldIDCheck) AnalyzeFile(ctx context.Context, f sema.File) ([]sema.Diagnostic, error) {
 	pf := f.PF
 
-	var ret []Diagnostic
+	var ret []sema.Diagnostic
 
 	pf.AST().WalkFieldLists(func(fields []*syntax.Field, _ syntax.FieldListKind) {
 		fieldIDSet := make(map[int][]*syntax.Field)
@@ -40,10 +41,10 @@ func (c *FieldIDCheck) AnalyzeFile(ctx context.Context, f File) ([]Diagnostic, e
 		for fieldID, set := range fieldIDSet {
 			if fieldID < 1 || fieldID > 32767 {
 				for _, field := range set {
-					ret = append(ret, Diagnostic{
-						Span:     spanOfToken(field.FieldID),
-						Severity: SeverityError,
-						Code:     CodeFieldIDRange,
+					ret = append(ret, sema.Diagnostic{
+						Span:     sema.TokenSpan(field.FieldID),
+						Severity: sema.SeverityError,
+						Code:     sema.CodeFieldIDRange,
 						Message:  "field id should be a positive integer in [1, 32767]",
 					})
 				}
@@ -54,10 +55,10 @@ func (c *FieldIDCheck) AnalyzeFile(ctx context.Context, f File) ([]Diagnostic, e
 			}
 
 			for _, field := range set {
-				ret = append(ret, Diagnostic{
-					Span:     spanOfToken(field.FieldID),
-					Severity: SeverityError,
-					Code:     CodeFieldIDConflict,
+				ret = append(ret, sema.Diagnostic{
+					Span:     sema.TokenSpan(field.FieldID),
+					Severity: sema.SeverityError,
+					Code:     sema.CodeFieldIDConflict,
 					Message:  "field id conflict",
 				})
 			}

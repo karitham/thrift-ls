@@ -1,4 +1,4 @@
-package sema
+package analyzers
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
@@ -16,7 +17,7 @@ func (s *SemanticAnalysis) Name() string {
 	return "SemanticAnalysis"
 }
 
-func (s *SemanticAnalysis) AnalyzeFile(ctx context.Context, f File) ([]Diagnostic, error) {
+func (s *SemanticAnalysis) AnalyzeFile(ctx context.Context, f sema.File) ([]sema.Diagnostic, error) {
 	// The run's shared index: resolutions are memoized per (file, name),
 	// across every analyzer in the run.
 	return s.checkDefinitionExist(ctx, f.View(), f.Index(), f.PF), nil
@@ -28,8 +29,8 @@ func (s *SemanticAnalysis) AnalyzeFile(ctx context.Context, f File) ([]Diagnosti
 // resolving to no enum value or const at any nesting depth, and field defaults
 // or const values whose kind — at any literal depth — mismatches the declared
 // type's underlying kind.
-func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, view Graph, ix *Index, pf *store.ParsedFile) []Diagnostic {
-	res := make([]Diagnostic, 0)
+func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, view sema.Graph, ix *sema.Index, pf *store.ParsedFile) []sema.Diagnostic {
+	res := make([]sema.Diagnostic, 0)
 
 	syntax.Walk(pf.AST(), func(n syntax.Node) bool {
 		switch v := n.(type) {
@@ -57,9 +58,9 @@ func (s *SemanticAnalysis) checkDefinitionExist(ctx context.Context, view Graph,
 // resolves to no definition. Matching the upfluence compiler, the name of
 // a structured annotation must be a declared type: the compiler errors at
 // parse time ("Type %s does not exist"); here the semantic pass owns it.
-func (s *SemanticAnalysis) checkAnnotationTypeExist(ctx context.Context, view Graph, ix *Index,
+func (s *SemanticAnalysis) checkAnnotationTypeExist(ctx context.Context, view sema.Graph, ix *sema.Index,
 	pf *store.ParsedFile, sa *syntax.StructuredAnnotation,
-) (res []Diagnostic) {
+) (res []sema.Diagnostic) {
 	if sa == nil || sa.Name == nil {
 		return res
 	}
@@ -71,17 +72,17 @@ func (s *SemanticAnalysis) checkAnnotationTypeExist(ctx context.Context, view Gr
 		return res
 	}
 
-	return append(res, Diagnostic{
-		Span:     SpanOf(pf, sa.Name),
-		Severity: SeverityError,
-		Code:     CodeUnknownAnnotation,
+	return append(res, sema.Diagnostic{
+		Span:     sema.SpanOf(pf, sa.Name),
+		Severity: sema.SeverityError,
+		Code:     sema.CodeUnknownAnnotation,
 		Message:  "annotation type doesn't exist",
 	})
 }
 
-func (s *SemanticAnalysis) checkConstValueExist(ctx context.Context, view Graph, ix *Index,
+func (s *SemanticAnalysis) checkConstValueExist(ctx context.Context, view sema.Graph, ix *sema.Index,
 	pf *store.ParsedFile, cst *syntax.ConstValue,
-) (res []Diagnostic) {
+) (res []sema.Diagnostic) {
 	if cst == nil || cst.Kind != syntax.ValueIdent {
 		return res
 	}
@@ -92,10 +93,10 @@ func (s *SemanticAnalysis) checkConstValueExist(ctx context.Context, view Graph,
 
 	def, err := ix.ResolveValue(ctx, pf, cst)
 	if err != nil || def == nil {
-		res = append(res, Diagnostic{
-			Span:     SpanOf(pf, cst),
-			Severity: SeverityError,
-			Code:     CodeUndefinedValue,
+		res = append(res, sema.Diagnostic{
+			Span:     sema.SpanOf(pf, cst),
+			Severity: sema.SeverityError,
+			Code:     sema.CodeUndefinedValue,
 			Message:  "default value doesn't exist",
 		})
 	}
@@ -112,7 +113,7 @@ func (s *SemanticAnalysis) checkConstValueExist(ctx context.Context, view Graph,
 // whose scope expect resolves in — the two part ways once the type walks
 // into an include. Existence of identifier values is checkConstValueExist's
 // job; this only classifies kinds.
-func (s *SemanticAnalysis) checkValueType(ctx context.Context, ix *Index, reportPf, scopePf *store.ParsedFile, expect *syntax.FieldType, value *syntax.ConstValue) []Diagnostic {
+func (s *SemanticAnalysis) checkValueType(ctx context.Context, ix *sema.Index, reportPf, scopePf *store.ParsedFile, expect *syntax.FieldType, value *syntax.ConstValue) []sema.Diagnostic {
 	if value == nil {
 		return nil
 	}
@@ -165,8 +166,8 @@ func (s *SemanticAnalysis) checkValueType(ctx context.Context, ix *Index, report
 
 // checkMapEntries validates each entry of a map literal against the map
 // type's resolved key and value types.
-func (s *SemanticAnalysis) checkMapEntries(ctx context.Context, ix *Index, reportPf, scopePf *store.ParsedFile, ut *syntax.FieldType, value *syntax.ConstValue) []Diagnostic {
-	var res []Diagnostic
+func (s *SemanticAnalysis) checkMapEntries(ctx context.Context, ix *sema.Index, reportPf, scopePf *store.ParsedFile, ut *syntax.FieldType, value *syntax.ConstValue) []sema.Diagnostic {
+	var res []sema.Diagnostic
 
 	for _, entry := range value.Map {
 		res = append(res, s.checkValueType(ctx, ix, reportPf, scopePf, ut.KeyType, entry.Key)...)
@@ -178,8 +179,8 @@ func (s *SemanticAnalysis) checkMapEntries(ctx context.Context, ix *Index, repor
 
 // checkListEntries validates each element of a list literal against the
 // container's resolved element type.
-func (s *SemanticAnalysis) checkListEntries(ctx context.Context, ix *Index, reportPf, scopePf *store.ParsedFile, ut *syntax.FieldType, value *syntax.ConstValue) []Diagnostic {
-	var res []Diagnostic
+func (s *SemanticAnalysis) checkListEntries(ctx context.Context, ix *sema.Index, reportPf, scopePf *store.ParsedFile, ut *syntax.FieldType, value *syntax.ConstValue) []sema.Diagnostic {
+	var res []sema.Diagnostic
 
 	for _, elem := range value.List {
 		res = append(res, s.checkValueType(ctx, ix, reportPf, scopePf, ut.ValueType, elem)...)
@@ -191,7 +192,7 @@ func (s *SemanticAnalysis) checkListEntries(ctx context.Context, ix *Index, repo
 // checkStructEntries validates a struct-valued map literal: keys must name
 // fields of the resolved definition, and each value is classified against
 // the field's own type.
-func (s *SemanticAnalysis) checkStructEntries(ctx context.Context, ix *Index, reportPf *store.ParsedFile, typeName string, fields []*syntax.Field, structPf *store.ParsedFile, value *syntax.ConstValue) []Diagnostic {
+func (s *SemanticAnalysis) checkStructEntries(ctx context.Context, ix *sema.Index, reportPf *store.ParsedFile, typeName string, fields []*syntax.Field, structPf *store.ParsedFile, value *syntax.ConstValue) []sema.Diagnostic {
 	byName := make(map[string]*syntax.Field, len(fields))
 	for _, f := range fields {
 		if f.Name != nil {
@@ -199,7 +200,7 @@ func (s *SemanticAnalysis) checkStructEntries(ctx context.Context, ix *Index, re
 		}
 	}
 
-	var res []Diagnostic
+	var res []sema.Diagnostic
 
 	for _, entry := range value.Map {
 		if entry.Key.Kind != syntax.ValueString {
@@ -222,8 +223,8 @@ func (s *SemanticAnalysis) checkStructEntries(ctx context.Context, ix *Index, re
 }
 
 // kindMismatch reports a literal whose kind contradicts the target type.
-func kindMismatch(pf *store.ParsedFile, value *syntax.ConstValue, ut *syntax.FieldType) []Diagnostic {
-	return []Diagnostic{*mismatchDiagnostic(pf, value, underlyingName(ut), gotName(value))}
+func kindMismatch(pf *store.ParsedFile, value *syntax.ConstValue, ut *syntax.FieldType) []sema.Diagnostic {
+	return []sema.Diagnostic{*mismatchDiagnostic(pf, value, underlyingName(ut), gotName(value))}
 }
 
 // gotName names a literal's kind for a mismatch message. true/false lex as
@@ -239,11 +240,11 @@ func gotName(value *syntax.ConstValue) string {
 // unknownFieldDiagnostic reports a struct-valued literal keyed by a name
 // that is not a field of the definition. name is the key text with its
 // quotes stripped.
-func unknownFieldDiagnostic(pf *store.ParsedFile, key *syntax.ConstValue, typeName, name string) Diagnostic {
-	return Diagnostic{
-		Span:     SpanOf(pf, key),
-		Severity: SeverityError,
-		Code:     CodeValueTypeMismatch,
+func unknownFieldDiagnostic(pf *store.ParsedFile, key *syntax.ConstValue, typeName, name string) sema.Diagnostic {
+	return sema.Diagnostic{
+		Span:     sema.SpanOf(pf, key),
+		Severity: sema.SeverityError,
+		Code:     sema.CodeValueTypeMismatch,
 		Message:  fmt.Sprintf("no field named %q in %s", name, typeName),
 	}
 }
@@ -267,7 +268,7 @@ func isBase(ft *syntax.FieldType, base syntax.TokenKind) bool {
 // types resolve in — the compiler accepts map literals, keyed by field
 // name, for struct-valued constants and field defaults. nil fields when
 // the type is not a struct-like definition.
-func structFields(ctx context.Context, ix *Index, ut *syntax.FieldType, typePf *store.ParsedFile) ([]*syntax.Field, *store.ParsedFile) {
+func structFields(ctx context.Context, ix *sema.Index, ut *syntax.FieldType, typePf *store.ParsedFile) ([]*syntax.Field, *store.ParsedFile) {
 	if ut == nil || ut.Kind != syntax.TypeIdent {
 		return nil, nil
 	}
@@ -293,7 +294,7 @@ func structFields(ctx context.Context, ix *Index, ut *syntax.FieldType, typePf *
 // the compiler substitutes bool-const identifiers before validating — so
 // the reference must resolve, in the referencing file's scope, to a const
 // of bool type.
-func identValueMatches(ctx context.Context, ix *Index, pf *store.ParsedFile, ut *syntax.FieldType, value *syntax.ConstValue) bool {
+func identValueMatches(ctx context.Context, ix *sema.Index, pf *store.ParsedFile, ut *syntax.FieldType, value *syntax.ConstValue) bool {
 	if !isBase(ut, syntax.TokenBool) {
 		return true
 	}
@@ -317,7 +318,7 @@ func identValueMatches(ctx context.Context, ix *Index, pf *store.ParsedFile, ut 
 // intValueMatches reports whether an integer literal fits the underlying
 // type: an integer base, or an enum — the compiler accepts int constants
 // in enum positions.
-func intValueMatches(ctx context.Context, ix *Index, ut *syntax.FieldType, typePf *store.ParsedFile, value *syntax.ConstValue) bool {
+func intValueMatches(ctx context.Context, ix *sema.Index, ut *syntax.FieldType, typePf *store.ParsedFile, value *syntax.ConstValue) bool {
 	if value.Text == "true" || value.Text == "false" {
 		return isBase(ut, syntax.TokenBool)
 	}
@@ -334,7 +335,7 @@ func intValueMatches(ctx context.Context, ix *Index, ut *syntax.FieldType, typeP
 		}
 	case syntax.TypeIdent:
 		def, err := ix.ResolveType(ctx, typePf, ut)
-		return err == nil && def != nil && def.Kind == DefinitionEnum
+		return err == nil && def != nil && def.Kind == sema.DefinitionEnum
 	}
 
 	return false
@@ -384,11 +385,11 @@ func kindName(kind syntax.ConstValueKind) string {
 	return "unknown"
 }
 
-func mismatchDiagnostic(pf *store.ParsedFile, value *syntax.ConstValue, expect, got string) *Diagnostic {
-	return &Diagnostic{
-		Span:     SpanOf(pf, value),
-		Severity: SeverityError,
-		Code:     CodeValueTypeMismatch,
+func mismatchDiagnostic(pf *store.ParsedFile, value *syntax.ConstValue, expect, got string) *sema.Diagnostic {
+	return &sema.Diagnostic{
+		Span:     sema.SpanOf(pf, value),
+		Severity: sema.SeverityError,
+		Code:     sema.CodeValueTypeMismatch,
 		Message:  fmt.Sprintf("expect %s but got %s", expect, got),
 	}
 }
@@ -396,9 +397,9 @@ func mismatchDiagnostic(pf *store.ParsedFile, value *syntax.ConstValue, expect, 
 // checkTypeExist reports a single type reference that resolves to no
 // definition. The walk visits every FieldType individually — including
 // container element types — so this needs no recursion.
-func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, view Graph, ix *Index,
+func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, view sema.Graph, ix *sema.Index,
 	pf *store.ParsedFile, ft *syntax.FieldType,
-) (res []Diagnostic) {
+) (res []sema.Diagnostic) {
 	if ft == nil || ft.Kind != syntax.TypeIdent {
 		return res
 	}
@@ -408,10 +409,10 @@ func (s *SemanticAnalysis) checkTypeExist(ctx context.Context, view Graph, ix *I
 		return res
 	}
 
-	return append(res, Diagnostic{
-		Span:     SpanOf(pf, ft.Ident),
-		Severity: SeverityError,
-		Code:     CodeUndefinedType,
+	return append(res, sema.Diagnostic{
+		Span:     sema.SpanOf(pf, ft.Ident),
+		Severity: sema.SeverityError,
+		Code:     sema.CodeUndefinedType,
 		Message:  "field type doesn't exist",
 	})
 }

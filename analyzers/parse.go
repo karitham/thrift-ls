@@ -1,10 +1,11 @@
-package sema
+package analyzers
 
 import (
 	"context"
 	"errors"
 	"log/slog"
 
+	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -18,7 +19,7 @@ func (p *ParseCheck) Name() string {
 	return "Parse"
 }
 
-func (p *ParseCheck) Analyze(ctx context.Context, run *Run) error {
+func (p *ParseCheck) Analyze(ctx context.Context, run *sema.Run) error {
 	var errs []error
 
 	for _, file := range run.Files() {
@@ -40,18 +41,18 @@ func (p *ParseCheck) Analyze(ctx context.Context, run *Run) error {
 
 // parseErrorDiagnostic converts a syntax error or warning to a diagnostic
 // at the error's position.
-func parseErrorDiagnostic(err syntax.Error) Diagnostic {
-	severity := SeverityError
+func parseErrorDiagnostic(err syntax.Error) sema.Diagnostic {
+	severity := sema.SeverityError
 	if err.Severity == syntax.SeverityWarning {
-		severity = SeverityWarning
+		severity = sema.SeverityWarning
 	}
 
 	pos := syntax.Position{Line: err.Line, Col: err.Col, Offset: err.Offset}
 
-	return Diagnostic{
-		Span:     Span{Start: pos, End: pos},
+	return sema.Diagnostic{
+		Span:     sema.Span{Start: pos, End: pos},
 		Severity: severity,
-		Code:     CodeParseError,
+		Code:     sema.CodeParseError,
 		Message:  err.Message,
 	}
 }

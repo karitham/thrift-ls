@@ -1,4 +1,4 @@
-package sema
+package analyzers
 
 import (
 	"os"
@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
 
+	"github.com/karitham/thrift-ls/analyzertest"
+	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
 )
 
@@ -74,13 +76,13 @@ func Test_IncludeShadowCheck(t *testing.T) {
 				},
 			})
 
-			got := runOne(t, EachFile(&IncludeShadowCheck{}), view, uri.File(filePath))
+			got := analyzertest.RunOnView(t, sema.EachFile(&IncludeShadowCheck{}), view, uri.File(filePath))
 
 			require.Len(t, got[uri.File(filePath)], tt.wantCount)
 
 			for _, d := range got[uri.File(filePath)] {
-				assert.Equal(t, SeverityWarning, d.Severity)
-				assert.Equal(t, CodeIncludeShadow, d.Code)
+				assert.Equal(t, sema.SeverityWarning, d.Severity)
+				assert.Equal(t, sema.CodeIncludeShadow, d.Code)
 				assert.Contains(t, d.Message, tt.wantMessage)
 			}
 		})

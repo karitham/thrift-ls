@@ -1,14 +1,14 @@
-package sema
+package analyzers
 
 import (
 	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/analyzertest"
+	"github.com/karitham/thrift-ls/sema"
 )
 
 func Test_FieldIDCheck_Diagnostic(t *testing.T) {
@@ -39,154 +39,12 @@ service Demo {
 }
 `
 
-	view := store.BuildViewForTest([]*store.FileChange{
-		{
-			URI:     "file:///tmp/user.thrift",
-			Version: 0,
-			Content: []byte(file1),
-			From:    store.FileChangeTypeDidOpen,
-		},
-	})
-
-	want := map[uri.URI][]diagCmp{
-		"file:///tmp/user.thrift": {
-			// struct
-			{
-				StartLine: 1 + 1, StartCol: 2 + 1, EndLine: 1 + 1, EndCol: 3 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDConflict,
-				Message:  "field id conflict",
-			},
-			{
-				StartLine: 2 + 1, StartCol: 2 + 1, EndLine: 2 + 1, EndCol: 3 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDConflict,
-				Message:  "field id conflict",
-			},
-			{
-				StartLine: 3 + 1, StartCol: 2 + 1, EndLine: 3 + 1, EndCol: 3 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDRange,
-				Message:  "field id should be a positive integer in [1, 32767]",
-			},
-			{
-				StartLine: 4 + 1, StartCol: 2 + 1, EndLine: 4 + 1, EndCol: 7 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDRange,
-				Message:  "field id should be a positive integer in [1, 32767]",
-			},
-
-			// union
-			{
-				StartLine: 8 + 1, StartCol: 2 + 1, EndLine: 8 + 1, EndCol: 3 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDConflict,
-				Message:  "field id conflict",
-			},
-			{
-				StartLine: 9 + 1, StartCol: 2 + 1, EndLine: 9 + 1, EndCol: 3 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDConflict,
-				Message:  "field id conflict",
-			},
-			{
-				StartLine: 10 + 1, StartCol: 2 + 1, EndLine: 10 + 1, EndCol: 3 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDRange,
-				Message:  "field id should be a positive integer in [1, 32767]",
-			},
-			{
-				StartLine: 11 + 1, StartCol: 2 + 1, EndLine: 11 + 1, EndCol: 7 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDRange,
-				Message:  "field id should be a positive integer in [1, 32767]",
-			},
-
-			// exception
-			{
-				StartLine: 15 + 1, StartCol: 2 + 1, EndLine: 15 + 1, EndCol: 3 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDConflict,
-				Message:  "field id conflict",
-			},
-			{
-				StartLine: 16 + 1, StartCol: 2 + 1, EndLine: 16 + 1, EndCol: 3 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDConflict,
-				Message:  "field id conflict",
-			},
-			{
-				StartLine: 17 + 1, StartCol: 2 + 1, EndLine: 17 + 1, EndCol: 3 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDRange,
-				Message:  "field id should be a positive integer in [1, 32767]",
-			},
-			{
-				StartLine: 18 + 1, StartCol: 2 + 1, EndLine: 18 + 1, EndCol: 7 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDRange,
-				Message:  "field id should be a positive integer in [1, 32767]",
-			},
-
-			// function params
-			{
-				StartLine: 22 + 1, StartCol: 12 + 1, EndLine: 22 + 1, EndCol: 13 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDRange,
-				Message:  "field id should be a positive integer in [1, 32767]",
-			},
-			{
-				StartLine: 22 + 1, StartCol: 24 + 1, EndLine: 22 + 1, EndCol: 25 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDConflict,
-				Message:  "field id conflict",
-			},
-			{
-				StartLine: 22 + 1, StartCol: 39 + 1, EndLine: 22 + 1, EndCol: 40 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDConflict,
-				Message:  "field id conflict",
-			},
-			{
-				StartLine: 22 + 1, StartCol: 54 + 1, EndLine: 22 + 1, EndCol: 59 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDRange,
-				Message:  "field id should be a positive integer in [1, 32767]",
-			},
-
-			// function throws
-			{
-				StartLine: 23 + 1, StartCol: 35 + 1, EndLine: 23 + 1, EndCol: 36 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDRange,
-				Message:  "field id should be a positive integer in [1, 32767]",
-			},
-			{
-				StartLine: 23 + 1, StartCol: 48 + 1, EndLine: 23 + 1, EndCol: 49 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDConflict,
-				Message:  "field id conflict",
-			},
-			{
-				StartLine: 23 + 1, StartCol: 62 + 1, EndLine: 23 + 1, EndCol: 63 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDConflict,
-				Message:  "field id conflict",
-			},
-			{
-				StartLine: 23 + 1, StartCol: 76 + 1, EndLine: 23 + 1, EndCol: 81 + 1,
-				Severity: SeverityError,
-				Code:     CodeFieldIDRange,
-				Message:  "field id should be a positive integer in [1, 32767]",
-			},
-		},
-	}
-
-	report, err := New(Config{}, []Analyzer{EachFile(&FieldIDCheck{})}).Run(t.Context(), view, []uri.URI{"file:///tmp/user.thrift"})
-	require.NoError(t, err)
+	report := analyzertest.Run(t, sema.EachFile(&FieldIDCheck{}), map[string]string{
+		"user.thrift": file1,
+	}, "user.thrift")
 
 	for key := range report {
-		slices.SortStableFunc(report[key], func(a, b Diagnostic) int {
+		slices.SortStableFunc(report[key], func(a, b sema.Diagnostic) int {
 			if a.Span.Start.Line != b.Span.Start.Line {
 				return a.Span.Start.Line - b.Span.Start.Line
 			}
@@ -195,17 +53,149 @@ service Demo {
 		})
 	}
 
-	got := make(map[uri.URI][]diagCmp, len(report))
+	want := map[uri.URI][]analyzertest.Diag{
+		analyzertest.URI("user.thrift"): {
+			// struct
+			{
+				StartLine: 1 + 1, StartCol: 2 + 1, EndLine: 1 + 1, EndCol: 3 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDConflict,
+				Message:  "field id conflict",
+			},
+			{
+				StartLine: 2 + 1, StartCol: 2 + 1, EndLine: 2 + 1, EndCol: 3 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDConflict,
+				Message:  "field id conflict",
+			},
+			{
+				StartLine: 3 + 1, StartCol: 2 + 1, EndLine: 3 + 1, EndCol: 3 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDRange,
+				Message:  "field id should be a positive integer in [1, 32767]",
+			},
+			{
+				StartLine: 4 + 1, StartCol: 2 + 1, EndLine: 4 + 1, EndCol: 7 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDRange,
+				Message:  "field id should be a positive integer in [1, 32767]",
+			},
+
+			// union
+			{
+				StartLine: 8 + 1, StartCol: 2 + 1, EndLine: 8 + 1, EndCol: 3 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDConflict,
+				Message:  "field id conflict",
+			},
+			{
+				StartLine: 9 + 1, StartCol: 2 + 1, EndLine: 9 + 1, EndCol: 3 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDConflict,
+				Message:  "field id conflict",
+			},
+			{
+				StartLine: 10 + 1, StartCol: 2 + 1, EndLine: 10 + 1, EndCol: 3 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDRange,
+				Message:  "field id should be a positive integer in [1, 32767]",
+			},
+			{
+				StartLine: 11 + 1, StartCol: 2 + 1, EndLine: 11 + 1, EndCol: 7 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDRange,
+				Message:  "field id should be a positive integer in [1, 32767]",
+			},
+
+			// exception
+			{
+				StartLine: 15 + 1, StartCol: 2 + 1, EndLine: 15 + 1, EndCol: 3 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDConflict,
+				Message:  "field id conflict",
+			},
+			{
+				StartLine: 16 + 1, StartCol: 2 + 1, EndLine: 16 + 1, EndCol: 3 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDConflict,
+				Message:  "field id conflict",
+			},
+			{
+				StartLine: 17 + 1, StartCol: 2 + 1, EndLine: 17 + 1, EndCol: 3 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDRange,
+				Message:  "field id should be a positive integer in [1, 32767]",
+			},
+			{
+				StartLine: 18 + 1, StartCol: 2 + 1, EndLine: 18 + 1, EndCol: 7 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDRange,
+				Message:  "field id should be a positive integer in [1, 32767]",
+			},
+
+			// function params
+			{
+				StartLine: 22 + 1, StartCol: 12 + 1, EndLine: 22 + 1, EndCol: 13 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDRange,
+				Message:  "field id should be a positive integer in [1, 32767]",
+			},
+			{
+				StartLine: 22 + 1, StartCol: 24 + 1, EndLine: 22 + 1, EndCol: 25 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDConflict,
+				Message:  "field id conflict",
+			},
+			{
+				StartLine: 22 + 1, StartCol: 39 + 1, EndLine: 22 + 1, EndCol: 40 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDConflict,
+				Message:  "field id conflict",
+			},
+			{
+				StartLine: 22 + 1, StartCol: 54 + 1, EndLine: 22 + 1, EndCol: 59 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDRange,
+				Message:  "field id should be a positive integer in [1, 32767]",
+			},
+
+			// function throws
+			{
+				StartLine: 23 + 1, StartCol: 35 + 1, EndLine: 23 + 1, EndCol: 36 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDRange,
+				Message:  "field id should be a positive integer in [1, 32767]",
+			},
+			{
+				StartLine: 23 + 1, StartCol: 48 + 1, EndLine: 23 + 1, EndCol: 49 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDConflict,
+				Message:  "field id conflict",
+			},
+			{
+				StartLine: 23 + 1, StartCol: 62 + 1, EndLine: 23 + 1, EndCol: 63 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDConflict,
+				Message:  "field id conflict",
+			},
+			{
+				StartLine: 23 + 1, StartCol: 76 + 1, EndLine: 23 + 1, EndCol: 81 + 1,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeFieldIDRange,
+				Message:  "field id should be a positive integer in [1, 32767]",
+			},
+		},
+	}
+
+	got := make(map[uri.URI][]analyzertest.Diag, len(report))
 	for key, ds := range report {
-		got[key] = cmpAll(ds)
+		got[key] = analyzertest.Simplify(ds)
 	}
 
 	assert.Equal(t, want, got)
 
-	clean := store.BuildViewForTest([]*store.FileChange{
-		{URI: "file:///tmp/clean.thrift", Content: []byte("struct Clean {\n  1: required string name,\n  2: optional i32 id,\n}\n"), From: store.FileChangeTypeDidOpen},
-	})
-	cleanReport, err := New(Config{}, []Analyzer{EachFile(&FieldIDCheck{})}).Run(t.Context(), clean, []uri.URI{"file:///tmp/clean.thrift"})
-	require.NoError(t, err)
-	assert.Empty(t, cleanReport["file:///tmp/clean.thrift"])
+	cleanReport := analyzertest.Run(t, sema.EachFile(&FieldIDCheck{}), map[string]string{
+		"clean.thrift": "struct Clean {\n  1: required string name,\n  2: optional i32 id,\n}\n",
+	}, "clean.thrift")
+	assert.Empty(t, cleanReport[analyzertest.URI("clean.thrift")])
 }

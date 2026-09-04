@@ -1,4 +1,4 @@
-package sema
+package analyzers
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 
 	"go.lsp.dev/uri"
 
+	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
@@ -19,7 +20,7 @@ func (c *UnusedIncludeCheck) Name() string {
 	return "UnusedIncludeCheck"
 }
 
-func (c *UnusedIncludeCheck) AnalyzeFile(ctx context.Context, f File) ([]Diagnostic, error) {
+func (c *UnusedIncludeCheck) AnalyzeFile(ctx context.Context, f sema.File) ([]sema.Diagnostic, error) {
 	return unusedIncludeDiagnostics(ctx, f, f.PF), nil
 }
 
@@ -28,7 +29,7 @@ func (c *UnusedIncludeCheck) AnalyzeFile(ctx context.Context, f File) ([]Diagnos
 // name, a constant value identifier, or a service extends clause, used
 // qualified ("base.Type") or unqualified (resolving through the include
 // chain).
-func unusedIncludeDiagnostics(ctx context.Context, f File, pf *store.ParsedFile) []Diagnostic {
+func unusedIncludeDiagnostics(ctx context.Context, f sema.File, pf *store.ParsedFile) []sema.Diagnostic {
 	includes := pf.AST().Includes()
 	if len(includes) == 0 {
 		return nil
@@ -36,7 +37,7 @@ func unusedIncludeDiagnostics(ctx context.Context, f File, pf *store.ParsedFile)
 
 	used := usedIncludes(ctx, f, pf)
 
-	var ret []Diagnostic
+	var ret []sema.Diagnostic
 
 	content, contentErr := pf.Content()
 
@@ -45,19 +46,19 @@ func unusedIncludeDiagnostics(ctx context.Context, f File, pf *store.ParsedFile)
 			continue
 		}
 
-		d := Diagnostic{
-			Span:     SpanOf(pf, inc),
-			Severity: SeverityWarning,
-			Code:     CodeUnusedInclude,
+		d := sema.Diagnostic{
+			Span:     sema.SpanOf(pf, inc),
+			Severity: sema.SeverityWarning,
+			Code:     sema.CodeUnusedInclude,
 			Message:  fmt.Sprintf("unused include %q", inc.PathText()),
 		}
 
 		// The include statement is a statement of its own: the fix
 		// deletes its whole line.
 		if contentErr == nil {
-			d.Fixes = append(d.Fixes, Fix{
+			d.Fixes = append(d.Fixes, sema.Fix{
 				Title: fmt.Sprintf("Remove unused include %q", inc.PathText()),
-				Edits: []Edit{{Span: lineSpan(content, d.Span.Start)}},
+				Edits: []sema.Edit{{Span: sema.LineSpan(content, d.Span.Start)}},
 			})
 		}
 
@@ -67,34 +68,11 @@ func unusedIncludeDiagnostics(ctx context.Context, f File, pf *store.ParsedFile)
 	return ret
 }
 
-// lineSpan returns the span of the whole source line containing pos, the
-// trailing newline included.
-func lineSpan(content []byte, pos syntax.Position) Span {
-	start := pos.Offset
-	for start > 0 && content[start-1] != '\n' {
-		start--
-	}
-
-	end := pos.Offset
-	for end < len(content) && content[end] != '\n' {
-		end++
-	}
-
-	if end < len(content) {
-		end++
-	}
-
-	return Span{
-		Start: syntax.Position{Line: pos.Line, Col: 1, Offset: start},
-		End:   syntax.Position{Line: pos.Line + 1, Col: 1, Offset: end},
-	}
-}
-
 // usedIncludes marks every include that at least one reference in the
 // document resolves into. Resolution goes through the run's shared
 // cross-file index, which handles both qualified ("base.Type") and
 // unqualified names that resolve through the include chain.
-func usedIncludes(ctx context.Context, f File, pf *store.ParsedFile) map[*syntax.Include]bool {
+func usedIncludes(ctx context.Context, f sema.File, pf *store.ParsedFile) map[*syntax.Include]bool {
 	resolver := f.View().Resolver()
 	includeByFile := make(map[uri.URI]*syntax.Include)
 
@@ -127,8 +105,8 @@ func usedIncludes(ctx context.Context, f File, pf *store.ParsedFile) map[*syntax
 // resolveReferenceFile returns the file the reference resolves to, or
 // false when it resolves nowhere or into the current file. Type, const
 // value, and service references resolve through their own finder.
-func resolveReferenceFile(ctx context.Context, ix *Index, pf *store.ParsedFile, ref store.Reference) (uri.URI, bool) {
-	var def *Resolved
+func resolveReferenceFile(ctx context.Context, ix *sema.Index, pf *store.ParsedFile, ref store.Reference) (uri.URI, bool) {
+	var def *sema.Resolved
 	var err error
 
 	switch ref.Kind {

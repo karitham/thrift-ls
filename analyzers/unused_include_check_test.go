@@ -1,12 +1,12 @@
-package sema
+package analyzers
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/analyzertest"
+	"github.com/karitham/thrift-ls/sema"
 )
 
 func Test_UnusedIncludeCheck(t *testing.T) {
@@ -74,20 +74,16 @@ func Test_UnusedIncludeCheck(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			user := uri.File("/tmp/user.thrift")
-
-			view := store.BuildViewForTest([]*store.FileChange{
-				{URI: uri.File("/tmp/shared.thrift"), Content: []byte("struct User {\n  1: i32 id,\n}\nenum Color { RED = 1 }\nservice Base {}\n"), From: store.FileChangeTypeDidOpen},
-				{URI: uri.File("/tmp/used.thrift"), Content: []byte("struct User {\n  1: i32 id,\n}\n"), From: store.FileChangeTypeDidOpen},
-				{URI: uri.File("/tmp/unused.thrift"), Content: []byte("struct Ghost {}\n"), From: store.FileChangeTypeDidOpen},
-				{URI: user, Content: []byte(tt.content), From: store.FileChangeTypeDidOpen},
-			})
-
-			got := runOne(t, EachFile(&UnusedIncludeCheck{}), view, user)[user]
+			got := analyzertest.Run(t, sema.EachFile(&UnusedIncludeCheck{}), map[string]string{
+				"shared.thrift": "struct User {\n  1: i32 id,\n}\nenum Color { RED = 1 }\nservice Base {}\n",
+				"used.thrift":   "struct User {\n  1: i32 id,\n}\n",
+				"unused.thrift": "struct Ghost {}\n",
+				"user.thrift":   tt.content,
+			}, "user.thrift")[analyzertest.URI("user.thrift")]
 
 			var gotMsgs []string
 			for _, d := range got {
-				assert.Equal(t, SeverityWarning, d.Severity)
+				assert.Equal(t, sema.SeverityWarning, d.Severity)
 				gotMsgs = append(gotMsgs, d.Message)
 			}
 

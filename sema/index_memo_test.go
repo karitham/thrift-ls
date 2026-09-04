@@ -172,34 +172,3 @@ func TestIndexMemoKeyIsolation(t *testing.T) {
 		})
 	}
 }
-
-// TestSemanticAnalysisSkipsBrokenFile verifies that a file with parse
-// errors does not fail the semantic analysis run: the Parse checker owns
-// parse errors, and the analysis proceeds (or skips) without erroring.
-func TestSemanticAnalysisSkipsBrokenFile(t *testing.T) {
-	tests := []struct {
-		name    string
-		content string
-	}{
-		{"unterminated struct", "struct S { 1: "},
-		{"garbage tokens", "foo bar baz"},
-		{"unclosed annotation", "struct S (x = "},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			view := store.BuildViewForTest([]*store.FileChange{
-				{
-					URI:     "file:///f.thrift",
-					Version: 0,
-					Content: []byte(tt.content),
-					From:    store.FileChangeTypeDidOpen,
-				},
-			})
-
-			report, err := New(Config{}, []Analyzer{EachFile(&SemanticAnalysis{})}).Run(t.Context(), view, []uri.URI{"file:///f.thrift"})
-			require.NoError(t, err, "a broken file must not fail the diagnostics run")
-			assert.Empty(t, report["file:///f.thrift"], "no analyzer owns a broken file's diagnostics")
-		})
-	}
-}

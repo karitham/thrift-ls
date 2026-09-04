@@ -9,6 +9,7 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
+	"github.com/karitham/thrift-ls/analyzers"
 	"github.com/karitham/thrift-ls/lsp/source"
 	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/sema"
@@ -50,7 +51,7 @@ func lintConfigOf(l options.LintConfig) sema.Config {
 }
 
 func (s *Server) pipeline(view *store.View) *sema.Pipeline {
-	return sema.DefaultPipeline(s.lintConfig(view)).
+	return analyzers.DefaultPipeline(s.lintConfig(view)).
 		WithAnalyzers(s.analysis.Analyzers...).
 		WithFixers(s.analysis.Fixers...).
 		WithProviders(s.analysis.Providers...)

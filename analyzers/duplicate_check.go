@@ -1,10 +1,11 @@
-package sema
+package analyzers
 
 import (
 	"context"
 	"fmt"
 	"strconv"
 
+	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
@@ -21,10 +22,10 @@ func (c *DuplicateCheck) Name() string {
 	return "DuplicateCheck"
 }
 
-func (c *DuplicateCheck) AnalyzeFile(ctx context.Context, f File) ([]Diagnostic, error) {
+func (c *DuplicateCheck) AnalyzeFile(ctx context.Context, f sema.File) ([]sema.Diagnostic, error) {
 	pf := f.PF
 
-	var ret []Diagnostic
+	var ret []sema.Diagnostic
 
 	// Top-level definitions share one scope.
 	var defs []named
@@ -138,10 +139,10 @@ func fieldNames(fields []*syntax.Field, kind string) []named {
 
 // checkNames reports a diagnostic on every name in a scope that repeats an
 // earlier one.
-func checkNames(pf *store.ParsedFile, defs []named) []Diagnostic {
+func checkNames(pf *store.ParsedFile, defs []named) []sema.Diagnostic {
 	seen := make(map[string]bool)
 
-	var ret []Diagnostic
+	var ret []sema.Diagnostic
 
 	for _, d := range defs {
 		if d.id == nil || d.id.Text == "" {
@@ -149,10 +150,10 @@ func checkNames(pf *store.ParsedFile, defs []named) []Diagnostic {
 		}
 
 		if seen[d.id.Text] {
-			ret = append(ret, Diagnostic{
-				Span:     spanOfToken(nameToken(pf, d.id)),
-				Severity: SeverityError,
-				Code:     CodeDuplicateDef,
+			ret = append(ret, sema.Diagnostic{
+				Span:     sema.SpanOf(pf, d.id),
+				Severity: sema.SeverityError,
+				Code:     sema.CodeDuplicateDef,
 				Message:  fmt.Sprintf("duplicate %s %s", d.kind, d.id.Text),
 			})
 			continue
@@ -164,35 +165,30 @@ func checkNames(pf *store.ParsedFile, defs []named) []Diagnostic {
 	return ret
 }
 
-// nameToken returns the token of an identifier.
-func nameToken(pf *store.ParsedFile, id *syntax.Identifier) *syntax.Token {
-	return &pf.AST().Tokens[id.TokStart()]
-}
-
 // checkEnumValues reports enum members whose resolved value — an explicit
 // constant or the compiler's auto-increment — collides with an earlier
 // member's.
-func checkEnumValues(pf *store.ParsedFile, enum *syntax.Enum) []Diagnostic {
+func checkEnumValues(pf *store.ParsedFile, enum *syntax.Enum) []sema.Diagnostic {
 	seen := make(map[int64]string) // value -> first member with it
 
-	var ret []Diagnostic
+	var ret []sema.Diagnostic
 
-	for _, mv := range enumValues(enum) {
-		if !mv.known {
+	for _, mv := range sema.EnumMemberValues(enum) {
+		if !mv.Known {
 			continue
 		}
 
-		if first, ok := seen[mv.value]; ok {
-			ret = append(ret, Diagnostic{
-				Span:     spanOfToken(enumValueNameToken(pf, mv.member)),
-				Severity: SeverityError,
-				Code:     CodeDuplicateEnumVal,
-				Message:  fmt.Sprintf("enum value %d duplicates %s", mv.value, first),
+		if first, ok := seen[mv.Value]; ok {
+			ret = append(ret, sema.Diagnostic{
+				Span:     sema.SpanOf(pf, mv.Member.Name),
+				Severity: sema.SeverityError,
+				Code:     sema.CodeDuplicateEnumVal,
+				Message:  fmt.Sprintf("enum value %d duplicates %s", mv.Value, first),
 			})
 			continue
 		}
 
-		seen[mv.value] = mv.member.Name.Text
+		seen[mv.Value] = mv.Member.Name.Text
 	}
 
 	return ret
@@ -202,8 +198,8 @@ func checkEnumValues(pf *store.ParsedFile, enum *syntax.Enum) []Diagnostic {
 // values in set literals, recursing into nested containers. The declared
 // type decides whether a list literal is a set: lists keep duplicates,
 // sets reject them.
-func checkValueDuplicates(pf *store.ParsedFile, value *syntax.ConstValue, typ *syntax.FieldType) []Diagnostic {
-	var ret []Diagnostic
+func checkValueDuplicates(pf *store.ParsedFile, value *syntax.ConstValue, typ *syntax.FieldType) []sema.Diagnostic {
+	var ret []sema.Diagnostic
 
 	switch value.Kind {
 	case syntax.ValueMap:
@@ -280,11 +276,11 @@ func valueKey(v *syntax.ConstValue) string {
 
 // duplicateValueDiagnostic is the diagnostic for a repeated map key or set
 // value.
-func duplicateValueDiagnostic(pf *store.ParsedFile, v *syntax.ConstValue, kind string) Diagnostic {
-	return Diagnostic{
-		Span:     spanOfToken(&pf.AST().Tokens[v.TokStart()]),
-		Severity: SeverityError,
-		Code:     CodeDuplicateValue,
+func duplicateValueDiagnostic(pf *store.ParsedFile, v *syntax.ConstValue, kind string) sema.Diagnostic {
+	return sema.Diagnostic{
+		Span:     sema.SpanOf(pf, v),
+		Severity: sema.SeverityError,
+		Code:     sema.CodeDuplicateValue,
 		Message:  fmt.Sprintf("duplicate %s %s", kind, v.Text),
 	}
 }

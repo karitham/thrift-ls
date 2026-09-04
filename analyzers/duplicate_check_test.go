@@ -1,18 +1,19 @@
-package sema
+package analyzers
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/analyzertest"
+	"github.com/karitham/thrift-ls/sema"
 )
 
 func Test_DuplicateCheck_Diagnostic(t *testing.T) {
 	tests := []struct {
 		name    string
 		content string
-		want    []diagCmp
+		want    []analyzertest.Diag
 	}{
 		{
 			name: "distinct names and values are clean",
@@ -32,12 +33,12 @@ service S {
 			content: `struct A {}
 struct A {}
 `,
-			want: []diagCmp{
+			want: []analyzertest.Diag{
 				{
 					StartLine: 1 + 1, StartCol: 7 + 1,
 					EndLine: 1 + 1, EndCol: 8 + 1,
-					Severity: SeverityError,
-					Code:     CodeDuplicateDef,
+					Severity: sema.SeverityError,
+					Code:     sema.CodeDuplicateDef,
 					Message:  "duplicate struct A",
 				},
 			},
@@ -49,12 +50,12 @@ struct A {}
   A,
 }
 `,
-			want: []diagCmp{
+			want: []analyzertest.Diag{
 				{
 					StartLine: 2 + 1, StartCol: 2 + 1,
 					EndLine: 2 + 1, EndCol: 3 + 1,
-					Severity: SeverityError,
-					Code:     CodeDuplicateDef,
+					Severity: sema.SeverityError,
+					Code:     sema.CodeDuplicateDef,
 					Message:  "duplicate member A",
 				},
 			},
@@ -66,12 +67,12 @@ struct A {}
   2: i32 a,
 }
 `,
-			want: []diagCmp{
+			want: []analyzertest.Diag{
 				{
 					StartLine: 2 + 1, StartCol: 9 + 1,
 					EndLine: 2 + 1, EndCol: 10 + 1,
-					Severity: SeverityError,
-					Code:     CodeDuplicateDef,
+					Severity: sema.SeverityError,
+					Code:     sema.CodeDuplicateDef,
 					Message:  "duplicate field a",
 				},
 			},
@@ -83,12 +84,12 @@ struct A {}
   void f(),
 }
 `,
-			want: []diagCmp{
+			want: []analyzertest.Diag{
 				{
 					StartLine: 2 + 1, StartCol: 7 + 1,
 					EndLine: 2 + 1, EndCol: 8 + 1,
-					Severity: SeverityError,
-					Code:     CodeDuplicateDef,
+					Severity: sema.SeverityError,
+					Code:     sema.CodeDuplicateDef,
 					Message:  "duplicate function f",
 				},
 			},
@@ -99,12 +100,12 @@ struct A {}
   void f(1: i32 x, 2: i32 x),
 }
 `,
-			want: []diagCmp{
+			want: []analyzertest.Diag{
 				{
 					StartLine: 1 + 1, StartCol: 26 + 1,
 					EndLine: 1 + 1, EndCol: 27 + 1,
-					Severity: SeverityError,
-					Code:     CodeDuplicateDef,
+					Severity: sema.SeverityError,
+					Code:     sema.CodeDuplicateDef,
 					Message:  "duplicate argument x",
 				},
 			},
@@ -114,12 +115,12 @@ struct A {}
 			content: `struct User {}
 enum User {}
 `,
-			want: []diagCmp{
+			want: []analyzertest.Diag{
 				{
 					StartLine: 1 + 1, StartCol: 5 + 1,
 					EndLine: 1 + 1, EndCol: 9 + 1,
-					Severity: SeverityError,
-					Code:     CodeDuplicateDef,
+					Severity: sema.SeverityError,
+					Code:     sema.CodeDuplicateDef,
 					Message:  "duplicate enum User",
 				},
 			},
@@ -131,12 +132,12 @@ enum User {}
   B = 1,
 }
 `,
-			want: []diagCmp{
+			want: []analyzertest.Diag{
 				{
 					StartLine: 2 + 1, StartCol: 2 + 1,
 					EndLine: 2 + 1, EndCol: 3 + 1,
-					Severity: SeverityError,
-					Code:     CodeDuplicateEnumVal,
+					Severity: sema.SeverityError,
+					Code:     sema.CodeDuplicateEnumVal,
 					Message:  "enum value 1 duplicates A",
 				},
 			},
@@ -148,12 +149,12 @@ enum User {}
   B = 0,
 }
 `,
-			want: []diagCmp{
+			want: []analyzertest.Diag{
 				{
 					StartLine: 2 + 1, StartCol: 2 + 1,
 					EndLine: 2 + 1, EndCol: 3 + 1,
-					Severity: SeverityError,
-					Code:     CodeDuplicateEnumVal,
+					Severity: sema.SeverityError,
+					Code:     sema.CodeDuplicateEnumVal,
 					Message:  "enum value 0 duplicates A",
 				},
 			},
@@ -176,19 +177,19 @@ enum User {}
   C = 0,
 }
 `,
-			want: []diagCmp{
+			want: []analyzertest.Diag{
 				{
 					StartLine: 2 + 1, StartCol: 2 + 1,
 					EndLine: 2 + 1, EndCol: 3 + 1,
-					Severity: SeverityError,
-					Code:     CodeDuplicateEnumVal,
+					Severity: sema.SeverityError,
+					Code:     sema.CodeDuplicateEnumVal,
 					Message:  "enum value 0 duplicates A",
 				},
 				{
 					StartLine: 3 + 1, StartCol: 2 + 1,
 					EndLine: 3 + 1, EndCol: 3 + 1,
-					Severity: SeverityError,
-					Code:     CodeDuplicateEnumVal,
+					Severity: sema.SeverityError,
+					Code:     sema.CodeDuplicateEnumVal,
 					Message:  "enum value 0 duplicates A",
 				},
 			},
@@ -200,12 +201,12 @@ enum User {}
   B = 16,
 }
 `,
-			want: []diagCmp{
+			want: []analyzertest.Diag{
 				{
 					StartLine: 2 + 1, StartCol: 2 + 1,
 					EndLine: 2 + 1, EndCol: 3 + 1,
-					Severity: SeverityError,
-					Code:     CodeDuplicateEnumVal,
+					Severity: sema.SeverityError,
+					Code:     sema.CodeDuplicateEnumVal,
 					Message:  "enum value 16 duplicates A",
 				},
 			},
@@ -217,12 +218,12 @@ enum User {}
   "a": 2,
 }
 `,
-			want: []diagCmp{
+			want: []analyzertest.Diag{
 				{
 					StartLine: 2 + 1, StartCol: 2 + 1,
 					EndLine: 2 + 1, EndCol: 5 + 1,
-					Severity: SeverityError,
-					Code:     CodeDuplicateValue,
+					Severity: sema.SeverityError,
+					Code:     sema.CodeDuplicateValue,
 					Message:  `duplicate map key "a"`,
 				},
 			},
@@ -234,12 +235,12 @@ enum User {}
   0x1: 2,
 }
 `,
-			want: []diagCmp{
+			want: []analyzertest.Diag{
 				{
 					StartLine: 2 + 1, StartCol: 2 + 1,
 					EndLine: 2 + 1, EndCol: 5 + 1,
-					Severity: SeverityError,
-					Code:     CodeDuplicateValue,
+					Severity: sema.SeverityError,
+					Code:     sema.CodeDuplicateValue,
 					Message:  "duplicate map key 0x1",
 				},
 			},
@@ -248,12 +249,12 @@ enum User {}
 			name: "duplicate set values",
 			content: `const set<i32> S = [1, 2, 1]
 `,
-			want: []diagCmp{
+			want: []analyzertest.Diag{
 				{
 					StartLine: 0 + 1, StartCol: 26 + 1,
 					EndLine: 0 + 1, EndCol: 27 + 1,
-					Severity: SeverityError,
-					Code:     CodeDuplicateValue,
+					Severity: sema.SeverityError,
+					Code:     sema.CodeDuplicateValue,
 					Message:  "duplicate set value 1",
 				},
 			},
@@ -270,12 +271,12 @@ enum User {}
   "a": [1, 2, 1],
 }
 `,
-			want: []diagCmp{
+			want: []analyzertest.Diag{
 				{
 					StartLine: 1 + 1, StartCol: 14 + 1,
 					EndLine: 1 + 1, EndCol: 15 + 1,
-					Severity: SeverityError,
-					Code:     CodeDuplicateValue,
+					Severity: sema.SeverityError,
+					Code:     sema.CodeDuplicateValue,
 					Message:  "duplicate set value 1",
 				},
 			},
@@ -286,12 +287,12 @@ enum User {}
   1: map<string, i32> m = {"a": 1, "a": 2},
 }
 `,
-			want: []diagCmp{
+			want: []analyzertest.Diag{
 				{
 					StartLine: 1 + 1, StartCol: 35 + 1,
 					EndLine: 1 + 1, EndCol: 38 + 1,
-					Severity: SeverityError,
-					Code:     CodeDuplicateValue,
+					Severity: sema.SeverityError,
+					Code:     sema.CodeDuplicateValue,
 					Message:  `duplicate map key "a"`,
 				},
 			},
@@ -300,18 +301,11 @@ enum User {}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := store.BuildViewForTest([]*store.FileChange{
-				{
-					URI:     "file:///tmp/user.thrift",
-					Version: 0,
-					Content: []byte(tt.content),
-					From:    store.FileChangeTypeDidOpen,
-				},
-			})
+			report := analyzertest.Run(t, sema.EachFile(&DuplicateCheck{}), map[string]string{
+				"user.thrift": tt.content,
+			}, "user.thrift")
 
-			report := runOne(t, EachFile(&DuplicateCheck{}), view, "file:///tmp/user.thrift")
-
-			assert.Equal(t, tt.want, cmpAll(report["file:///tmp/user.thrift"]))
+			assert.Equal(t, tt.want, analyzertest.Simplify(report[analyzertest.URI("user.thrift")]))
 		})
 	}
 }

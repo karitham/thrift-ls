@@ -12,6 +12,7 @@ import (
 
 	"go.lsp.dev/uri"
 
+	"github.com/karitham/thrift-ls/analyzers"
 	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
@@ -131,14 +132,14 @@ func Run(ctx context.Context, req Request) (Result, error) {
 // runDiagnostics runs the language server's diagnostic pipeline — parse,
 // semantic analysis, and lints — over files opened in a session rooted at
 // folder, and returns the diagnostics per file, keyed by absolute path.
-func runDiagnostics(ctx context.Context, files []string, folder string, includePaths []string, lint sema.Config, analyzers []sema.Analyzer) (map[string][]Diagnostic, error) {
+func runDiagnostics(ctx context.Context, files []string, folder string, includePaths []string, lint sema.Config, extra []sema.Analyzer) (map[string][]Diagnostic, error) {
 	_, view, uris := store.OpenDisk(files, folder, includePaths)
 
 	out := make(map[string][]Diagnostic, len(files))
 
 	// One pipeline run over the whole corpus: the shared index memoizes
 	// resolutions across files, so each name resolves once.
-	report, err := sema.DefaultPipeline(lint).WithAnalyzers(analyzers...).Run(ctx, view, uris)
+	report, err := analyzers.DefaultPipeline(lint).WithAnalyzers(extra...).Run(ctx, view, uris)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +160,7 @@ func runDiagnostics(ctx context.Context, files []string, folder string, includeP
 // what remains. Only the requested files are fixed — one file, or one
 // folder — while resolution reads the whole view, so fixing a greenfield
 // module resolves its types against the tree without touching the tree.
-func runFix(ctx context.Context, files []string, folder string, includePaths []string, lint sema.Config, analyzers []sema.Analyzer) (Result, error) {
+func runFix(ctx context.Context, files []string, folder string, includePaths []string, lint sema.Config, extra []sema.Analyzer) (Result, error) {
 	_, view, uris := store.OpenDisk(files, folder, includePaths)
 
 	// Reads hit the disk, so the next pass re-parses what was written
@@ -177,7 +178,7 @@ func runFix(ctx context.Context, files []string, folder string, includePaths []s
 		return os.WriteFile(u.FsPath(), content, perms)
 	}
 
-	res, err := sema.DefaultPipeline(lint).WithAnalyzers(analyzers...).FixAll(ctx, view, uris, persist)
+	res, err := analyzers.DefaultPipeline(lint).WithAnalyzers(extra...).FixAll(ctx, view, uris, persist)
 
 	summary := &FixSummary{
 		Applied: res.Applied,

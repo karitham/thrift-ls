@@ -1,4 +1,4 @@
-package sema
+package analyzers
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -14,8 +15,8 @@ import (
 // project-wide. It fixes only "undefined-type" diagnostics.
 type AddIncludeFixer struct{}
 
-func (f AddIncludeFixer) Fix(ctx context.Context, file File, d Diagnostic) []Fix {
-	if d.Code != CodeUndefinedType {
+func (f AddIncludeFixer) Fix(ctx context.Context, file sema.File, d sema.Diagnostic) []sema.Fix {
+	if d.Code != sema.CodeUndefinedType {
 		return nil
 	}
 
@@ -51,13 +52,13 @@ func (f AddIncludeFixer) Fix(ctx context.Context, file File, d Diagnostic) []Fix
 	if includes := file.PF.AST().Includes(); len(includes) > 0 {
 		last := includes[len(includes)-1]
 		_, end := file.PF.AST().Range(last)
-		insert = lineSpan(content, end).End
+		insert = sema.LineSpan(content, end).End
 	}
 
-	return []Fix{{
+	return []sema.Fix{{
 		Title: fmt.Sprintf("Add include %q", incPath),
-		Edits: []Edit{{
-			Span:    Span{Start: insert, End: insert},
+		Edits: []sema.Edit{{
+			Span:    sema.Span{Start: insert, End: insert},
 			NewText: fmt.Sprintf("include %q\n", incPath),
 		}},
 	}}
@@ -68,7 +69,8 @@ func (f AddIncludeFixer) Fix(ctx context.Context, file File, d Diagnostic) []Fix
 // diagnostic's span covers that identifier exactly.
 func undefinedTypeName(pf interface {
 	AST() *syntax.Document
-}, sp Span) string {
+}, sp sema.Span,
+) string {
 	path := pf.AST().SearchNodePathByPosition(sp.Start)
 	if len(path) < 2 {
 		return ""
@@ -80,7 +82,7 @@ func undefinedTypeName(pf interface {
 	}
 
 	if ft, ok := path[len(path)-2].(*syntax.FieldType); ok && ft.Ident == id {
-		return TypeReferenceName(ft)
+		return sema.TypeReferenceName(ft)
 	}
 
 	return ""

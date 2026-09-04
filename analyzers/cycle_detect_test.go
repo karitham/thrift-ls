@@ -1,7 +1,6 @@
-package sema
+package analyzers
 
 import (
-	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
 
+	"github.com/karitham/thrift-ls/analyzertest"
+	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
 )
 
@@ -21,7 +22,7 @@ type cyclePair struct {
 	to   uri.URI
 }
 
-func sortedPairs(t *testing.T, res Report) []cyclePair {
+func sortedPairs(t *testing.T, res sema.Report) []cyclePair {
 	t.Helper()
 
 	pairs := make([]cyclePair, 0)
@@ -56,26 +57,12 @@ func sortedPairs(t *testing.T, res Report) []cyclePair {
 func runCycleCheck(t *testing.T, files map[string]string, root string) []cyclePair {
 	t.Helper()
 
-	names := slices.Sorted(maps.Keys(files))
-
-	changes := make([]*store.FileChange, 0, len(files))
-	for _, name := range names {
-		changes = append(changes, &store.FileChange{
-			URI:     uri.URI("file:///tmp/" + name),
-			Version: 0,
-			Content: []byte(files[name]),
-			From:    store.FileChangeTypeDidOpen,
-		})
-	}
-
-	view := store.BuildViewForTest(changes)
-
-	res := runOne(t, &CycleCheck{}, view, uri.URI("file:///tmp/"+root))
+	res := analyzertest.Run(t, &CycleCheck{}, files, root)
 
 	for file, diags := range res {
 		for _, d := range diags {
-			assert.Equal(t, SeverityWarning, d.Severity, file)
-			assert.Equal(t, CodeIncludeCycle, d.Code, file)
+			assert.Equal(t, sema.SeverityWarning, d.Severity, file)
+			assert.Equal(t, sema.CodeIncludeCycle, d.Code, file)
 		}
 	}
 
@@ -211,74 +198,54 @@ include "./test/address.thrift"`
 	file2 := `include "../user.thrift"`
 	file3 := `include "../user.thrift"`
 
-	view := store.BuildViewForTest([]*store.FileChange{
-		{
-			URI:     "file:///tmp/user.thrift",
-			Version: 0,
-			Content: []byte(file1),
-			From:    store.FileChangeTypeDidOpen,
-		},
-		{
-			URI:     "file:///tmp/test/goods.thrift",
-			Version: 0,
-			Content: []byte(file2),
-			From:    store.FileChangeTypeDidOpen,
-		},
-		{
-			URI:     "file:///tmp/test/address.thrift",
-			Version: 0,
-			Content: []byte(file3),
-			From:    store.FileChangeTypeDidOpen,
-		},
+	view := analyzertest.View(t, map[string]string{
+		"user.thrift":         file1,
+		"test/goods.thrift":   file2,
+		"test/address.thrift": file3,
 	})
 
 	// Expected includes, parsed through the same snapshot so the ParsedFile
 	// pointers match the ones getIncludes stores.
-	pfFor := func(uriStr string) *store.ParsedFile {
-		pf, err := view.Parse(t.Context(), uri.URI(uriStr))
+	pfFor := func(name string) *store.ParsedFile {
+		pf, err := view.Parse(t.Context(), analyzertest.URI(name))
 		require.NoError(t, err)
 
 		return pf
 	}
-	userPf := pfFor("file:///tmp/user.thrift")
-	goodsPf := pfFor("file:///tmp/test/goods.thrift")
-	addressPf := pfFor("file:///tmp/test/address.thrift")
+	userPf := pfFor("user.thrift")
+	goodsPf := pfFor("test/goods.thrift")
+	addressPf := pfFor("test/address.thrift")
 
 	expectIncludeMap := map[uri.URI][]Include{
-		"file:///tmp/user.thrift": {
-			Include{file: "file:///tmp/test/goods.thrift", include: userPf.AST().Includes()[0], pf: userPf},
-			Include{file: "file:///tmp/test/address.thrift", include: userPf.AST().Includes()[1], pf: userPf},
+		analyzertest.URI("user.thrift"): {
+			Include{file: analyzertest.URI("test/goods.thrift"), include: userPf.AST().Includes()[0], pf: userPf},
+			Include{file: analyzertest.URI("test/address.thrift"), include: userPf.AST().Includes()[1], pf: userPf},
 		},
-		"file:///tmp/test/goods.thrift": {
-			Include{file: "file:///tmp/user.thrift", include: goodsPf.AST().Includes()[0], pf: goodsPf},
+		analyzertest.URI("test/goods.thrift"): {
+			Include{file: analyzertest.URI("user.thrift"), include: goodsPf.AST().Includes()[0], pf: goodsPf},
 		},
-		"file:///tmp/test/address.thrift": {
-			Include{file: "file:///tmp/user.thrift", include: addressPf.AST().Includes()[0], pf: addressPf},
+		analyzertest.URI("test/address.thrift"): {
+			Include{file: analyzertest.URI("user.thrift"), include: addressPf.AST().Includes()[0], pf: addressPf},
 		},
 	}
 
 	includeMap := make(map[uri.URI][]Include)
 
-	err := getIncludes(t.Context(), view, "file:///tmp/user.thrift", &includeMap)
+	err := getIncludes(t.Context(), view, analyzertest.URI("user.thrift"), &includeMap)
 	require.NoError(t, err)
 
 	assert.Equal(t, expectIncludeMap, includeMap)
 }
 
 func Test_getIncludes_Unresolvable(t *testing.T) {
-	view := store.BuildViewForTest([]*store.FileChange{
-		{
-			URI:     "file:///tmp/user.thrift",
-			Version: 0,
-			Content: []byte("include \"ghost.thrift\"\nstruct S {}"),
-			From:    store.FileChangeTypeDidOpen,
-		},
+	view := analyzertest.View(t, map[string]string{
+		"user.thrift": "include \"ghost.thrift\"\nstruct S {}",
 	})
 
 	includeMap := make(map[uri.URI][]Include)
 
-	err := getIncludes(t.Context(), view, "file:///tmp/user.thrift", &includeMap)
+	err := getIncludes(t.Context(), view, analyzertest.URI("user.thrift"), &includeMap)
 	require.NoError(t, err, "unresolvable includes are data, not errors")
-	require.Contains(t, includeMap, uri.URI("file:///tmp/user.thrift"))
+	require.Contains(t, includeMap, analyzertest.URI("user.thrift"))
 	assert.Empty(t, includeMap["file:///tmp/ghost.thrift"], "ghost target is never parsed into the map")
 }

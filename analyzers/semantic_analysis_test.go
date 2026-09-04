@@ -1,14 +1,14 @@
-package sema
+package analyzers
 
 import (
 	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/store"
+	"github.com/karitham/thrift-ls/analyzertest"
+	"github.com/karitham/thrift-ls/sema"
 )
 
 func Test_SemanticAnalysis_Diagnostic(t *testing.T) {
@@ -52,85 +52,77 @@ struct TestUUID {
 	1: required uuid id
 }
 `
-	view := store.BuildViewForTest([]*store.FileChange{
-		{
-			URI:     "file:///tmp/user.thrift",
-			Version: 0,
-			Content: []byte(file1),
-			From:    store.FileChangeTypeDidOpen,
-		},
-	})
+	report := analyzertest.Run(t, sema.EachFile(&SemanticAnalysis{}), map[string]string{
+		"user.thrift": file1,
+	}, "user.thrift")
 
-	want := map[uri.URI][]diagCmp{
-		"file:///tmp/user.thrift": {
+	want := map[uri.URI][]analyzertest.Diag{
+		analyzertest.URI("user.thrift"): {
 			{
 				StartLine: 2 + 1, StartCol: 13 + 1, EndLine: 2 + 1, EndCol: 17 + 1,
-				Severity: SeverityError,
-				Code:     CodeUndefinedType,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeUndefinedType,
 				Message:  "field type doesn't exist",
 			},
 			{
 				StartLine: 10 + 1, StartCol: 13 + 1, EndLine: 10 + 1, EndCol: 17 + 1,
-				Severity: SeverityError,
-				Code:     CodeUndefinedType,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeUndefinedType,
 				Message:  "field type doesn't exist",
 			},
 			{
 				StartLine: 11 + 1, StartCol: 29 + 1, EndLine: 11 + 1, EndCol: 42 + 1,
-				Severity: SeverityError,
-				Code:     CodeUndefinedValue,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeUndefinedValue,
 				Message:  "default value doesn't exist",
 			},
 			{
 				StartLine: 16 + 1, StartCol: 13 + 1, EndLine: 16 + 1, EndCol: 17 + 1,
-				Severity: SeverityError,
-				Code:     CodeUndefinedType,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeUndefinedType,
 				Message:  "field type doesn't exist",
 			},
 			{
 				StartLine: 21 + 1, StartCol: 16 + 1, EndLine: 21 + 1, EndCol: 20 + 1,
-				Severity: SeverityError,
-				Code:     CodeUndefinedType,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeUndefinedType,
 				Message:  "field type doesn't exist",
 			},
 			{
 				StartLine: 21 + 1, StartCol: 57 + 1, EndLine: 21 + 1, EndCol: 74 + 1,
-				Severity: SeverityError,
-				Code:     CodeUndefinedType,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeUndefinedType,
 				Message:  "field type doesn't exist",
 			},
 			{
 				StartLine: 26 + 1, StartCol: 27 + 1, EndLine: 26 + 1, EndCol: 31 + 1,
-				Severity: SeverityError,
-				Code:     CodeValueTypeMismatch,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeValueTypeMismatch,
 				Message:  "expect i32 but got bool",
 			},
 			{
 				StartLine: 27 + 1, StartCol: 27 + 1, EndLine: 27 + 1, EndCol: 29 + 1,
-				Severity: SeverityError,
-				Code:     CodeValueTypeMismatch,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeValueTypeMismatch,
 				Message:  "expect i32 but got string",
 			},
 			{
 				StartLine: 28 + 1, StartCol: 30 + 1, EndLine: 28 + 1, EndCol: 34 + 1,
-				Severity: SeverityError,
-				Code:     CodeValueTypeMismatch,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeValueTypeMismatch,
 				Message:  "expect string but got bool",
 			},
 			{
 				StartLine: 29 + 1, StartCol: 30 + 1, EndLine: 29 + 1, EndCol: 32 + 1,
-				Severity: SeverityError,
-				Code:     CodeValueTypeMismatch,
+				Severity: sema.SeverityError,
+				Code:     sema.CodeValueTypeMismatch,
 				Message:  "expect string but got int",
 			},
 		},
 	}
 
-	report, err := New(Config{}, []Analyzer{EachFile(&SemanticAnalysis{})}).Run(t.Context(), view, []uri.URI{"file:///tmp/user.thrift"})
-	require.NoError(t, err)
-
 	for key := range report {
-		slices.SortStableFunc(report[key], func(a, b Diagnostic) int {
+		slices.SortStableFunc(report[key], func(a, b sema.Diagnostic) int {
 			if a.Span.Start.Line != b.Span.Start.Line {
 				return a.Span.Start.Line - b.Span.Start.Line
 			}
@@ -139,19 +131,17 @@ struct TestUUID {
 		})
 	}
 
-	got := make(map[uri.URI][]diagCmp, len(report))
+	got := make(map[uri.URI][]analyzertest.Diag, len(report))
 	for key, ds := range report {
-		got[key] = cmpAll(ds)
+		got[key] = analyzertest.Simplify(ds)
 	}
 
 	assert.Equal(t, want, got)
 
-	clean := store.BuildViewForTest([]*store.FileChange{
-		{URI: "file:///tmp/clean.thrift", Content: []byte("struct Clean {\n  1: required string name,\n}\nservice Svc {\n  Clean get(1: Clean c),\n}\n"), From: store.FileChangeTypeDidOpen},
-	})
-	cleanReport, err := New(Config{}, []Analyzer{EachFile(&SemanticAnalysis{})}).Run(t.Context(), clean, []uri.URI{"file:///tmp/clean.thrift"})
-	require.NoError(t, err)
-	assert.Empty(t, cleanReport["file:///tmp/clean.thrift"])
+	cleanReport := analyzertest.Run(t, sema.EachFile(&SemanticAnalysis{}), map[string]string{
+		"clean.thrift": "struct Clean {\n  1: required string name,\n}\nservice Svc {\n  Clean get(1: Clean c),\n}\n",
+	}, "clean.thrift")
+	assert.Empty(t, cleanReport[analyzertest.URI("clean.thrift")])
 }
 
 func Test_NonScalarMapKeyCheck(t *testing.T) {
@@ -204,23 +194,11 @@ func Test_NonScalarMapKeyCheck(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := store.BuildViewForTest([]*store.FileChange{
-				{
-					URI:     "file:///tmp/user.thrift",
-					Version: 0,
-					Content: []byte(tt.content),
-					From:    store.FileChangeTypeDidOpen,
-				},
-			})
+			got := analyzertest.Run(t, sema.EachFile(&NonScalarMapKeyCheck{}), map[string]string{
+				"user.thrift": tt.content,
+			}, "user.thrift")[analyzertest.URI("user.thrift")]
 
-			got := runOne(t, EachFile(&NonScalarMapKeyCheck{}), view, "file:///tmp/user.thrift")["file:///tmp/user.thrift"]
-
-			var msgs []string
-			for _, d := range got {
-				msgs = append(msgs, d.Message)
-			}
-
-			assert.Equal(t, tt.want, msgs)
+			assert.Equal(t, tt.want, analyzertest.Messages(got))
 		})
 	}
 }
@@ -265,23 +243,11 @@ func Test_SemanticAnalysis_StructuredAnnotations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := store.BuildViewForTest([]*store.FileChange{
-				{
-					URI:     "file:///tmp/user.thrift",
-					Version: 0,
-					Content: []byte(tt.content),
-					From:    store.FileChangeTypeDidOpen,
-				},
-			})
+			got := analyzertest.Run(t, sema.EachFile(&SemanticAnalysis{}), map[string]string{
+				"user.thrift": tt.content,
+			}, "user.thrift")[analyzertest.URI("user.thrift")]
 
-			got := analyzeOne(t, view, "file:///tmp/user.thrift")
-
-			var msgs []string
-			for _, d := range got {
-				msgs = append(msgs, d.Message)
-			}
-
-			assert.Equal(t, tt.want, msgs)
+			assert.Equal(t, tt.want, analyzertest.Messages(got))
 		})
 	}
 }
@@ -336,23 +302,11 @@ func Test_SemanticAnalysis_WalkCoverage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := store.BuildViewForTest([]*store.FileChange{
-				{
-					URI:     "file:///tmp/user.thrift",
-					Version: 0,
-					Content: []byte(tt.content),
-					From:    store.FileChangeTypeDidOpen,
-				},
-			})
+			got := analyzertest.Run(t, sema.EachFile(&SemanticAnalysis{}), map[string]string{
+				"user.thrift": tt.content,
+			}, "user.thrift")[analyzertest.URI("user.thrift")]
 
-			got := analyzeOne(t, view, "file:///tmp/user.thrift")
-
-			var msgs []string
-			for _, d := range got {
-				msgs = append(msgs, d.Message)
-			}
-
-			assert.Equal(t, tt.want, msgs)
+			assert.Equal(t, tt.want, analyzertest.Messages(got))
 		})
 	}
 }
@@ -475,20 +429,13 @@ func Test_SemanticAnalysis_ConstValueType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view := store.BuildViewForTest([]*store.FileChange{
-				{
-					URI:     "file:///tmp/orth.thrift",
-					Version: 0,
-					Content: []byte(tt.content),
-					From:    store.FileChangeTypeDidOpen,
-				},
-			})
-
-			got := analyzeOne(t, view, "file:///tmp/orth.thrift")
+			got := analyzertest.Run(t, sema.EachFile(&SemanticAnalysis{}), map[string]string{
+				"orth.thrift": tt.content,
+			}, "orth.thrift")[analyzertest.URI("orth.thrift")]
 
 			var msgs []string
 			for _, d := range got {
-				if d.Code == CodeValueTypeMismatch {
+				if d.Code == sema.CodeValueTypeMismatch {
 					msgs = append(msgs, d.Message)
 				}
 			}
@@ -507,9 +454,10 @@ func Test_SemanticAnalysis_ConstValueType_CrossFile(t *testing.T) {
 		abyss := "typedef map<string, string> RelicMap\n"
 		orth := "include \"abyss.thrift\"\nstruct Delver {\n  1: required abyss.RelicMap relics = {'gansi': 'bell'},\n}\n"
 
-		view := crossSnap(t, "/tmp/orth.thrift", orth, "/tmp/abyss.thrift", abyss)
-
-		got := analyzeOne(t, view, uri.File("/tmp/orth.thrift"))
+		got := analyzertest.Run(t, sema.EachFile(&SemanticAnalysis{}), map[string]string{
+			"orth.thrift":  orth,
+			"abyss.thrift": abyss,
+		}, "orth.thrift")[analyzertest.URI("orth.thrift")]
 		assert.Empty(t, got)
 	})
 
@@ -517,9 +465,10 @@ func Test_SemanticAnalysis_ConstValueType_CrossFile(t *testing.T) {
 		abyss := "typedef bool DelvedFlag\n"
 		orth := "include \"abyss.thrift\"\nconst bool HAS_DELVED = true\nstruct Delver {\n  1: required abyss.DelvedFlag delved = HAS_DELVED,\n}\n"
 
-		view := crossSnap(t, "/tmp/orth.thrift", orth, "/tmp/abyss.thrift", abyss)
-
-		got := analyzeOne(t, view, uri.File("/tmp/orth.thrift"))
+		got := analyzertest.Run(t, sema.EachFile(&SemanticAnalysis{}), map[string]string{
+			"orth.thrift":  orth,
+			"abyss.thrift": abyss,
+		}, "orth.thrift")[analyzertest.URI("orth.thrift")]
 		assert.Empty(t, got)
 	})
 
@@ -529,17 +478,41 @@ func Test_SemanticAnalysis_ConstValueType_CrossFile(t *testing.T) {
 		abyss := "typedef i32 RelicRarity\nstruct Relic {\n  1: required RelicRarity lucerium_value,\n}\n"
 		orth := "include \"abyss.thrift\"\nconst abyss.Relic THE_BELL = {'lucerium_value': 'many'}\n"
 
-		view := crossSnap(t, "/tmp/orth.thrift", orth, "/tmp/abyss.thrift", abyss)
-
-		got := analyzeOne(t, view, uri.File("/tmp/orth.thrift"))
+		got := analyzertest.Run(t, sema.EachFile(&SemanticAnalysis{}), map[string]string{
+			"orth.thrift":  orth,
+			"abyss.thrift": abyss,
+		}, "orth.thrift")[analyzertest.URI("orth.thrift")]
 
 		var msgs []string
 		for _, d := range got {
-			if d.Code == CodeValueTypeMismatch {
+			if d.Code == sema.CodeValueTypeMismatch {
 				msgs = append(msgs, d.Message)
 			}
 		}
 
 		assert.Equal(t, []string{"expect i32 but got string"}, msgs)
 	})
+}
+
+// TestSemanticAnalysisSkipsBrokenFile verifies that a file with parse
+// errors does not fail the semantic analysis run: the Parse checker owns
+// parse errors, and the analysis proceeds (or skips) without erroring.
+func TestSemanticAnalysisSkipsBrokenFile(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{"unterminated struct", "struct S { 1: "},
+		{"garbage tokens", "foo bar baz"},
+		{"unclosed annotation", "struct S (x = "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			report := analyzertest.Run(t, sema.EachFile(&SemanticAnalysis{}), map[string]string{
+				"f.thrift": tt.content,
+			}, "f.thrift")
+			assert.Empty(t, report[analyzertest.URI("f.thrift")], "no analyzer owns a broken file's diagnostics")
+		})
+	}
 }

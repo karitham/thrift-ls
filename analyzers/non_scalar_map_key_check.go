@@ -1,9 +1,10 @@
-package sema
+package analyzers
 
 import (
 	"context"
 	"fmt"
 
+	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
@@ -21,8 +22,8 @@ func (c *NonScalarMapKeyCheck) Name() string {
 	return NonScalarMapKeyCheckName
 }
 
-func (c *NonScalarMapKeyCheck) AnalyzeFile(ctx context.Context, f File) ([]Diagnostic, error) {
-	var res []Diagnostic
+func (c *NonScalarMapKeyCheck) AnalyzeFile(ctx context.Context, f sema.File) ([]sema.Diagnostic, error) {
+	var res []sema.Diagnostic
 
 	syntax.Walk(f.PF.AST(), func(n syntax.Node) bool {
 		v, ok := n.(*syntax.FieldType)
@@ -40,16 +41,16 @@ func (c *NonScalarMapKeyCheck) AnalyzeFile(ctx context.Context, f File) ([]Diagn
 	return res, nil
 }
 
-func (c *NonScalarMapKeyCheck) checkMapKeyScalar(ctx context.Context, view Graph, ix *Index, pf *store.ParsedFile, key *syntax.FieldType) *Diagnostic {
+func (c *NonScalarMapKeyCheck) checkMapKeyScalar(ctx context.Context, view sema.Graph, ix *sema.Index, pf *store.ParsedFile, key *syntax.FieldType) *sema.Diagnostic {
 	kind := c.mapKeyKind(ctx, view, ix, pf, key, 0)
 	if kind == "" {
 		return nil
 	}
 
-	return &Diagnostic{
-		Span:     SpanOf(pf, key),
-		Severity: SeverityWarning,
-		Code:     CodeNonScalarMapKey,
+	return &sema.Diagnostic{
+		Span:     sema.SpanOf(pf, key),
+		Severity: sema.SeverityWarning,
+		Code:     sema.CodeNonScalarMapKey,
 		Message:  fmt.Sprintf("map key must be a scalar type, found %s", kind),
 	}
 }
@@ -57,7 +58,7 @@ func (c *NonScalarMapKeyCheck) checkMapKeyScalar(ctx context.Context, view Graph
 // mapKeyKind reports why key is not a scalar map key: the container kind,
 // or the definition kind for struct-like types. "" means scalar: a base
 // type, an enum, or a typedef chain ending there.
-func (c *NonScalarMapKeyCheck) mapKeyKind(ctx context.Context, view Graph, ix *Index, pf *store.ParsedFile, key *syntax.FieldType, depth int) string {
+func (c *NonScalarMapKeyCheck) mapKeyKind(ctx context.Context, view sema.Graph, ix *sema.Index, pf *store.ParsedFile, key *syntax.FieldType, depth int) string {
 	if key == nil {
 		return ""
 	}
@@ -72,8 +73,8 @@ func (c *NonScalarMapKeyCheck) mapKeyKind(ctx context.Context, view Graph, ix *I
 	case syntax.TypeSet:
 		return "set"
 	case syntax.TypeIdent:
-		name := TypeReferenceName(key)
-		if name == "" || IsBasicType(name) || depth > 8 {
+		name := sema.TypeReferenceName(key)
+		if name == "" || sema.IsBasicType(name) || depth > 8 {
 			return ""
 		}
 
@@ -83,11 +84,11 @@ func (c *NonScalarMapKeyCheck) mapKeyKind(ctx context.Context, view Graph, ix *I
 		}
 
 		switch def.Kind {
-		case DefinitionEnum:
+		case sema.DefinitionEnum:
 			return ""
-		case DefinitionStruct, DefinitionUnion, DefinitionException:
+		case sema.DefinitionStruct, sema.DefinitionUnion, sema.DefinitionException:
 			return kindLabel(def.Kind)
-		case DefinitionTypedef:
+		case sema.DefinitionTypedef:
 			td, ok := def.Node.(*syntax.Typedef)
 			if !ok {
 				return ""
@@ -101,13 +102,13 @@ func (c *NonScalarMapKeyCheck) mapKeyKind(ctx context.Context, view Graph, ix *I
 }
 
 // kindLabel is the message label of a definition kind.
-func kindLabel(k DefinitionKind) string {
+func kindLabel(k sema.DefinitionKind) string {
 	switch k {
-	case DefinitionStruct:
+	case sema.DefinitionStruct:
 		return "struct"
-	case DefinitionUnion:
+	case sema.DefinitionUnion:
 		return "union"
-	case DefinitionException:
+	case sema.DefinitionException:
 		return "exception"
 	}
 

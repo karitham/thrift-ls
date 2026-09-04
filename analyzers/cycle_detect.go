@@ -1,4 +1,4 @@
-package sema
+package analyzers
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 
 	"go.lsp.dev/uri"
 
+	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
@@ -21,7 +22,7 @@ func (c *CycleCheck) Name() string {
 	return "CycleCheck"
 }
 
-func (c *CycleCheck) Analyze(ctx context.Context, run *Run) error {
+func (c *CycleCheck) Analyze(ctx context.Context, run *sema.Run) error {
 	view := run.View()
 
 	closure := make(map[uri.URI][]Include)
@@ -49,11 +50,11 @@ func (c *CycleCheck) Analyze(ctx context.Context, run *Run) error {
 
 // cycleDiagnostic builds the warning for one include edge that closes a
 // cycle back to its including file.
-func cycleDiagnostic(inc Include) Diagnostic {
-	return Diagnostic{
-		Span:     SpanOf(inc.pf, inc.include),
-		Severity: SeverityWarning,
-		Code:     CodeIncludeCycle,
+func cycleDiagnostic(inc Include) sema.Diagnostic {
+	return sema.Diagnostic{
+		Span:     sema.SpanOf(inc.pf, inc.include),
+		Severity: sema.SeverityWarning,
+		Code:     sema.CodeIncludeCycle,
 		Message:  fmt.Sprintf("cycle dependency in %s", inc.file),
 	}
 }
@@ -68,7 +69,7 @@ type Include struct {
 // include edges of every file reachable from file, parsed through the
 // view so the ParsedFiles (and the include edges parsing records) are
 // shared with the rest of the analysis.
-func getIncludes(ctx context.Context, view Graph, file uri.URI, includesMap *map[uri.URI][]Include) error {
+func getIncludes(ctx context.Context, view sema.Graph, file uri.URI, includesMap *map[uri.URI][]Include) error {
 	pf, err := view.Parse(ctx, file)
 	if err != nil {
 		return err

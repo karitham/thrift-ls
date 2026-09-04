@@ -1,4 +1,4 @@
-package sema
+package analyzers
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 
 	"go.lsp.dev/uri"
 
+	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
@@ -18,7 +19,7 @@ import (
 // overlaps the selection, the same action is also offered as its quickfix.
 type EnumValuesProvider struct{}
 
-func (p EnumValuesProvider) Actions(ctx context.Context, f File, span Span, report Report) []Action {
+func (p EnumValuesProvider) Actions(ctx context.Context, f sema.File, span sema.Span, report sema.Report) []sema.Action {
 	// A file with parse errors is not safely editable.
 	if len(f.PF.Errors()) > 0 {
 		return nil
@@ -34,19 +35,19 @@ func (p EnumValuesProvider) Actions(ctx context.Context, f File, span Span, repo
 		return nil
 	}
 
-	act := Action{
+	act := sema.Action{
 		Title: "Make enum values explicit",
 		File:  f.URI,
 		Edits: edits,
 	}
 
-	var out []Action
+	var out []sema.Action
 
 	// A diagnostic on the selection makes the action a quickfix for it;
 	// the rewrite stays for kind-filtered requests.
 	for _, d := range report[f.URI] {
 		if d.Span.Overlaps(span) {
-			out = append(out, Action{Title: act.Title, Fix: true, File: f.URI, Edits: edits})
+			out = append(out, sema.Action{Title: act.Title, Fix: true, File: f.URI, Edits: edits})
 
 			break
 		}
@@ -57,7 +58,7 @@ func (p EnumValuesProvider) Actions(ctx context.Context, f File, span Span, repo
 
 // enumAt returns the enum declaration containing the selection start, or
 // nil when it lies outside every enum.
-func enumAt(pf *store.ParsedFile, span Span) *syntax.Enum {
+func enumAt(pf *store.ParsedFile, span sema.Span) *syntax.Enum {
 	for _, enum := range pf.AST().Enums() {
 		if pf.AST().Contains(enum, span.Start) {
 			return enum
@@ -70,16 +71,16 @@ func enumAt(pf *store.ParsedFile, span Span) *syntax.Enum {
 // enumValueEdits appends " = N" to every member without an explicit value.
 // ok is false when the implicit values cannot be computed; the caller must
 // then not edit the enum, as the inserted values would be wrong.
-func enumValueEdits(pf *store.ParsedFile, enum *syntax.Enum) (edits []Edit, ok bool) {
-	for _, im := range EnumImplicitValues(enum) {
+func enumValueEdits(pf *store.ParsedFile, enum *syntax.Enum) (edits []sema.Edit, ok bool) {
+	for _, im := range sema.EnumImplicitValues(enum) {
 		if !im.Known {
 			return nil, false
 		}
 
 		insertAt := pf.AST().TokenEndPosition(im.Member.Name.TokStart())
 
-		edits = append(edits, Edit{
-			Span:    Span{Start: insertAt, End: insertAt},
+		edits = append(edits, sema.Edit{
+			Span:    sema.Span{Start: insertAt, End: insertAt},
 			NewText: " = " + strconv.FormatInt(im.Value, 10),
 		})
 	}
@@ -95,7 +96,7 @@ func enumValueEdits(pf *store.ParsedFile, enum *syntax.Enum) (edits []Edit, ok b
 // field required": unions have no required members.
 type FieldQualifierProvider struct{}
 
-func (p FieldQualifierProvider) Actions(ctx context.Context, f File, span Span, report Report) []Action {
+func (p FieldQualifierProvider) Actions(ctx context.Context, f sema.File, span sema.Span, report sema.Report) []sema.Action {
 	pf := f.PF
 
 	// A file with parse errors is not safely editable.
@@ -107,7 +108,7 @@ func (p FieldQualifierProvider) Actions(ctx context.Context, f File, span Span, 
 	// the actions can be ordered into document order.
 	type picked struct {
 		offset int
-		action Action
+		action sema.Action
 	}
 
 	var out []picked
@@ -133,7 +134,7 @@ func (p FieldQualifierProvider) Actions(ctx context.Context, f File, span Span, 
 		return out[i].offset < out[j].offset
 	})
 
-	actions := make([]Action, len(out))
+	actions := make([]sema.Action, len(out))
 	for i, p := range out {
 		actions[i] = p.action
 	}
@@ -166,7 +167,7 @@ func fieldQualifiers(field *syntax.Field, unionField bool) []syntax.TokenKind {
 // fieldQualifierAction builds the action switching the field to qualifier:
 // the edit replaces the span from the current qualifier keyword, or the
 // type start when the field is unqualified, up to the type start.
-func fieldQualifierAction(pf *store.ParsedFile, file uri.URI, field *syntax.Field, qualifier syntax.TokenKind) Action {
+func fieldQualifierAction(pf *store.ParsedFile, file uri.URI, field *syntax.Field, qualifier syntax.TokenKind) sema.Action {
 	keyword := qualifier.String()
 
 	start := pf.AST().TokenPosition(field.Type.TokStart())
@@ -175,11 +176,11 @@ func fieldQualifierAction(pf *store.ParsedFile, file uri.URI, field *syntax.Fiel
 	}
 	end := pf.AST().TokenPosition(field.Type.TokStart())
 
-	return Action{
+	return sema.Action{
 		Title: fmt.Sprintf("Make field %s (%s)", keyword, field.Name.Text),
 		File:  file,
-		Edits: []Edit{{
-			Span:    Span{Start: start, End: end},
+		Edits: []sema.Edit{{
+			Span:    sema.Span{Start: start, End: end},
 			NewText: keyword + " ",
 		}},
 	}

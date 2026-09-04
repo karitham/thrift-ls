@@ -30,6 +30,14 @@ func (f File) Index() *Index {
 	return f.run.Index()
 }
 
+// NewFile builds the File a direct Analyzer, Fixer, or ActionProvider
+// call needs: the parsed file plus a run holding view and a fresh Index.
+// Pipeline runs build Files themselves; this is for unit tests and
+// one-off invocations outside a run.
+func NewFile(file uri.URI, pf *store.ParsedFile, view Graph) File {
+	return File{URI: file, PF: pf, run: &Run{view: view}}
+}
+
 // Analyzer is a whole-run check: its findings may span files (include
 // cycles are the current consumer), and it may need to see files that do
 // not parse (Parse is the current consumer).
@@ -233,29 +241,6 @@ func (p *Pipeline) WithProviders(ps ...ActionProvider) *Pipeline {
 	out.providers = append(append([]ActionProvider{}, p.providers...), ps...)
 
 	return &out
-}
-
-// DefaultPipeline composes the built-in analyzers with their fixers and
-// action providers.
-func DefaultPipeline(cfg Config) *Pipeline {
-	return New(cfg, Defaults()).
-		WithFixers(AddIncludeFixer{}).
-		WithProviders(EnumValuesProvider{}, FieldQualifierProvider{})
-}
-
-// Defaults returns the built-in analyzers.
-func Defaults() []Analyzer {
-	return []Analyzer{
-		&CycleCheck{},
-		&ParseCheck{},
-		EachFile(&FieldIDCheck{}),
-		EachFile(&DuplicateCheck{}),
-		EachFile(&EnumValueCheck{}),
-		EachFile(&UnusedIncludeCheck{}),
-		EachFile(&IncludeShadowCheck{}),
-		EachFile(&SemanticAnalysis{}),
-		EachFile(&NonScalarMapKeyCheck{}),
-	}
 }
 
 // Run analyzes changed over view: one run, one shared Index across all
