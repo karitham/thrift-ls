@@ -12,7 +12,7 @@
       thriftLs =
         pkgs:
         let
-          version = "0.2.1";
+          version = "0.2.2";
         in
         pkgs.buildGoModule {
           pname = "thrift-ls";
