@@ -21,13 +21,13 @@ type File struct {
 
 // View returns the run's view (include resolver, dependency graph).
 func (f File) View() Graph {
-	return f.run.view
+	return f.run.View()
 }
 
 // Index returns the run's shared cross-file resolver, memoized across
 // every analyzer in the run.
 func (f File) Index() *Index {
-	return f.run.index()
+	return f.run.Index()
 }
 
 // Analyzer is a whole-run check: its findings may span files (include
@@ -58,8 +58,8 @@ func (fa fileAnalyzer) Name() string { return fa.a.Name() }
 func (fa fileAnalyzer) Analyze(ctx context.Context, run *Run) error {
 	var errs []error
 
-	for _, file := range run.files {
-		pf, err := run.view.Parse(ctx, file)
+	for _, file := range run.Files() {
+		pf, err := run.View().Parse(ctx, file)
 		if err != nil {
 			errs = append(errs, err)
 
@@ -100,6 +100,17 @@ type Run struct {
 // Files returns the files the run analyzes.
 func (r *Run) Files() []uri.URI {
 	return r.files
+}
+
+// View returns the run's view (include resolver, dependency graph).
+func (r *Run) View() Graph {
+	return r.view
+}
+
+// Index returns the run's shared cross-file resolver, memoized across
+// every analyzer in the run.
+func (r *Run) Index() *Index {
+	return r.index()
 }
 
 // Add appends findings for file, applying the run's severity overrides.

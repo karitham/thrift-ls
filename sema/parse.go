@@ -22,7 +22,7 @@ func (p *ParseCheck) Analyze(ctx context.Context, run *Run) error {
 	var errs []error
 
 	for _, file := range run.Files() {
-		pf, err := run.view.Parse(ctx, file)
+		pf, err := run.View().Parse(ctx, file)
 		if err != nil {
 			errs = append(errs, err)
 

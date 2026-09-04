@@ -22,7 +22,7 @@ func (c *CycleCheck) Name() string {
 }
 
 func (c *CycleCheck) Analyze(ctx context.Context, run *Run) error {
-	view := run.view
+	view := run.View()
 
 	closure := make(map[uri.URI][]Include)
 	for _, file := range run.Files() {
