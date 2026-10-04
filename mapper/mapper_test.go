@@ -78,8 +78,8 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 			},
 			want: syntax.Position{
 				Line:   2,
-				Col:    28,
-				Offset: 41,
+				Col:    27,
+				Offset: 40,
 			},
 			assertion: assert.NoError,
 		},
@@ -168,8 +168,8 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 			},
 			want: syntax.Position{
 				Line:   2,
-				Col:    28,
-				Offset: 45,
+				Col:    27,
+				Offset: 44,
 			},
 			assertion: assert.NoError,
 		},
@@ -186,8 +186,8 @@ func TestMapper_LSPPosToParserPosition(t *testing.T) {
 			},
 			want: syntax.Position{
 				Line:   1,
-				Col:    13,
-				Offset: 18,
+				Col:    12,
+				Offset: 17,
 			},
 			assertion: assert.NoError,
 		},
@@ -273,6 +273,56 @@ func TestGetLSPEndPosition(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			m := NewMapper([]byte(tt.content))
 			assert.Equal(t, tt.want, m.GetLSPEndPosition())
+		})
+	}
+}
+
+// TestMapper_LSPPosToParserPositionStaleColumn pins that a column past the
+// line content clamps to the content end before the line terminator.
+func TestMapper_LSPPosToParserPositionStaleColumn(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		pos     protocol.Position
+		want    syntax.Position
+	}{
+		{
+			name:    "stale column stops before newline",
+			content: "abc\ndef\n",
+			pos:     protocol.Position{Line: 0, Character: 99},
+			want:    syntax.Position{Line: 1, Col: 4, Offset: 3},
+		},
+		{
+			name:    "stale column stops before crlf",
+			content: "ab\r\ncd",
+			pos:     protocol.Position{Line: 0, Character: 99},
+			want:    syntax.Position{Line: 1, Col: 3, Offset: 2},
+		},
+		{
+			name:    "stale column in unicode line stops before crlf",
+			content: "héllo\r\nworld",
+			pos:     protocol.Position{Line: 0, Character: 99},
+			want:    syntax.Position{Line: 1, Col: 6, Offset: 6},
+		},
+		{
+			name:    "stale column on empty line",
+			content: "\nstruct A {}\n",
+			pos:     protocol.Position{Line: 0, Character: 99},
+			want:    syntax.Position{Line: 1, Col: 1, Offset: 0},
+		},
+		{
+			name:    "stale column on middle line",
+			content: "one\ntwo\n",
+			pos:     protocol.Position{Line: 1, Character: 99},
+			want:    syntax.Position{Line: 2, Col: 4, Offset: 7},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := NewMapper([]byte(tt.content))
+			got, err := m.LSPPosToParserPosition(tt.pos)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

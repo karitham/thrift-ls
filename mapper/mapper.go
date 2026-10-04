@@ -79,8 +79,9 @@ func (m *Mapper) OffsetToLSPPosition(offset int) (protocol.Position, error) {
 // code-unit column) to a parser position (1-based line, rune-based column).
 //
 // Client positions are hints, not facts: they race with edits, so a column
-// past the line end clamps to the line end instead of failing. Only a line
-// past the document is an error — there is nothing to clamp to.
+// past the line content end clamps to it instead of failing, on the line it
+// named: the line ending is not line content. Only a line past the document
+// is an error.
 func (m *Mapper) LSPPosToParserPosition(pos protocol.Position) (syntax.Position, error) {
 	m.initLineStart()
 
@@ -92,7 +93,12 @@ func (m *Mapper) LSPPosToParserPosition(pos protocol.Position) (syntax.Position,
 	lineStart := m.lineStart[pos.Line]
 	lineEnd := len(m.content)
 	if line < len(m.lineStart) {
-		lineEnd = m.lineStart[line]
+		// m.lineStart[line] sits past the '\n'; step back over the whole
+		// terminator (\r\n or \n) so lineEnd is the end of the content.
+		lineEnd = m.lineStart[line] - 1
+		if lineEnd > lineStart && m.content[lineEnd-1] == '\r' {
+			lineEnd--
+		}
 	}
 
 	if !m.nonASCII {

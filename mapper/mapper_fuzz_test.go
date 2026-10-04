@@ -36,6 +36,12 @@ func FuzzOffsetRoundTrip(f *testing.F) {
 			return
 		}
 
+		if offset > 0 && offset < len(content) &&
+			content[offset] == '\n' && content[offset-1] == '\r' {
+			// \n of a CRLF terminator: no LSP position names this offset.
+			return
+		}
+
 		m := NewMapper(content)
 
 		pos, err := m.OffsetToLSPPosition(offset)

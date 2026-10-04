@@ -195,3 +195,47 @@ func TestApplyEditsRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, string(want), string(got))
 }
+
+// TestApplyEditsStaleRangeKeepsTerminator pins that an edit range end past
+// the line content clamps to the content end, so a stale (racing) end
+// position keeps the line terminator.
+func TestApplyEditsStaleRangeKeepsTerminator(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		edits   []protocol.TextEdit
+		want    string
+	}{
+		{
+			name:    "stale end keeps newline",
+			content: "abc\ndef\n",
+			edits: []protocol.TextEdit{
+				{Range: protocol.Range{Start: pos(0), End: pos(99)}, NewText: "X"},
+			},
+			want: "X\ndef\n",
+		},
+		{
+			name:    "stale end keeps crlf",
+			content: "ab\r\ncd",
+			edits: []protocol.TextEdit{
+				{Range: protocol.Range{Start: pos(0), End: pos(99)}, NewText: "X"},
+			},
+			want: "X\r\ncd",
+		},
+		{
+			name:    "stale start clamps to line content end",
+			content: "abc\ndef\n",
+			edits: []protocol.TextEdit{
+				{Range: protocol.Range{Start: pos(99), End: pos(99)}, NewText: "X"},
+			},
+			want: "abcX\ndef\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NewMapper([]byte(tt.content)).ApplyEdits(tt.edits)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, string(got))
+		})
+	}
+}
