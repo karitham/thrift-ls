@@ -1,7 +1,6 @@
 package analyzers
 
 import (
-	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -42,16 +41,6 @@ service Demo {
 	report := analyzertest.Run(t, sema.EachFile(&FieldIDCheck{}), map[string]string{
 		"user.thrift": file1,
 	}, "user.thrift")
-
-	for key := range report {
-		slices.SortStableFunc(report[key], func(a, b sema.Diagnostic) int {
-			if a.Span.Start.Line != b.Span.Start.Line {
-				return a.Span.Start.Line - b.Span.Start.Line
-			}
-
-			return a.Span.Start.Col - b.Span.Start.Col
-		})
-	}
 
 	want := map[uri.URI][]analyzertest.Diag{
 		analyzertest.URI("user.thrift"): {
@@ -198,4 +187,84 @@ service Demo {
 		"clean.thrift": "struct Clean {\n  1: required string name,\n  2: optional i32 id,\n}\n",
 	}, "clean.thrift")
 	assert.Empty(t, cleanReport[analyzertest.URI("clean.thrift")])
+}
+
+// Test_FieldIDCheck_OversizedID pins that field ids too large for int32
+// under base-0 parsing (2147483648, 0xFFFFFFFF) are reported like any
+// other out-of-range id instead of being dropped.
+func Test_FieldIDCheck_OversizedID(t *testing.T) {
+	content := `struct Big {
+  2147483648: i32 a,
+  0xFFFFFFFF: i32 b,
+}
+`
+
+	report := analyzertest.Run(t, sema.EachFile(&FieldIDCheck{}), map[string]string{
+		"user.thrift": content,
+	}, "user.thrift")
+
+	want := []analyzertest.Diag{
+		{
+			StartLine: 1 + 1, StartCol: 2 + 1, EndLine: 1 + 1, EndCol: 12 + 1,
+			Severity: sema.SeverityError,
+			Code:     sema.CodeFieldIDRange,
+			Message:  "field id should be a positive integer in [1, 32767]",
+		},
+		{
+			StartLine: 2 + 1, StartCol: 2 + 1, EndLine: 2 + 1, EndCol: 12 + 1,
+			Severity: sema.SeverityError,
+			Code:     sema.CodeFieldIDRange,
+			Message:  "field id should be a positive integer in [1, 32767]",
+		},
+	}
+
+	assert.Equal(t, want, analyzertest.Simplify(report[analyzertest.URI("user.thrift")]))
+}
+
+// Test_FieldIDCheck_DeterministicOrder pins emission order: field ids are
+// grouped in a map whose iteration order varies per run, and a single run
+// over four diagnostic groups can come out sorted by luck, hence ten runs.
+func Test_FieldIDCheck_DeterministicOrder(t *testing.T) {
+	content := `struct S {
+  0: i32 a,
+  32768: i32 b,
+  1: i32 c,
+  1: i32 d,
+}
+`
+
+	want := []analyzertest.Diag{
+		{
+			StartLine: 1 + 1, StartCol: 2 + 1, EndLine: 1 + 1, EndCol: 3 + 1,
+			Severity: sema.SeverityError,
+			Code:     sema.CodeFieldIDRange,
+			Message:  "field id should be a positive integer in [1, 32767]",
+		},
+		{
+			StartLine: 2 + 1, StartCol: 2 + 1, EndLine: 2 + 1, EndCol: 7 + 1,
+			Severity: sema.SeverityError,
+			Code:     sema.CodeFieldIDRange,
+			Message:  "field id should be a positive integer in [1, 32767]",
+		},
+		{
+			StartLine: 3 + 1, StartCol: 2 + 1, EndLine: 3 + 1, EndCol: 3 + 1,
+			Severity: sema.SeverityError,
+			Code:     sema.CodeFieldIDConflict,
+			Message:  "field id conflict",
+		},
+		{
+			StartLine: 4 + 1, StartCol: 2 + 1, EndLine: 4 + 1, EndCol: 3 + 1,
+			Severity: sema.SeverityError,
+			Code:     sema.CodeFieldIDConflict,
+			Message:  "field id conflict",
+		},
+	}
+
+	for range 10 {
+		report := analyzertest.Run(t, sema.EachFile(&FieldIDCheck{}), map[string]string{
+			"user.thrift": content,
+		}, "user.thrift")
+
+		assert.Equal(t, want, analyzertest.Simplify(report[analyzertest.URI("user.thrift")]))
+	}
 }

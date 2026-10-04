@@ -2,6 +2,8 @@ package analyzers
 
 import (
 	"context"
+	"errors"
+	"slices"
 	"strconv"
 
 	"github.com/karitham/thrift-ls/sema"
@@ -32,6 +34,12 @@ func (c *FieldIDCheck) AnalyzeFile(ctx context.Context, f sema.File) ([]sema.Dia
 
 			value, err := strconv.ParseInt(field.FieldID.Text, 0, 32)
 			if err != nil {
+				// A value too large for int32 is outside [1, 32767]; a token
+				// that is not an integer at all is the parser's error.
+				if errors.Is(err, strconv.ErrRange) {
+					ret = append(ret, fieldIDRangeDiagnostic(field))
+				}
+
 				continue
 			}
 
@@ -41,12 +49,7 @@ func (c *FieldIDCheck) AnalyzeFile(ctx context.Context, f sema.File) ([]sema.Dia
 		for fieldID, set := range fieldIDSet {
 			if fieldID < 1 || fieldID > 32767 {
 				for _, field := range set {
-					ret = append(ret, sema.Diagnostic{
-						Span:     sema.TokenSpan(field.FieldID),
-						Severity: sema.SeverityError,
-						Code:     sema.CodeFieldIDRange,
-						Message:  "field id should be a positive integer in [1, 32767]",
-					})
+					ret = append(ret, fieldIDRangeDiagnostic(field))
 				}
 			}
 
@@ -65,5 +68,25 @@ func (c *FieldIDCheck) AnalyzeFile(ctx context.Context, f sema.File) ([]sema.Dia
 		}
 	})
 
+	// Field ids are grouped in a map, so emission order varies per run;
+	// sort by position to keep `thrift-ls check` output reproducible.
+	slices.SortStableFunc(ret, func(a, b sema.Diagnostic) int {
+		if a.Span.Start.Line != b.Span.Start.Line {
+			return a.Span.Start.Line - b.Span.Start.Line
+		}
+
+		return a.Span.Start.Col - b.Span.Start.Col
+	})
+
 	return ret, nil
+}
+
+// fieldIDRangeDiagnostic is the diagnostic for a field id outside [1, 32767].
+func fieldIDRangeDiagnostic(field *syntax.Field) sema.Diagnostic {
+	return sema.Diagnostic{
+		Span:     sema.TokenSpan(field.FieldID),
+		Severity: sema.SeverityError,
+		Code:     sema.CodeFieldIDRange,
+		Message:  "field id should be a positive integer in [1, 32767]",
+	}
 }
