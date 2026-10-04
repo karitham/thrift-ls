@@ -437,7 +437,8 @@ func (v *View) affected(uris []uri.URI) []uri.URI {
 }
 
 // resolveIncludes dedupes include statements by path text (first wins) and
-// resolves each to a URI, sorted ascending.
+// by resolved URI (so "a.thrift" and "./a.thrift" collapse), sorted
+// ascending.
 func resolveIncludes(ctx context.Context, file uri.URI, includes []*syntax.Include, resolve func(context.Context, uri.URI, string) uri.URI) []uri.URI {
 	seen := make(map[string]struct{}, len(includes))
 	uris := make([]uri.URI, 0, len(includes))
@@ -458,6 +459,7 @@ func resolveIncludes(ctx context.Context, file uri.URI, includes []*syntax.Inclu
 	}
 
 	slices.Sort(uris)
+	uris = slices.Compact(uris)
 
 	return uris
 }

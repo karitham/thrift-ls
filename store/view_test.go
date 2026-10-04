@@ -202,3 +202,27 @@ func Test_ViewParseIncludeCycles(t *testing.T) {
 	// self-include: the file is its own dependent, and settles
 	assert.Equal(t, []uri.URI{self}, ss.Dependents(self))
 }
+
+// Test_View_IncludesDedupesResolvedURI pins that includes differing only in
+// path spelling ("a.thrift" vs "./a.thrift") resolve to the same URI and
+// collapse to a single edge in both directions.
+func Test_View_IncludesDedupesResolvedURI(t *testing.T) {
+	v := NewView("file:///tmp", nil, nil)
+
+	seedEdges(t, v, map[string][]string{
+		strikeRougeURI: {"char.thrift", "./char.thrift", "federation.gundam.thrift"},
+	})
+
+	assert.Equal(t,
+		[]uri.URI{uri.URI(charURI), uri.URI(federationURI)},
+		v.Includes(uri.URI(strikeRougeURI)),
+	)
+	assert.Equal(t,
+		[]uri.URI{uri.URI(strikeRougeURI)},
+		v.Includers(uri.URI(charURI)),
+	)
+	assert.Equal(t,
+		[]uri.URI{uri.URI(strikeRougeURI)},
+		v.Dependents(uri.URI(charURI)),
+	)
+}
