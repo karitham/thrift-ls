@@ -37,6 +37,7 @@ func FuzzFormat(f *testing.F) {
 		"struct S {\n  @dep.Deprecated(1) 1: i32 a\n}",
 		"@a.B(1)\n@c.D ['x', 'y']\ntypedef string T",
 		"@a.B",
+		"service S {\n  @a.B(1) void c()\n}",
 	} {
 		f.Add(seed)
 	}

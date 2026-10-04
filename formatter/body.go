@@ -217,7 +217,7 @@ func (f *formatter) functionBody(v *syntax.Function, start int) doc.Doc {
 	// the flat argument group would drop them.
 	argsMode := f.opts.Separator.Get(ConstructArguments)
 	if f.fieldsForcedBroken(v.Args) || sepForcesBreak(sepsOfFields(v.Args), argsMode) || f.opts.Break.Get(ConstructArguments) {
-		return f.functionBrokenArgs(v, header)
+		return f.functionBrokenArgs(v, header, open)
 	}
 
 	// The argument group folds to "(a, b)" when it fits and unfolds to one
@@ -339,10 +339,8 @@ func (f *formatter) flatFieldsJoin(fields []*syntax.Field, sepMode SeparatorMode
 }
 
 // functionBrokenArgs renders the signature with arguments and throws both
-// broken, one per line.
-func (f *formatter) functionBrokenArgs(v *syntax.Function, header doc.Doc) doc.Doc {
-	open := f.scanKind(v.TokStart(), v.TokEnd(), syntax.TokenLParen)
-
+// broken, one per line. open is the args open paren token index.
+func (f *formatter) functionBrokenArgs(v *syntax.Function, header doc.Doc, open int) doc.Doc {
 	parts := []doc.Doc{
 		header,
 		f.parenGroup(v.Args, open, f.parenClose(v.Args, open), true, f.opts.Separator.Get(ConstructArguments)),

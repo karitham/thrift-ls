@@ -1498,3 +1498,39 @@ func TestFormatConstsOptions(t *testing.T) {
 		})
 	}
 }
+
+// TestFormatLeadingAnnotationBrokenArgs pins that the forced-broken
+// arguments path uses the paren found after the leading annotations, not
+// a re-scan from the function start, which lands inside the annotation
+// value.
+func TestFormatLeadingAnnotationBrokenArgs(t *testing.T) {
+	tests := []struct {
+		name string
+		opts Options
+		src  string
+		want string
+	}{
+		{
+			name: "forced break with annotation paren value",
+			opts: func() Options {
+				o := testOpts(80)
+				o.Break.Set(ConstructArguments, true)
+
+				return o
+			}(),
+			src:  "service S {\n  @foo(1) void bar()\n}",
+			want: "service S {\n  @foo(1)\n  void bar()\n}\n",
+		},
+		{
+			name: "trailing comma breaks args with annotation comment",
+			opts: testOpts(80),
+			src:  "service S {\n  @foo( // c\n  1) void bar(1: i32 a,)\n}",
+			want: "service S {\n  @foo( // c\n  1)\n  void bar(\n    1: i32 a,\n  )\n}\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCase(t, tt.src, tt.opts, tt.want)
+		})
+	}
+}
