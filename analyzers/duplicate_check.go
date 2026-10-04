@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
@@ -253,9 +254,6 @@ func containerValueType(typ *syntax.FieldType) *syntax.FieldType {
 	return nil
 }
 
-// valueKey is the canonical identity of a constant value for duplicate
-// detection: strings by their content, integers by their numeric value,
-// everything else by source text.
 func valueKey(v *syntax.ConstValue) string {
 	switch v.Kind {
 	case syntax.ValueString:
@@ -269,18 +267,56 @@ func valueKey(v *syntax.ConstValue) string {
 		if n, err := strconv.ParseInt(v.Text, 0, 64); err == nil {
 			return "int:" + strconv.FormatInt(n, 10)
 		}
+	case syntax.ValueList:
+		var b strings.Builder
+
+		b.WriteString("list:")
+
+		for _, item := range v.List {
+			// Quote each element so two keys that stringify alike cannot collide.
+			b.WriteString(strconv.Quote(valueKey(item)))
+		}
+
+		return b.String()
+	case syntax.ValueMap:
+		var b strings.Builder
+
+		b.WriteString("map:")
+
+		for _, entry := range v.Map {
+			b.WriteString(strconv.Quote(valueKey(entry.Key)))
+			b.WriteByte(':')
+			b.WriteString(strconv.Quote(valueKey(entry.Value)))
+		}
+
+		return b.String()
 	}
 
 	return v.Text
 }
 
 // duplicateValueDiagnostic is the diagnostic for a repeated map key or set
-// value.
+// value. The message reproduces the value's source text, which only scalars
+// keep on the node.
 func duplicateValueDiagnostic(pf *store.ParsedFile, v *syntax.ConstValue, kind string) sema.Diagnostic {
+	span := sema.SpanOf(pf, v)
+
 	return sema.Diagnostic{
-		Span:     sema.SpanOf(pf, v),
+		Span:     span,
 		Severity: sema.SeverityError,
 		Code:     sema.CodeDuplicateValue,
-		Message:  fmt.Sprintf("duplicate %s %s", kind, v.Text),
+		Message:  fmt.Sprintf("duplicate %s %s", kind, sourceText(pf, span, v.Text)),
 	}
+}
+
+// sourceText returns the file content of span, or fallback when the
+// content is unavailable or the span does not fit in it.
+func sourceText(pf *store.ParsedFile, span sema.Span, fallback string) string {
+	content, err := pf.Content()
+	if err != nil || span.Start.Offset < 0 || span.End.Offset > len(content) ||
+		span.Start.Offset >= span.End.Offset {
+		return fallback
+	}
+
+	return string(content[span.Start.Offset:span.End.Offset])
 }

@@ -297,6 +297,46 @@ enum User {}
 				},
 			},
 		},
+		{
+			name: "distinct set elements that are lists",
+			content: `const set<list<i32>> S = [[1,2],[3,4]]
+`,
+			want: nil,
+		},
+		{
+			name: "distinct map keys that are lists",
+			content: `const map<list<i32>, i32> M = {[1,2]: 1, [3]: 2}
+`,
+			want: nil,
+		},
+		{
+			name: "repeated set element that is a list",
+			content: `const set<list<i32>> S = [[1,2],[1,2]]
+`,
+			want: []analyzertest.Diag{
+				{
+					StartLine: 0 + 1, StartCol: 32 + 1,
+					EndLine: 0 + 1, EndCol: 37 + 1,
+					Severity: sema.SeverityError,
+					Code:     sema.CodeDuplicateValue,
+					Message:  "duplicate set value [1,2]",
+				},
+			},
+		},
+		{
+			name: "repeated map key that is a list",
+			content: `const map<list<i32>, i32> M = {[1,2]: 1, [1,2]: 2}
+`,
+			want: []analyzertest.Diag{
+				{
+					StartLine: 0 + 1, StartCol: 41 + 1,
+					EndLine: 0 + 1, EndCol: 46 + 1,
+					Severity: sema.SeverityError,
+					Code:     sema.CodeDuplicateValue,
+					Message:  "duplicate map key [1,2]",
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
