@@ -1018,3 +1018,44 @@ func TestValidateProject(t *testing.T) {
 	require.Len(t, snap.Issues, 1)
 	assert.Equal(t, uri.File("/workspace/bad.json"), snap.Issues[0].URI)
 }
+
+// TestWatchedFilesSkipUnreadableEvent pins that one unreadable event costs
+// only its own update: returning there stranded every other file's change
+// behind a stale view.
+func TestWatchedFilesSkipUnreadableEvent(t *testing.T) {
+	root := uri.File("/workspace/project")
+	target := uri.File("/workspace/project/api.thrift")
+	gone := uri.File("/workspace/project/gone.thrift")
+
+	files := resolvertest.Map{
+		"/workspace/project/api.thrift":  []byte("struct Before {}"),
+		"/workspace/project/gone.thrift": []byte("struct Gone {}"),
+	}.URIs()
+
+	fs := &watchSpyFS{FileSource: store.NewMemFS(files)}
+	srv := NewServer(nil, Options{Files: fs, ConfigSource: options.PinnedSource(nil)})
+	srv.diagSync = true
+
+	_, err := srv.Initialize(t.Context(), testInitializeParams([]protocol.WorkspaceFolder{{URI: root}}))
+	require.NoError(t, err)
+	installSnapshot(t, srv, root, WorkspaceSnapshot{Projects: []Project{{
+		ConfigURI:   uri.File("/workspace/project/project.json"),
+		RootURI:     root,
+		TargetFiles: []uri.URI{target, gone},
+	}}})
+
+	// The spy refuses reads of gone from here on, standing in for a file
+	// deleted between the event and the read.
+	fs.forbidden = gone
+
+	files[target] = []byte("struct After {}")
+
+	require.NoError(t, srv.DidChangeWatchedFiles(t.Context(), &protocol.DidChangeWatchedFilesParams{
+		Changes: []protocol.FileEvent{
+			{URI: gone, Type: protocol.FileChangeTypeChanged},
+			{URI: target, Type: protocol.FileChangeTypeChanged},
+		},
+	}))
+
+	assert.Contains(t, workspaceSymbolNames(t, srv), "After")
+}

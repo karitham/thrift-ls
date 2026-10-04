@@ -86,7 +86,9 @@ func (s *Server) didChangeWatchedFiles(ctx context.Context, params *protocol.Did
 
 		change, err := s.watchedFileChange(ctx, event)
 		if err != nil {
-			return err
+			// One unreadable file must not discard the rest of the batch.
+			slog.Warn("skipping unreadable watched file", "uri", event.URI, "err", err)
+			continue
 		}
 
 		changes = append(changes, change)
