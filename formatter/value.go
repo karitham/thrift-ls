@@ -282,8 +282,9 @@ func (f *formatter) sepsOf(items []constItem) []syntax.TokenKind {
 
 	for i := 1; i < len(items); i++ {
 		prevEnd := items[i-1].end
-		if isListSep(f.token(prevEnd + 1).Kind) {
-			seps = append(seps, f.token(prevEnd+1).Kind)
+		sepIdx := f.nextReal(prevEnd + 1)
+		if isListSep(f.token(sepIdx).Kind) {
+			seps = append(seps, f.token(sepIdx).Kind)
 		} else {
 			seps = append(seps, 0)
 		}

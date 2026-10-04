@@ -1534,3 +1534,36 @@ func TestFormatLeadingAnnotationBrokenArgs(t *testing.T) {
 		})
 	}
 }
+
+// TestFormatConstCommentBeforeSeparator pins that a comment between an
+// item and its separator does not read as a missing one, while a genuinely
+// missing separator still forces the broken layout.
+func TestFormatConstCommentBeforeSeparator(t *testing.T) {
+	tests := []formatCase{
+		{
+			name:  "list comment before comma stays flat",
+			src:   "const list<i32> x = [1, 2 /* c */, 3]",
+			width: 80,
+			want:  "const list<i32> x = [1, 2 /* c */, 3]\n",
+		},
+		{
+			name:  "map comment before comma stays flat",
+			src:   "const map<i32, i32> m = {1: 2 /* c */, 3: 4}",
+			width: 80,
+			want:  "const map<i32, i32> m = {1: 2 /* c */, 3: 4}\n",
+		},
+		{
+			name:  "nested list comment stays flat at both levels",
+			src:   "const list<list<i32>> x = [[1, 2 /* c */, 3]]",
+			width: 80,
+			want:  "const list<list<i32>> x = [[1, 2 /* c */, 3]]\n",
+		},
+		{
+			name:  "missing separator still forces break",
+			src:   "const list<i32> x = [1, 2 3]",
+			width: 80,
+			want:  "const list<i32> x = [\n  1,\n  2\n  3\n]\n",
+		},
+	}
+	runFormatCases(t, tests)
+}

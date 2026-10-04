@@ -38,6 +38,7 @@ func FuzzFormat(f *testing.F) {
 		"@a.B(1)\n@c.D ['x', 'y']\ntypedef string T",
 		"@a.B",
 		"service S {\n  @a.B(1) void c()\n}",
+		"service S {\n  @foo( // c\n  1) void bar(1: i32 a,)\n}",
 	} {
 		f.Add(seed)
 	}
