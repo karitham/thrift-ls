@@ -70,15 +70,27 @@ func Test_UnusedIncludeCheck(t *testing.T) {
 			content: "include \"used.thrift\"\ninclude \"unused.thrift\"\nstruct S { 1: used.User u }\n",
 			want:    []string{`unused include "unused.thrift"`},
 		},
+		{
+			name:    "same name as const value and as type",
+			content: "include \"constish.thrift\"\ninclude \"structish.thrift\"\nconst i32 M = Marker\nstruct S { 1: Marker m }\n",
+			want:    nil,
+		},
+		{
+			name:    "same name as type first, then const value",
+			content: "include \"structish.thrift\"\ninclude \"constish.thrift\"\nstruct S { 1: Marker m }\nconst i32 M = Marker\n",
+			want:    nil,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := analyzertest.Run(t, sema.EachFile(&UnusedIncludeCheck{}), map[string]string{
-				"shared.thrift": "struct User {\n  1: i32 id,\n}\nenum Color { RED = 1 }\nservice Base {}\n",
-				"used.thrift":   "struct User {\n  1: i32 id,\n}\n",
-				"unused.thrift": "struct Ghost {}\n",
-				"user.thrift":   tt.content,
+				"shared.thrift":    "struct User {\n  1: i32 id,\n}\nenum Color { RED = 1 }\nservice Base {}\n",
+				"used.thrift":      "struct User {\n  1: i32 id,\n}\n",
+				"unused.thrift":    "struct Ghost {}\n",
+				"constish.thrift":  "const i32 Marker = 1\n",
+				"structish.thrift": "struct Marker {\n  1: i32 id,\n}\n",
+				"user.thrift":      tt.content,
 			}, "user.thrift")[analyzertest.URI("user.thrift")]
 
 			var gotMsgs []string

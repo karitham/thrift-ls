@@ -68,10 +68,9 @@ func unusedIncludeDiagnostics(ctx context.Context, f sema.File, pf *store.Parsed
 	return ret
 }
 
-// usedIncludes marks every include that at least one reference in the
-// document resolves into. Resolution goes through the run's shared
-// cross-file index, which handles both qualified ("base.Type") and
-// unqualified names that resolve through the include chain.
+// usedIncludes marks every include that at least one reference resolves
+// into. The index memoizes each (name, kind) pair, so references resolve
+// individually, not deduped by name: one name can be both a value and a type.
 func usedIncludes(ctx context.Context, f sema.File, pf *store.ParsedFile) map[*syntax.Include]bool {
 	resolver := f.View().Resolver()
 	includeByFile := make(map[uri.URI]*syntax.Include)
@@ -83,15 +82,9 @@ func usedIncludes(ctx context.Context, f sema.File, pf *store.ParsedFile) map[*s
 	}
 
 	used := make(map[*syntax.Include]bool)
-	seen := make(map[string]bool)
 	ix := f.Index()
 
 	for _, ref := range pf.Index().References() {
-		if seen[ref.Name] {
-			continue
-		}
-		seen[ref.Name] = true
-
 		if dst, ok := resolveReferenceFile(ctx, ix, pf, ref); ok {
 			if inc, ok := includeByFile[dst]; ok {
 				used[inc] = true
