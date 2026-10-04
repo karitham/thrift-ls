@@ -71,7 +71,7 @@ func EnumImplicitValues(enum *syntax.Enum) []EnumImplicitValue {
 			continue
 		}
 
-		out = append(out, EnumImplicitValue{Member: mv.Member, Value: mv.Value, Known: mv.Known})
+		out = append(out, EnumImplicitValue(mv))
 	}
 
 	return out
