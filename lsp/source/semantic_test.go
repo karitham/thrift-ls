@@ -135,6 +135,39 @@ enum ZeonForces {
 				{1, 11, 6, tokProperty}, // string (field name)
 			},
 		},
+		{
+			name: "block comment split per line",
+			src:  "struct A { /* x\ny */ 1: i32 x }",
+			want: []decodedToken{
+				{0, 0, 6, tokKeyword},   // struct
+				{0, 7, 1, tokStruct},    // A
+				{0, 11, 4, tokComment},  // /* x
+				{1, 0, 4, tokComment},   // y */
+				{1, 5, 1, tokNumber},    // 1
+				{1, 8, 3, tokType},      // i32
+				{1, 12, 1, tokProperty}, // x
+			},
+		},
+		{
+			name: "block comment over CRLF keeps the terminator out",
+			src:  "/* a\r\nb */\nstruct S {}",
+			want: []decodedToken{
+				{0, 0, 4, tokComment}, // /* a
+				{1, 0, 4, tokComment}, // b */
+				{2, 0, 6, tokKeyword}, // struct
+				{2, 7, 1, tokStruct},  // S
+			},
+		},
+		{
+			name: "blank line inside a comment emits nothing",
+			src:  "/* a\n\nb */\nstruct S {}",
+			want: []decodedToken{
+				{0, 0, 4, tokComment}, // /* a
+				{2, 0, 4, tokComment}, // b */
+				{3, 0, 6, tokKeyword}, // struct
+				{3, 7, 1, tokStruct},  // S
+			},
+		},
 	}
 
 	for _, tt := range tests {

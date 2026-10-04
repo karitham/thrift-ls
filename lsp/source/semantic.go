@@ -8,6 +8,7 @@ import (
 
 	"go.lsp.dev/uri"
 
+	"github.com/karitham/thrift-ls/mapper"
 	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
 )
@@ -57,7 +58,7 @@ func Tokens(ctx context.Context, view *store.View, file uri.URI) ([]uint32, erro
 	names, types := tokenFacts(doc)
 
 	data := make([]uint32, 0, len(doc.Tokens)*5)
-	prevLine, prevChar := 0, 0
+	prevLine, prevChar := uint32(0), uint32(0)
 
 	for i, tok := range doc.Tokens {
 		typ, ok := classifyToken(i, tok, names, types)
@@ -68,37 +69,84 @@ func Tokens(ctx context.Context, view *store.View, file uri.URI) ([]uint32, erro
 		// The token span in UTF-16 code units: lengths and columns are
 		// byte- and rune-based in the lexer, so non-ASCII content (e.g.
 		// astral chars in comments or string literals) shifts them.
-		start, err := pf.Mapper().OffsetToLSPPosition(tok.Offset)
-		if err != nil {
-			continue
+		for _, seg := range tokenSegments(pf.Mapper(), tok) {
+			deltaChar := seg.char
+			if seg.line == prevLine {
+				deltaChar = seg.char - prevChar
+			}
+
+			data = append(data,
+				seg.line-prevLine,
+				deltaChar,
+				seg.length,
+				uint32(typ),
+				0, // no token modifiers
+			)
+
+			prevLine, prevChar = seg.line, seg.char
 		}
-
-		end, err := pf.Mapper().OffsetToLSPPosition(tok.Offset + len(tok.Text))
-		if err != nil {
-			continue
-		}
-
-		line := int(start.Line)
-		char := int(start.Character)
-		length := int(end.Character - start.Character)
-
-		deltaChar := char
-		if line == prevLine {
-			deltaChar = char - prevChar
-		}
-
-		data = append(data,
-			uint32(line-prevLine),
-			uint32(deltaChar),
-			uint32(length),
-			uint32(typ),
-			0, // no token modifiers
-		)
-
-		prevLine, prevChar = line, char
 	}
 
 	return data, nil
+}
+
+// tokenSegment is one line of a semantic token: a line, a start column in
+// UTF-16 code units, and a length in the same units.
+type tokenSegment struct {
+	line, char, length uint32
+}
+
+// tokenSegments splits a multi-line token into one segment per line, measured
+// from each line's own start. LSP lengths are within-line distances, so a line
+// with no content yields no segment rather than a zero-length one.
+func tokenSegments(m *mapper.Mapper, tok syntax.Token) []tokenSegment {
+	start, err := m.OffsetToLSPPosition(tok.Offset)
+	if err != nil {
+		return nil
+	}
+
+	end, err := m.OffsetToLSPPosition(tok.Offset + len(tok.Text))
+	if err != nil {
+		return nil
+	}
+
+	if start.Line == end.Line {
+		return []tokenSegment{{line: start.Line, char: start.Character, length: end.Character - start.Character}}
+	}
+
+	var segs []tokenSegment
+
+	line, char := start.Line, start.Character
+
+	for i, b := range tok.Text {
+		if b != '\n' {
+			continue
+		}
+
+		// Neither the '\n' nor the '\r' of a "\r\n" terminator is line content;
+		// the mapper steps back over both.
+		lineEnd := tok.Offset + i
+		if lineEnd > tok.Offset && tok.Text[i-1] == '\r' {
+			lineEnd--
+		}
+
+		pos, err := m.OffsetToLSPPosition(lineEnd)
+		if err != nil {
+			return segs
+		}
+
+		if length := pos.Character - char; length > 0 {
+			segs = append(segs, tokenSegment{line: line, char: char, length: length})
+		}
+
+		line, char = line+1, 0
+	}
+
+	if length := end.Character - char; length > 0 {
+		segs = append(segs, tokenSegment{line: line, char: char, length: length})
+	}
+
+	return segs
 }
 
 // classifyToken maps a token to its semantic type. Definition names win
