@@ -438,25 +438,25 @@ Controls logging verbosity (the server logs to `$TMPDIR/thrift-ls.log`):
 
 ## Releasing
 
-A `v*` tag triggers the release workflow: it builds the six `thrift-ls`
-binaries (linux/darwin/windows × amd64/arm64), a `checksums.txt`, and the
-VS Code `.vsix`, attached to the GitHub release. The workflow injects the
-tag into the binary (`--version`), and fails if the vsix version doesn't
-match the tag.
+A `v*` tag triggers the release workflow. It builds the six `thrift-ls`
+binaries (linux/darwin/windows × amd64/arm64), a `checksums.txt`, the VS Code
+`.vsix`, and the JetBrains plugin ZIP, then attaches them to the GitHub
+release.
 
-Every push to `main` also publishes a **prerelease** per commit (tagged with
-the commit SHA, binaries report `dev-<sha>`). Prereleases never become
-`releases/latest`, so the extension's downloader keeps serving tagged
-releases.
+Every push to `main` also publishes a **prerelease** per commit. It carries
+the short commit SHA in its tag and `<version>-dev.<sha>` in its artifact
+versions. Prereleases never resolve as `releases/latest`, so the extension's
+downloader keeps serving tagged releases.
 
-Before tagging, make sure the versions agree:
-
-- `vscode/package.json` `version`
-- `flake.nix` `version` and the `ServerVersion` ldflag (the workflow enforces
-  the vsix; the flake is manual)
+`VERSION` at the repository root is the only file a release edits. The
+flake, the VS Code extension's `package` script, and the plugin's
+`build.gradle.kts` each read it. The workflow fails before building anything
+when the tag and `VERSION` disagree. The `version` field in
+`vscode/package.json` is not read when packaging, because `vsce package`
+receives the version explicitly.
 
 ```bash
-git tag v0.1.0 && git push origin v0.1.0
+git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
 ## Development
