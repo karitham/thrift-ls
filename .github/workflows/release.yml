@@ -104,9 +104,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      # setup-gradle keys its Gradle User Home cache on the Gradle build files
-      # rather than the git SHA, so the extracted IDE distributions are reused
-      # across commits. The v4 key ended in the SHA, so every run started cold.
+      # setup-gradle v6 caches the downloaded IDE distributions as separate
+      # entries keyed on their content, so later commits restore them.
       - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.8.0'

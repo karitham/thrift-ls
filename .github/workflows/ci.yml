@@ -77,9 +77,8 @@ jobs:
       # maps "<version>-dev.<shortsha>" to tag "dev-<shortsha>".
       - name: package
         working-directory: vscode
-        env:
-          THRIFT_LS_VERSION: ${{ env.VERSION }}-dev.${{ github.sha }}
         run: |
+          export THRIFT_LS_VERSION="${VERSION}-dev.${GITHUB_SHA:0:7}"
           npm ci
           npm run test
           npm run package
@@ -96,18 +95,17 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      # setup-gradle keys its Gradle User Home cache on the Gradle build files
-      # rather than the git SHA, so the extracted IDE distributions are reused
-      # across commits. The v4 key ended in the SHA, so every run started cold.
+      # setup-gradle v6 caches the downloaded IDE distributions as separate
+      # entries keyed on their content, so later commits restore them.
       - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.8.0'
       # build.gradle.kts reads VERSION and appends this suffix, so the plugin
       # ZIP names the commit it was built from.
       - name: Test and package plugin
-        env:
-          THRIFT_LS_VERSION_SUFFIX: -dev.${{ github.sha }}
-        run: gradle -p jetbrains -Pide=goland test buildPlugin verifyPlugin
+        run: |
+          export THRIFT_LS_VERSION_SUFFIX="-dev.${GITHUB_SHA:0:7}"
+          gradle -p jetbrains -Pide=goland test buildPlugin verifyPlugin
       - uses: actions/upload-artifact@v7
         with:
           name: jetbrains
