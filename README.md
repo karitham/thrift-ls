@@ -26,8 +26,9 @@ go install github.com/karitham/thrift-ls@latest
 This installs the `thrift-ls` binary. It speaks LSP over stdio and doubles as
 a CLI formatter.
 
-Prebuilt binaries (`linux`/`darwin`/`windows`, `amd64`/`arm64`) and a VS Code
-extension (`thrift-ls-<version>.vsix`) are attached to
+Prebuilt binaries (`linux`/`darwin`/`windows`, `amd64`/`arm64`), a VS Code
+extension (`thrift-ls-<version>.vsix`), and a JetBrains plugin
+(`thrift-ls-jetbrains-<version>.zip`) are attached to
 [GitHub releases](https://github.com/karitham/thrift-ls/releases).
 
 `nix run github:karitham/thrift-ls` runs the flake package.
@@ -109,6 +110,15 @@ finds `thrift-ls` on `PATH` (or via the `thrift-ls.path` setting), and offers
 to download the matching release binary on first use. Formatting — whole
 document, selection, and on-type — works through the server, so format-on-save
 needs no extra setup.
+
+#### JetBrains IDEs
+
+Install the [JetBrains plugin](jetbrains/) in GoLand or RubyMine 2026.2 or
+newer. It associates `*.thrift` with the Thrift LS file type and starts the
+installed `thrift-ls` binary when a file is opened. Use **Settings → Tools →
+Thrift Language Server** to select a binary not on the IDE's `PATH`. See the
+[plugin setup guide](jetbrains/README.md) for build and installation
+instructions.
 
 ### As a formatter
 
