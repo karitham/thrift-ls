@@ -1,0 +1,29 @@
+<idea-plugin>
+    <id>com.karitham.thriftls.jetbrains</id>
+    <name>Thrift Language Server</name>
+    <vendor url="https://github.com/karitham/thrift-ls">karitham</vendor>
+    <description><![CDATA[
+        Integrates thrift-ls with JetBrains IDEs for Thrift diagnostics,
+        navigation, completion, quick fixes, and formatting. Install the
+        thrift-ls executable separately; its path can be configured in Settings.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.lsp</depends>
+    <depends>com.intellij.modules.ultimate</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <fileType
+            name="Thrift LS"
+            language="ThriftLS"
+            implementationClass="com.karitham.thriftls.ThriftFileType"
+            fieldName="INSTANCE"
+            extensions="thrift"/>
+        <platform.lsp.integrationProvider implementation="com.karitham.thriftls.ThriftLsIntegrationProvider"/>
+        <applicationConfigurable
+            parentId="tools"
+            id="com.karitham.thriftls.settings"
+            displayName="Thrift Language Server"
+            instance="com.karitham.thriftls.ThriftLsConfigurable"/>
+    </extensions>
+</idea-plugin>
