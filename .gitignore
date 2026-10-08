@@ -5,3 +5,10 @@ result
 vscode/node_modules/
 vscode/out/
 vscode/*.vsix
+
+# JetBrains plugin
+jetbrains/.gradle/
+jetbrains/.idea/
+jetbrains/.intellijPlatform/
+jetbrains/.kotlin/
+jetbrains/build/

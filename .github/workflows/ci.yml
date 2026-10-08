@@ -74,13 +74,35 @@ jobs:
           name: vsix
           path: vscode/*.vsix
 
+  jetbrains:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.8.0'
+      - name: Test and package plugin
+        env:
+          VERSION: ${{ github.sha }}
+        run: |
+          base_version=$(sed -n 's/^version = //p' jetbrains/gradle.properties)
+          gradle -p jetbrains -Pide=goland -Pversion="${base_version}-dev.${VERSION:0:7}" test buildPlugin verifyPlugin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jetbrains
+          path: jetbrains/build/distributions/*.zip
+
   # Per-commit prerelease: every main push gets binaries + vsix attached to
   # a release tagged with the short commit SHA. Prereleases never become
   # `releases/latest`, so the extension's downloader keeps serving tagged
   # releases. The tag is prefixed: GitHub rejects ref names that are purely
   # 40 or 60 hex characters.
   dev-release:
-    needs: [build, vsix]
+    needs: [build, vsix, jetbrains]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
