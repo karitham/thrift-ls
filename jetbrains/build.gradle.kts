@@ -6,6 +6,12 @@ plugins {
     id("org.jetbrains.intellij.platform") version "2.19.0"
 }
 
+// The version comes from the repository root's VERSION file, shared with the
+// Go binary and the VS Code extension. Edge builds append a -dev suffix
+// through THRIFT_LS_VERSION_SUFFIX.
+version = rootProject.layout.projectDirectory.file("../VERSION").asFile.readText().trim() +
+    (providers.environmentVariable("THRIFT_LS_VERSION_SUFFIX").orNull ?: "")
+
 repositories {
     mavenCentral()
     intellijPlatform {

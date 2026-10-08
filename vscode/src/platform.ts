@@ -82,7 +82,7 @@ export function sha256Hex(bytes: Buffer): string {
 }
 
 // The vsix version of a per-commit dev build, set by the release workflow:
-// "0.1.0-dev.<shortsha>".
+// "<VERSION>-dev.<shortsha>".
 const DEV_VERSION_RE = /^[\d.]+-dev\.([0-9a-f]{7})$/;
 
 /**

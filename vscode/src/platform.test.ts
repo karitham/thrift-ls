@@ -81,6 +81,8 @@ test('sha256Hex matches known digests', () => {
 test('releaseTag pins dev builds to their commit release', () => {
   assert.equal(releaseTag('0.1.0-dev.110abea'), 'dev-110abea');
   assert.equal(releaseTag('0.1.0-dev.9984fd1'), 'dev-9984fd1');
+  // A multi-component VERSION, which is what the workflow now emits.
+  assert.equal(releaseTag('0.2.3-dev.abc1234'), 'dev-abc1234');
 });
 
 test('releaseTag is undefined for stable or unknown versions', () => {

@@ -23,6 +23,11 @@ repository's [CI and release workflows](../.github/workflows/) run this single
 build/test job and package a ZIP for releases. To run one test class, for
 example:
 
+The plugin's version comes from the `VERSION` file at the repository root,
+which the Go binary, the VS Code extension, and the flake also read. Set
+`THRIFT_LS_VERSION_SUFFIX` to append a suffix, which is how CI names a plugin
+ZIP after the commit that built it. To run one test class, for example:
+
 ```sh
 gradle -p jetbrains -Pide=goland test --tests 'com.karitham.thriftls.ThriftFileTypeTest'
 ```

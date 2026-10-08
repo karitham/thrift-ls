@@ -9,16 +9,17 @@
       forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
       pkgsFor = system: import nixpkgs { inherit system; };
 
+      # Single source of truth for the version, shared with the VS Code
+      # extension and the JetBrains plugin.
+      version = nixpkgs.lib.removeSuffix "\n" (builtins.readFile ./VERSION);
+
       thriftLs =
         pkgs:
-        let
-          version = "0.2.3";
-        in
         pkgs.buildGoModule {
           pname = "thrift-ls";
           inherit version;
           src = nixpkgs.lib.cleanSource ./.;
-          vendorHash = "sha256-zWy0x3yktLA8dtcbwzue3aB7a+SlqwWO86G3ZP8DgOQ=";
+          vendorHash = "sha256-3SuXwQ0SB7fvsAIPwPTaFzLxAOjPMYwCmBZFun+c1ic=";
           ldflags = [
             "-s"
             "-w"
