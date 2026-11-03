@@ -67,7 +67,7 @@
           "type": "string",
           "default": "field",
           "enum": ["field", "assign", "disable"],
-          "markdownDescription": "Column alignment of struct/union/exception fields and enum values: `field` (align ids/requiredness/types), `assign` (align `=`), `disable`."
+          "markdownDescription": "Column alignment of struct/union/exception fields, enum values, and constant blocks: `field` (align ids/requiredness/types and constant `=`), `assign` (align `=`), `disable`."
         },
         "thrift-ls.separators.structs": {
           "type": "string",

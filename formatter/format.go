@@ -18,14 +18,15 @@ import (
 	"github.com/karitham/thrift-ls/syntax"
 )
 
-// AlignMode controls column alignment of struct-like bodies and enum values.
+// AlignMode controls column alignment of struct-like bodies, enum values,
+// and constant blocks.
 type AlignMode uint8
 
 const (
 	// AlignField aligns the id, requiredness, and type columns of fields.
 	AlignField AlignMode = iota
-	// AlignAssign aligns the '=' sign of fields and enum values that have
-	// default values.
+	// AlignAssign aligns the '=' sign of fields, enum values, and constants
+	// that have values.
 	AlignAssign
 	// AlignDisable disables alignment.
 	AlignDisable
@@ -195,10 +196,11 @@ func FormatNode(d *syntax.Document, n syntax.Node, o Options) (string, error) {
 
 type formatter struct {
 	*doc.Arena
-	doc    *syntax.Document
-	toks   []syntax.Token
-	opts   Options
-	nextID int
+	doc         *syntax.Document
+	toks        []syntax.Token
+	opts        Options
+	nextID      int
+	constAligns map[*syntax.Const]*columnAlign
 }
 
 // id returns a fresh non-zero group id for IfBreak references.
@@ -443,6 +445,8 @@ func (f *formatter) nodeBody(n syntax.Node) doc.Doc {
 // document assembles the whole file: top-level nodes separated by
 // collapsible lines, blank lines preserved, and trailing comments.
 func (f *formatter) document() doc.Doc {
+	f.constAligns = f.constAlignments()
+
 	parts := f.Parts(12)
 
 	for i, n := range f.doc.Nodes {
@@ -521,9 +525,15 @@ func (f *formatter) constant(v *syntax.Const) doc.Doc {
 
 	eq := f.prevReal(value.TokStart() - 1)
 
+	o := emitOpts{trailing: true}
+	if align, ok := f.constAligns[v]; ok {
+		width, _ := f.constPrefix(v)
+		o.pads = []padEntry{assignPad(v.Name.TokStart(), width, align.assignWidth)}
+	}
+
 	parts := f.Parts(2)
 	parts = append(parts, pre)
-	parts = append(parts, f.emitTokens(start, eq, emitOpts{trailing: true}))
+	parts = append(parts, f.emitTokens(start, eq, o))
 	parts = append(parts, f.tokenGap(eq, value.TokStart()))
 	// Own-line comments before the value render at the value boundary,
 	// outside the value's own group.
@@ -539,6 +549,110 @@ func (f *formatter) constant(v *syntax.Const) doc.Doc {
 	}
 
 	return f.Concat(parts...)
+}
+
+// constAlignments returns the target '=' column for each constant in a
+// block, keyed by node. Consecutive constants form one block; a blank
+// line, a standalone comment, or another declaration ends it. Disabled
+// alignment returns no entries.
+func (f *formatter) constAlignments() map[*syntax.Const]*columnAlign {
+	if f.opts.Align == AlignDisable {
+		return nil
+	}
+
+	var aligns map[*syntax.Const]*columnAlign
+
+	for i := 0; i < len(f.doc.Nodes); {
+		run := f.constRun(i)
+		if len(run) == 0 {
+			i++
+
+			continue
+		}
+
+		if len(run) > 1 {
+			if aligns == nil {
+				aligns = make(map[*syntax.Const]*columnAlign, len(run))
+			}
+
+			maxPrefix := 0
+			for _, c := range run {
+				width, _ := f.constPrefix(c)
+				maxPrefix = max(maxPrefix, width)
+			}
+
+			align := &columnAlign{assignWidth: maxPrefix}
+			for _, c := range run {
+				aligns[c] = align
+			}
+		}
+
+		i += len(run)
+	}
+
+	return aligns
+}
+
+// constRun returns the constants starting at nodes[start] that share an
+// alignment block. A blank line or a standalone comment before a constant
+// ends the block.
+func (f *formatter) constRun(start int) []*syntax.Const {
+	var run []*syntax.Const
+
+	for i := start; i < len(f.doc.Nodes); i++ {
+		c, ok := f.doc.Nodes[i].(*syntax.Const)
+		if !ok {
+			break
+		}
+
+		if _, ok := f.constPrefix(c); !ok {
+			break
+		}
+
+		if len(run) > 0 && (f.blankBefore(c) > 0 || f.hasOwnLineComments(c.TokStart())) {
+			break
+		}
+
+		run = append(run, c)
+	}
+
+	return run
+}
+
+// constPrefix returns the rendered width of "const <type> <name>" and
+// whether the header has the canonical shape the alignment pad assumes.
+// The header must end with '=' directly after the name and contain no
+// comments or type annotations.
+func (f *formatter) constPrefix(c *syntax.Const) (width int, ok bool) {
+	if c == nil || c.Type == nil || c.Name == nil || c.Value == nil || c.Type.Annotations != nil {
+		return 0, false
+	}
+
+	start := c.TokStart()
+	if len(c.Structured) > 0 {
+		start = f.nextReal(c.Structured[len(c.Structured)-1].TokEnd() + 1)
+	}
+
+	if start < 0 || start >= len(f.toks) || f.token(start).Kind != syntax.TokenConst {
+		return 0, false
+	}
+
+	eq := f.prevReal(c.Value.TokStart() - 1)
+	if eq < start || f.token(eq).Kind != syntax.TokenEqual {
+		return 0, false
+	}
+
+	if f.nextReal(c.Name.TokEnd()+1) != eq {
+		return 0, false
+	}
+
+	for i := start; i < eq; i++ {
+		if isComment(f.token(i).Kind) {
+			return 0, false
+		}
+	}
+
+	return len(f.token(start).Text) + 1 + len(typeText(c.Type)) + 1 + len(c.Name.Text), true
 }
 
 // --- annotations -----------------------------------------------------------

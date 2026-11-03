@@ -240,7 +240,7 @@ func TestFormatConsts(t *testing.T) {
 		{
 			name: "scalars",
 			src:  "const i32 a = 0xa1\nconst double b = -1.5e-3\nconst string c = \"x\"",
-			want: "const i32 a = 0xa1\nconst double b = -1.5e-3\nconst string c = \"x\"\n",
+			want: "const i32 a    = 0xa1\nconst double b = -1.5e-3\nconst string c = \"x\"\n",
 		},
 		{
 			name: "list fits",
@@ -267,7 +267,7 @@ func TestFormatConsts(t *testing.T) {
 		{
 			name: "empty list and map",
 			src:  "const list<i32> a = []\nconst map<string, i32> b = {}",
-			want: "const list<i32> a = []\nconst map<string, i32> b = {}\n",
+			want: "const list<i32> a        = []\nconst map<string, i32> b = {}\n",
 		},
 		{
 			name:  "value list breaks inside const",
@@ -284,6 +284,92 @@ func TestFormatConsts(t *testing.T) {
 			}
 
 			runCase(t, tt.src, testOpts(width), tt.want)
+		})
+	}
+}
+
+func TestFormatConstAlignment(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		opts Options
+		want string
+	}{
+		{
+			name: "blank line ends the block",
+			src:  "const i32 a = 1\n\nconst string longer = \"x\"",
+			opts: testOpts(80),
+			want: "const i32 a = 1\n\nconst string longer = \"x\"\n",
+		},
+		{
+			name: "blank-line groups align separately",
+			src:  "const i32 a = 1\nconst string longer = \"x\"\n\nconst i32 c = 3\nconst string d = \"y\"",
+			opts: testOpts(80),
+			want: "const i32 a         = 1\nconst string longer = \"x\"\n\nconst i32 c    = 3\nconst string d = \"y\"\n",
+		},
+		{
+			name: "standalone comment ends the block",
+			src:  "const i32 a = 1\n// note\nconst i32 longer = 2",
+			opts: testOpts(80),
+			want: "const i32 a = 1\n// note\nconst i32 longer = 2\n",
+		},
+		{
+			name: "a declaration ends the block",
+			src:  "const i32 a = 1\ntypedef i32 T\nconst i32 longer = 2",
+			opts: testOpts(80),
+			want: "const i32 a = 1\ntypedef i32 T\nconst i32 longer = 2\n",
+		},
+		{
+			name: "header comment skips alignment",
+			src:  "const i32 /* c */ a = 1\nconst i32 longer = 2",
+			opts: testOpts(80),
+			want: "const i32 /* c */ a = 1\nconst i32 longer = 2\n",
+		},
+		{
+			name: "same-line comment keeps the block",
+			src:  "const i32 a = 1 // note\nconst string longer = \"x\"",
+			opts: testOpts(80),
+			want: "const i32 a         = 1 // note\nconst string longer = \"x\"\n",
+		},
+		{
+			name: "multiline values do not affect the column",
+			src:  "const list<i32> a = [1, 2]\nconst string longer = \"x\"",
+			opts: testOpts(80),
+			want: "const list<i32> a   = [1, 2]\nconst string longer = \"x\"\n",
+		},
+		{
+			name: "structured annotations keep the block",
+			src:  "@meta.Flag(true)\nconst i32 a = 1\nconst string longer = \"x\"",
+			opts: testOpts(80),
+			want: "@meta.Flag(true)\nconst i32 a         = 1\nconst string longer = \"x\"\n",
+		},
+		{
+			name: "assign mode keeps the block aligned",
+			src:  "const i32 a = 1\nconst string longer = \"x\"",
+			opts: func() Options {
+				o := testOpts(80)
+				o.Align = AlignAssign
+
+				return o
+			}(),
+			want: "const i32 a         = 1\nconst string longer = \"x\"\n",
+		},
+		{
+			name: "disabled alignment",
+			src:  "const i32 a = 1\nconst string longer = \"x\"",
+			opts: func() Options {
+				o := testOpts(80)
+				o.Align = AlignDisable
+
+				return o
+			}(),
+			want: "const i32 a = 1\nconst string longer = \"x\"\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCase(t, tt.src, tt.opts, tt.want)
 		})
 	}
 }

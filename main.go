@@ -152,7 +152,7 @@ func formatFlags() []cli.Flag {
 		},
 		&cli.StringFlag{
 			Name:  "align",
-			Usage: `align fields: "field", "assign", or "disable"`,
+			Usage: `column alignment: "field", "assign", or "disable"`,
 		},
 		&cli.StringFlag{
 			Name:  "config",
@@ -237,7 +237,8 @@ func formatAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	return formatter.FormatFile(file, formatter.FileOptions{Output: cmd.Writer,
+	return formatter.FormatFile(file, formatter.FileOptions{
+		Output:   cmd.Writer,
 		Write:    cmd.Bool("w"),
 		Diff:     cmd.Bool("d"),
 		Base:     base,

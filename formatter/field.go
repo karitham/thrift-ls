@@ -246,12 +246,12 @@ func (f *formatter) alignmentForEnum(values []*syntax.EnumValue, i int, sepMode 
 
 // columnAlign holds the computed column widths for one aligned group.
 type columnAlign struct {
-	hasReq     bool
-	idWidth    int // width of the "N:" prefix column
-	reqWidth   int // width of the required/optional column
-	typeWidth  int // width of the type column
-	nameWidth  int // for AlignAssign: max name width among fields with values
-	enumAssign bool
+	hasReq      bool
+	idWidth     int // width of the "N:" prefix column
+	reqWidth    int // width of the required/optional column
+	typeWidth   int // width of the type column
+	assignWidth int // width of the text before '=' for AlignAssign
+	enumAssign  bool
 }
 
 func maxInt(a, b int) int {
@@ -260,6 +260,13 @@ func maxInt(a, b int) int {
 	}
 
 	return b
+}
+
+// assignPad aligns the content at token to the assign column width. The
+// content is the name for fields and enum values, the "const <type>
+// <name>" prefix for constants.
+func assignPad(token, contentWidth, width int) padEntry {
+	return padEntry{token, padRight("", width-contentWidth)}
 }
 
 // computeFieldAlign computes column widths for a group of fields.
@@ -278,20 +285,20 @@ func computeFieldAlign(fields []*syntax.Field) *columnAlign {
 
 		a.typeWidth = maxInt(a.typeWidth, len(typeText(field.Type)))
 		if field.Value != nil {
-			a.nameWidth = maxInt(a.nameWidth, len(field.Name.Text))
+			a.assignWidth = maxInt(a.assignWidth, len(field.Name.Text))
 		}
 	}
 
 	return a
 }
 
-// computeEnumAlign computes the name width for aligning '=' signs.
+// computeEnumAlign computes the assign column width for aligning '=' signs.
 func computeEnumAlign(values []*syntax.EnumValue) *columnAlign {
 	a := &columnAlign{enumAssign: true}
 
 	for _, value := range values {
 		if value.Value != nil {
-			a.nameWidth = maxInt(a.nameWidth, len(value.Name.Text))
+			a.assignWidth = maxInt(a.assignWidth, len(value.Name.Text))
 		}
 	}
 
@@ -445,8 +452,8 @@ func (f *formatter) fieldPads(v *syntax.Field, a *columnAlign) ([]padEntry, stri
 		pads = append(pads, padEntry{end, padRight("", a.typeWidth-len(typeText(v.Type)))})
 	}
 
-	if v.Value != nil && a.nameWidth > 0 {
-		pads = append(pads, padEntry{v.Name.TokStart(), padRight("", a.nameWidth-len(v.Name.Text))})
+	if v.Value != nil && a.assignWidth > 0 {
+		pads = append(pads, assignPad(v.Name.TokStart(), len(v.Name.Text), a.assignWidth))
 	}
 
 	return pads, ""
@@ -483,7 +490,7 @@ func (f *formatter) enumValueContent(v *syntax.EnumValue, align *columnAlign, pa
 		o.skipText = []int{v.TokEnd()}
 	}
 
-	if padded && align.enumAssign && align.nameWidth > 0 && v.Value != nil {
+	if padded && align.enumAssign && align.assignWidth > 0 && v.Value != nil {
 		// Only members with a value get the '=' alignment pad: a pad on a
 		// name-only member would trail straight into the separator. A
 		// comment between the name and the value's end makes the pad
@@ -505,7 +512,7 @@ func (f *formatter) enumValueContent(v *syntax.EnumValue, align *columnAlign, pa
 		}
 
 		if clean {
-			o.pads = []padEntry{{v.Name.TokStart(), padRight("", align.nameWidth-len(v.Name.Text))}}
+			o.pads = []padEntry{assignPad(v.Name.TokStart(), len(v.Name.Text), align.assignWidth)}
 		}
 	}
 

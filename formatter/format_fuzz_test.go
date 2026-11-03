@@ -25,6 +25,8 @@ func FuzzFormat(f *testing.F) {
 		"struct S {\n  1: i32 a\n}",
 		"service S {\n  i32 f(1: i64 a, 2: string b) throws (E e)\n}",
 		"const map<string, list<i32>> m = {\"a\": [1, 2]}",
+		"const i32 a = 1\n\nconst string longer = \"x\"",
+		"const i32 a = 1\n// note\nconst i32 longer = 2",
 		"enum E {\n  A = 1,\n  B\n} (tag = \"x\")",
 		"// c\nstruct S {\n  1: i32 a // eol\n}",
 		"typedef i32 T (bare, a = \"1\"; b = '2')",

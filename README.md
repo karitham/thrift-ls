@@ -290,11 +290,17 @@ a clause force it to break, without breaking the other clause.
 ### Column alignment
 
 Struct/union/exception fields and enum values are column-aligned within
-their group (`align: field`). Alignment groups split at blank lines and
-comments, like whitespace. A group is aligned only when the padded columns
-fit within `printWidth` — except layouts that were deliberately
+their group (`align: field`). Their alignment groups split at blank lines
+and comments, like whitespace. A group is aligned only when the padded
+columns fit within `printWidth`, except layouts that were deliberately
 column-aligned in the source, which are preserved even when they overflow.
 Trailing comments may overflow their line without affecting alignment.
+
+Consecutive constants form one alignment block that aligns the `=` sign.
+Blank lines, standalone comments, and other declarations end the block.
+Constant alignment ignores the value length, so a block keeps one `=`
+column even when a value line overflows `printWidth`. Constant alignment
+follows `align` and is disabled by `align: disable`.
 
 ## Configuration
 
@@ -363,10 +369,12 @@ Display width of a tab when measuring line width. Default: `4`.
 
 ### align
 
-Controls column alignment of struct/union/exception fields and enum values.
+Controls column alignment of struct/union/exception fields, enum values,
+and constant blocks.
 
-- `field`: Align field IDs, requiredness, and types (default)
-- `assign`: Align the `=` sign for default values
+- `field`: Align field IDs, requiredness, and types, and the `=` sign of
+  constant blocks (default)
+- `assign`: Align the `=` sign for default values and constant blocks
 - `disable`: No alignment
 
 See [Column alignment](#column-alignment) for how alignment interacts with
