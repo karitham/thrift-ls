@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
@@ -15,6 +14,7 @@ import (
 	"github.com/karitham/thrift-ls/analyzers"
 	"github.com/karitham/thrift-ls/analyzertest"
 	"github.com/karitham/thrift-ls/internal/fuzzgen"
+	"github.com/karitham/thrift-ls/internal/proptest"
 	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
@@ -61,21 +61,6 @@ func drawText(t *fuzzgen.T) string {
 	}
 
 	return b.String()
-}
-
-// runeBoundaries returns every rune-start byte offset of content plus
-// len(content), ascending. Spans built from it always start and end on a
-// rune boundary.
-func runeBoundaries(content string) []int {
-	out := []int{0}
-	off := 0
-
-	for _, r := range content {
-		off += utf8.RuneLen(r)
-		out = append(out, off)
-	}
-
-	return out
 }
 
 // boundsStrictlyInside returns the rune boundaries strictly between lo and
@@ -241,7 +226,7 @@ func (c applyCase) String() string {
 // same-start insertion/replacement pair in one of the two argument orders.
 func drawApplyCase(t *fuzzgen.T) applyCase {
 	content := drawContent(t)
-	bounds := runeBoundaries(content)
+	bounds := proptest.RuneBoundaries(content)
 
 	var fixes []sema.Fix
 
@@ -454,7 +439,7 @@ func mixesSkipReasons(skipped []modelSkip) bool {
 // from. fuzzgen.New derives its draw stream from the bytes' hash, so each entry
 // starts one independent stream per target, and the fuzzer varies the bytes
 // from there.
-var applySeeds = [][]byte{
+var applySeeds = proptest.Corpus{
 	[]byte("abcd"),
 	[]byte("aé 世\n"),
 	[]byte("same-start tie"),
@@ -468,11 +453,7 @@ var applySeeds = [][]byte{
 // bytes and the same applied/skipped partition as production, for every
 // generated fix batch.
 func FuzzApplyMatchesModel(f *testing.F) {
-	for _, seed := range applySeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		c := drawApplyCase(t)
@@ -580,15 +561,11 @@ func drawDisjointFixes(t *fuzzgen.T, bounds []int, n int) []sema.Fix {
 // argument order, equals applying them one at a time in that order with
 // offset compensation.
 func FuzzApplyDisjointCommutation(f *testing.F) {
-	for _, seed := range applySeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		content := drawContent(t)
-		bounds := runeBoundaries(content)
+		bounds := proptest.RuneBoundaries(content)
 
 		fixes := drawDisjointFixes(t, bounds, fuzzgen.IntRange(1, 4).Draw(t))
 		if len(fixes) < 2 {
@@ -631,15 +608,11 @@ func FuzzApplyDisjointCommutation(f *testing.F) {
 // number of insertions land in argument order, immediately before a
 // replacement starting there, in whatever order the fixes are passed.
 func FuzzApplySameOffsetTie(f *testing.F) {
-	for _, seed := range applySeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		content := drawContent(t)
-		bounds := runeBoundaries(content)
+		bounds := proptest.RuneBoundaries(content)
 
 		if len(bounds) < 2 {
 			return
@@ -694,15 +667,11 @@ func FuzzApplySameOffsetTie(f *testing.F) {
 // insertions never conflict with each other: any number of them at any
 // offsets all apply, in argument order per offset.
 func FuzzApplyInsertionsNeverConflict(f *testing.F) {
-	for _, seed := range applySeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		content := drawContent(t)
-		bounds := runeBoundaries(content)
+		bounds := proptest.RuneBoundaries(content)
 
 		n := fuzzgen.IntRange(1, 5).Draw(t)
 
@@ -731,15 +700,11 @@ func FuzzApplyInsertionsNeverConflict(f *testing.F) {
 // FuzzApplySelfOverlapSkipsWholeFix: a fix whose own edits overlap is
 // skipped whole, leaving the content untouched.
 func FuzzApplySelfOverlapSkipsWholeFix(f *testing.F) {
-	for _, seed := range applySeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		content := drawContent(t)
-		bounds := runeBoundaries(content)
+		bounds := proptest.RuneBoundaries(content)
 
 		if len(bounds) < 3 {
 			return
@@ -767,11 +732,7 @@ func FuzzApplySelfOverlapSkipsWholeFix(f *testing.F) {
 // the whole call, the error names the offending fix, and no result is
 // returned.
 func FuzzApplyRangeErrors(f *testing.F) {
-	for _, seed := range applySeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		c := drawApplyCase(t)
@@ -1168,11 +1129,7 @@ func normalizeURIs(uris []uri.URI) []uri.URI {
 // unparseable, and a converged run applies nothing when run again with the
 // same report.
 func FuzzFixAllConverges(f *testing.F) {
-	for _, seed := range applySeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		c := drawFixCase(t)
@@ -1263,11 +1220,7 @@ func FuzzFixAllConverges(f *testing.F) {
 // remaining report, and content. Nothing in the loop may depend on map
 // iteration order.
 func FuzzFixAllDeterministic(f *testing.F) {
-	for _, seed := range applySeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		c := drawFixCase(t)
@@ -1300,11 +1253,7 @@ func FuzzFixAllDeterministic(f *testing.F) {
 // file must be exactly Apply's output for that file's fixes in that pass's
 // report.
 func FuzzFixAllFirstPassMatchesApply(f *testing.F) {
-	for _, seed := range applySeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		c := drawFixCase(t)
@@ -1372,11 +1321,7 @@ func FuzzFixAllFirstPassMatchesApply(f *testing.F) {
 // persist that landed before it, count only those fixes, and leave the
 // failing file and everything after it untouched.
 func FuzzFixAllPersistFailurePartialSummary(f *testing.F) {
-	for _, seed := range applySeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		c := drawFixCase(t)
@@ -1518,11 +1463,7 @@ func TestFixAllPersistFailureAccounting(t *testing.T) {
 // loop behaves like a persist that never reaches the file source:
 // it runs to the pass cap and stops, writing nothing.
 func FuzzFixAllNilPersistStalls(f *testing.F) {
-	for _, seed := range applySeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		c := drawFixCase(t)
@@ -1554,11 +1495,7 @@ func FuzzFixAllNilPersistStalls(f *testing.F) {
 // reach the view: the loop reaches the pass cap without error and counts
 // every applied fix.
 func FuzzFixAllInvisiblePersistStopsAtCap(f *testing.F) {
-	for _, seed := range applySeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		c := drawFixCase(t)
@@ -1659,11 +1596,7 @@ func (toggleFixer) Fix(_ context.Context, f sema.File, d sema.Diagnostic) []sema
 // must hit the pass cap and stop rather than loop forever, and the result
 // must account for every applied fix.
 func FuzzFixAllOscillatingFixerStopsAtCap(f *testing.F) {
-	for _, seed := range applySeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		var doc strings.Builder
@@ -1739,11 +1672,7 @@ func drawBrokenCase(t *fuzzgen.T) fixCase {
 // diagnostics are reported in Skipped with the parse-error reason, and the
 // skip list is the final pass's only.
 func FuzzFixAllParseErrorFileUntouched(f *testing.F) {
-	for _, seed := range applySeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		c := drawBrokenCase(t)

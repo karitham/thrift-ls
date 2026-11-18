@@ -19,6 +19,7 @@ import (
 	"github.com/karitham/thrift-ls/analyzers"
 	"github.com/karitham/thrift-ls/analyzertest"
 	"github.com/karitham/thrift-ls/internal/fuzzgen"
+	"github.com/karitham/thrift-ls/internal/proptest"
 	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
 )
@@ -1295,7 +1296,7 @@ func removeSignatures(from, remove []string) []string {
 // propertySeeds are the fuzz inputs plain `go test` replays before fuzzing.
 // They mix empty, textual and binary streams so a seedless run still varies
 // the draws.
-var propertySeeds = [][]byte{
+var propertySeeds = proptest.Corpus{
 	[]byte(""),
 	[]byte("valid thrift document"),
 	[]byte("cycles, duplicate names and unused includes"),
@@ -1304,19 +1305,10 @@ var propertySeeds = [][]byte{
 	[]byte("near-miss keys: 0x10 vs 16"),
 }
 
-// addPropertySeeds registers the deterministic property inputs.
-func addPropertySeeds(f *testing.F) {
-	for _, seed := range propertySeeds {
-		f.Add(seed)
-	}
-}
-
 // FuzzValidDocumentsProduceNoFindings is the acceptance direction: the
 // generator only emits valid Thrift, so any diagnostic is a false positive.
 func FuzzValidDocumentsProduceNoFindings(f *testing.F) {
-	addPropertySeeds(f)
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, propertySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		p := renderValid(t)
@@ -1380,9 +1372,7 @@ func Test_ValidNearMissesProduceNoFindings(t *testing.T) {
 // report matches the model exactly: the offending code, at the offending
 // span, once, and nothing else.
 func FuzzSingleDefectIsDetected(f *testing.F) {
-	addPropertySeeds(f)
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, propertySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		p := newProgram()
@@ -1397,13 +1387,11 @@ func FuzzSingleDefectIsDetected(f *testing.F) {
 func Test_SingleDefectIsDetected(t *testing.T) {
 	for _, d := range allDefects {
 		t.Run(d.String(), func(t *testing.T) {
-			for _, seed := range propertySeeds {
-				ft := fuzzgen.New(t, seed)
-
+			propertySeeds.Run(t, func(ft *fuzzgen.T) {
 				p := newProgram()
 				renderDefect(ft, p, d)
 				p.verify(ft, p.collect(ft, p.full(ft)))
-			}
+			})
 		})
 	}
 }
@@ -1412,9 +1400,7 @@ func Test_SingleDefectIsDetected(t *testing.T) {
 // metamorphic: the combined report is the union of the per-analyzer reports,
 // and Disabled removes exactly the named check's findings.
 func FuzzDisabledAnalyzersRemoveExactlyTheirFindings(f *testing.F) {
-	addPropertySeeds(f)
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, propertySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		p := renderCase(t)
@@ -1487,9 +1473,7 @@ func FuzzDisabledAnalyzersRemoveExactlyTheirFindings(f *testing.F) {
 // rewrites severity and nothing else: same diagnostics, same spans, same
 // messages, same order.
 func FuzzSeverityOverridesChangeOnlySeverity(f *testing.F) {
-	addPropertySeeds(f)
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, propertySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		p := renderCase(t)
@@ -1547,9 +1531,7 @@ func FuzzSeverityOverridesChangeOnlySeverity(f *testing.F) {
 // FuzzReportIsDeterministic checks that fresh views report diagnostics in
 // the same order.
 func FuzzReportIsDeterministic(f *testing.F) {
-	addPropertySeeds(f)
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, propertySeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		p := renderCase(t)

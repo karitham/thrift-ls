@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/karitham/thrift-ls/internal/fuzzgen"
+	"github.com/karitham/thrift-ls/internal/proptest"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
 )
@@ -47,24 +48,6 @@ func modelApply(content string, specs []editSpec) string {
 	}
 
 	return out
-}
-
-// runeBoundaries returns every byte offset that starts a rune, plus the end
-// of the content: positions are only meaningful at rune boundaries.
-func runeBoundaries(content string) []int {
-	offsets := []int{0}
-
-	for offset := range content {
-		if offset > 0 {
-			offsets = append(offsets, offset)
-		}
-	}
-
-	if len(content) > 0 {
-		offsets = append(offsets, len(content))
-	}
-
-	return offsets
 }
 
 func drawSpecs(t *fuzzgen.T, boundaries []int) []editSpec {
@@ -137,21 +120,17 @@ func toTextEdits(tb require.TestingT, content []byte, specs []editSpec) []protoc
 }
 
 func FuzzApplyEditsSameStartTie(f *testing.F) {
-	for _, seed := range [][]byte{
+	proptest.Fuzz(f, proptest.Corpus{
 		[]byte("abc"),
 		[]byte("aé😀 b\n"),
 		[]byte("insertion and replacement"),
-	} {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	}, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		alphabet := []string{"a", "b", "c", "é", "😀", "日", "\n", " "}
 
 		content := strings.Join(fuzzgen.SliceOfN(fuzzgen.SampledFrom(alphabet), 0, 12).Draw(t), "")
-		boundaries := runeBoundaries(content)
+		boundaries := proptest.RuneBoundaries(content)
 		specs := drawSpecs(t, boundaries)
 
 		orders := [][]editSpec{

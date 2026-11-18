@@ -13,6 +13,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/internal/fuzzgen"
+	"github.com/karitham/thrift-ls/internal/proptest"
 	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/store"
 )
@@ -1019,7 +1020,7 @@ func workspaceRoutingCase(t *fuzzgen.T, coverage *workspacePropertyCoverage) {
 
 // workspaceRoutingSeeds is the routing fuzz target's seed corpus; the
 // deterministic coverage run derives a larger corpus from the same shape.
-var workspaceRoutingSeeds = [][]byte{
+var workspaceRoutingSeeds = proptest.Corpus{
 	[]byte(""),
 	[]byte("one folder"),
 	[]byte("two folders"),
@@ -1033,11 +1034,7 @@ var workspaceRoutingSeeds = [][]byte{
 // every event, then replayed on a fresh server to prove the sequence is
 // deterministic (same routing, same publish log).
 func FuzzWorkspaceRoutingModelProperty(f *testing.F) {
-	for _, seed := range workspaceRoutingSeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, workspaceRoutingSeeds, func(tb *testing.T, seed []byte) {
 		workspaceRoutingCase(fuzzgen.New(tb, seed), &workspacePropertyCoverage{})
 	})
 }
@@ -1051,11 +1048,9 @@ const workspaceCoverageCases = 60
 func runSeedCorpus(t *testing.T, count int, run func(*fuzzgen.T)) {
 	t.Helper()
 
-	for i := range count {
-		t.Run(fmt.Sprintf("case%d", i), func(t *testing.T) {
-			run(fuzzgen.New(t, []byte(fmt.Sprintf("coverage case %d", i))))
-		})
-	}
+	proptest.Range(count, func(i int) string {
+		return fmt.Sprintf("coverage case %d", i)
+	}).Run(t, run)
 }
 
 // TestWorkspaceRoutingCoverage replays a fixed corpus through the routing case
@@ -1150,7 +1145,7 @@ func implicitFolderRoutingCase(t *fuzzgen.T, coverage *workspacePropertyCoverage
 }
 
 // implicitFolderSeeds is the implicit-folder fuzz target's seed corpus.
-var implicitFolderSeeds = [][]byte{
+var implicitFolderSeeds = proptest.Corpus{
 	[]byte(""),
 	[]byte("alpha only"),
 	[]byte("nested directory"),
@@ -1164,11 +1159,7 @@ var implicitFolderSeeds = [][]byte{
 // directory as a folder (one reconcile), every later open joins it, and
 // closing an overlay-only file evicts it from the view it joined.
 func FuzzImplicitFolderRouting(f *testing.F) {
-	for _, seed := range implicitFolderSeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, implicitFolderSeeds, func(tb *testing.T, seed []byte) {
 		seeded, diagnostics := implicitFolderDiskContents()
 
 		implicitFolderRoutingCase(fuzzgen.New(tb, seed), &workspacePropertyCoverage{}, seeded, diagnostics)

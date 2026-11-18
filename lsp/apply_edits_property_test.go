@@ -11,6 +11,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/internal/fuzzgen"
+	"github.com/karitham/thrift-ls/internal/proptest"
 	"github.com/karitham/thrift-ls/mapper"
 )
 
@@ -40,20 +41,16 @@ func drawUnformattedDocument(t *fuzzgen.T) string {
 // insertion must produce the insertion's text immediately before the
 // replacement, in either argument order.
 func FuzzFormattingEditsSameStartInsertion(f *testing.F) {
-	for _, seed := range [][]byte{
+	fileURI := uri.File("/property/format.thrift")
+	insertionText := "// generated\n"
+
+	proptest.Fuzz(f, proptest.Corpus{
 		[]byte(""),
 		[]byte("alpha"),
 		[]byte("one field"),
 		[]byte("two fields"),
 		[]byte("gamma"),
-	} {
-		f.Add(seed)
-	}
-
-	fileURI := uri.File("/property/format.thrift")
-	insertionText := "// generated\n"
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	}, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		doc := drawUnformattedDocument(t)

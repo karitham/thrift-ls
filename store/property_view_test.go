@@ -18,6 +18,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/internal/fuzzgen"
+	"github.com/karitham/thrift-ls/internal/proptest"
 	"github.com/karitham/thrift-ls/syntax"
 )
 
@@ -966,17 +967,13 @@ func (h *ppViewHarness) snapshot() string {
 // sequence of overlay writes, disk writes, updates, evictions and reads leaves
 // the view equal to the model.
 func FuzzPropertyViewOperationsMatchModel(f *testing.F) {
-	for _, seed := range [][]byte{
+	proptest.Fuzz(f, proptest.Corpus{
 		[]byte("a"),
 		[]byte("view-1"),
 		[]byte("trace"),
 		[]byte("mixed-ops"),
 		[]byte(""),
-	} {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	}, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		h := ppGeneratedHarness(t)
@@ -990,17 +987,13 @@ func FuzzPropertyViewOperationsMatchModel(f *testing.F) {
 // FuzzPropertyViewChainPatterns checks chains and diamonds through reparse,
 // eviction, and reopen.
 func FuzzPropertyViewChainPatterns(f *testing.F) {
-	for _, seed := range [][]byte{
+	proptest.Fuzz(f, proptest.Corpus{
 		[]byte("chain"),
 		[]byte("b"),
 		[]byte("diamond"),
 		[]byte("dotted"),
 		[]byte(""),
-	} {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	}, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		names := []string{"a.thrift", "b.thrift", "c.thrift", "d.thrift", ppGhostName}
@@ -1083,16 +1076,12 @@ func FuzzPropertyViewChainPatterns(f *testing.F) {
 // FuzzPropertyViewReplayDeterminism checks that replaying a history on a fresh
 // store produces identical observations.
 func FuzzPropertyViewReplayDeterminism(f *testing.F) {
-	for _, seed := range [][]byte{
+	proptest.Fuzz(f, proptest.Corpus{
 		[]byte("replay"),
 		[]byte("r2"),
 		[]byte("same-history"),
 		[]byte(""),
-	} {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	}, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		// Draw the universe and history once, then replay them twice.
@@ -1138,16 +1127,12 @@ func ppUnsorted(uris []uri.URI) string {
 // invariants are asserted while racing; afterwards the state is reconciled by
 // re-parsing every file and compared against the model.
 func FuzzPropertyViewConcurrentReaders(f *testing.F) {
-	for _, seed := range [][]byte{
+	proptest.Fuzz(f, proptest.Corpus{
 		[]byte("race"),
 		[]byte("c1"),
 		[]byte("readers"),
 		[]byte(""),
-	} {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	}, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		h := ppGeneratedHarness(t)
@@ -1310,16 +1295,12 @@ func FuzzPropertyViewCorpusHistories(f *testing.F) {
 		filepath.Join("..", "tests", "galaxy-thrift-api", "sds"),
 	)
 
-	for _, seed := range [][]byte{
+	proptest.Fuzz(f, proptest.Corpus{
 		[]byte("corpus"),
 		[]byte("abyss"),
 		[]byte("sds"),
 		[]byte(""),
-	} {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	}, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		folder := uri.File("/proptest/corpus")

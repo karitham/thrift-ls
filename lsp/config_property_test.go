@@ -17,6 +17,7 @@ import (
 
 	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/internal/fuzzgen"
+	"github.com/karitham/thrift-ls/internal/proptest"
 	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/store"
 )
@@ -241,80 +242,6 @@ func mustJSON(t require.TestingT, value any) []byte {
 	return data
 }
 
-// modelLayered applies the documented precedence: every field takes its
-// value from the highest layer that sets it, and per-construct maps resolve
-// construct by construct.
-func modelLayered(lowest options.Patch, layers ...options.Patch) options.Patch {
-	all := append([]options.Patch{lowest}, layers...) // ascending precedence
-
-	var out options.Patch
-
-	for i := len(all) - 1; i >= 0; i-- {
-		patch := all[i]
-
-		if out.PrintWidth == nil {
-			out.PrintWidth = patch.PrintWidth
-		}
-
-		if out.TabWidth == nil {
-			out.TabWidth = patch.TabWidth
-		}
-
-		if out.Align == nil {
-			out.Align = patch.Align
-		}
-
-		if out.Indent == nil {
-			out.Indent = patch.Indent
-		}
-
-		if out.IncludePaths == nil {
-			out.IncludePaths = patch.IncludePaths
-		}
-
-		if out.LogLevel == nil {
-			out.LogLevel = patch.LogLevel
-		}
-
-		if out.Lint == nil {
-			out.Lint = patch.Lint
-		}
-	}
-
-	out.Separators = modelPerConstruct(all, func(p options.Patch) *formatter.Separators { return p.Separators })
-	out.Break = modelPerConstruct(all, func(p options.Patch) *formatter.Break { return p.Break })
-
-	return out
-}
-
-func modelPerConstruct[T comparable](all []options.Patch, get func(options.Patch) *formatter.PerConstruct[T]) *formatter.PerConstruct[T] {
-	var out *formatter.PerConstruct[T]
-
-	for i := len(all) - 1; i >= 0; i-- {
-		src := get(all[i])
-		if src == nil {
-			continue
-		}
-
-		if out == nil {
-			out = &formatter.PerConstruct[T]{}
-		}
-
-		for _, construct := range formatter.AllConstructs {
-			var unset T
-			if out.Get(construct) != unset {
-				continue
-			}
-
-			if v := src.Get(construct); v != unset {
-				out.Set(construct, v)
-			}
-		}
-	}
-
-	return out
-}
-
 // initPropertyWorkspace initializes a server over folders and loads them
 // synchronously through the default loader.
 func initPropertyWorkspace(tb require.TestingT, srv *Server, folders []uri.URI) {
@@ -327,22 +254,18 @@ func initPropertyWorkspace(tb require.TestingT, srv *Server, folders []uri.URI) 
 // FuzzFileConfigSourceDiscovery checks nearest-config lookup, include-path
 // anchoring, the THRIFT_LS_CONFIG override, and malformed-document errors.
 func FuzzFileConfigSourceDiscovery(f *testing.F) {
-	for _, seed := range [][]byte{
+	f.Setenv("THRIFT_LS_CONFIG", "")
+
+	segments := []string{"alpha", "beta", "gamma"}
+
+	proptest.Fuzz(f, proptest.Corpus{
 		[]byte(""),
 		[]byte("root only"),
 		[]byte("nested config"),
 		[]byte("four depths"),
 		[]byte("malformed config"),
 		[]byte("override"),
-	} {
-		f.Add(seed)
-	}
-
-	f.Setenv("THRIFT_LS_CONFIG", "")
-
-	segments := []string{"alpha", "beta", "gamma"}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	}, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		depth := fuzzgen.IntRange(0, 3).Draw(t)
@@ -477,20 +400,16 @@ func FuzzFileConfigSourceDiscovery(f *testing.F) {
 // defaults, then Frontend.Defaults, then the discovered document, then CLI,
 // and a loader's non-empty include paths override both later layers.
 func FuzzProjectViewConfigLayering(f *testing.F) {
-	for _, seed := range [][]byte{
+	f.Setenv("THRIFT_LS_CONFIG", "")
+
+	proptest.Fuzz(f, proptest.Corpus{
 		[]byte(""),
 		[]byte("defaults only"),
 		[]byte("document at root"),
 		[]byte("document above root"),
 		[]byte("malformed document"),
 		[]byte("loader include paths"),
-	} {
-		f.Add(seed)
-	}
-
-	f.Setenv("THRIFT_LS_CONFIG", "")
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	}, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		rootPath := fuzzgen.SampledFrom([]string{"/proj", "/proj/sub", "/proj/sub/deeper"}).Draw(t)
@@ -546,7 +465,7 @@ func FuzzProjectViewConfigLayering(f *testing.F) {
 
 		layers = append(layers, cli)
 
-		want := modelLayered(options.Default(), layers...)
+		want := proptest.ModelLayered(options.Default(), layers...)
 		got := srv.folderConfig(uri.File(rootPath))
 
 		require.Equal(t, patchFields(want), patchFields(got), "effective options for %s", rootPath)
@@ -612,17 +531,13 @@ func stripIncludePaths(p options.Patch) options.Patch {
 // FuzzLSPSettingsContract checks that lspSettings drops the path extension,
 // rejects unknown keys, and keeps the previous settings after a rejection.
 func FuzzLSPSettingsContract(f *testing.F) {
-	for _, seed := range [][]byte{
+	proptest.Fuzz(f, proptest.Corpus{
 		[]byte(""),
 		[]byte("path only"),
 		[]byte("every field"),
 		[]byte("unknown key"),
 		[]byte("severity map"),
-	} {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	}, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		patch := drawPropertyPatch(t)

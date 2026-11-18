@@ -13,6 +13,7 @@ import (
 
 	"github.com/karitham/thrift-ls/formatter"
 	"github.com/karitham/thrift-ls/internal/fuzzgen"
+	"github.com/karitham/thrift-ls/internal/proptest"
 	"github.com/karitham/thrift-ls/options"
 )
 
@@ -156,80 +157,6 @@ func drawPatch(t *fuzzgen.T) options.Patch {
 	return patch
 }
 
-// modelLayered folds the layers the way the precedence comment describes:
-// each field independently takes its value from the highest layer that sets
-// it, and per-construct maps resolve construct by construct.
-func modelLayered(lowest options.Patch, layers ...options.Patch) options.Patch {
-	all := append([]options.Patch{lowest}, layers...) // ascending precedence
-
-	var out options.Patch
-
-	for i := len(all) - 1; i >= 0; i-- {
-		layer := all[i]
-
-		if out.PrintWidth == nil {
-			out.PrintWidth = layer.PrintWidth
-		}
-
-		if out.TabWidth == nil {
-			out.TabWidth = layer.TabWidth
-		}
-
-		if out.Align == nil {
-			out.Align = layer.Align
-		}
-
-		if out.Indent == nil {
-			out.Indent = layer.Indent
-		}
-
-		if out.IncludePaths == nil {
-			out.IncludePaths = layer.IncludePaths
-		}
-
-		if out.LogLevel == nil {
-			out.LogLevel = layer.LogLevel
-		}
-
-		if out.Lint == nil {
-			out.Lint = layer.Lint
-		}
-	}
-
-	out.Separators = modelPerConstruct(all, func(p options.Patch) *formatter.Separators { return p.Separators })
-	out.Break = modelPerConstruct(all, func(p options.Patch) *formatter.Break { return p.Break })
-
-	return out
-}
-
-func modelPerConstruct[T comparable](all []options.Patch, get func(options.Patch) *formatter.PerConstruct[T]) *formatter.PerConstruct[T] {
-	var out *formatter.PerConstruct[T]
-
-	for i := len(all) - 1; i >= 0; i-- {
-		src := get(all[i])
-		if src == nil {
-			continue
-		}
-
-		if out == nil {
-			out = &formatter.PerConstruct[T]{}
-		}
-
-		for _, construct := range formatter.AllConstructs {
-			var unset T
-			if out.Get(construct) != unset {
-				continue
-			}
-
-			if value := src.Get(construct); value != unset {
-				out.Set(construct, value)
-			}
-		}
-	}
-
-	return out
-}
-
 // fold applies the layers in order, which is the production spelling.
 func fold(lowest options.Patch, layers []options.Patch) options.Patch {
 	out := lowest
@@ -246,18 +173,14 @@ func fold(lowest options.Patch, layers []options.Patch) options.Patch {
 func FuzzPatchApplyLayeringProperty(f *testing.F) {
 	// Seed bytes are arbitrary: the stream is derived from their hash, so the
 	// seeds are picked to draw every layer count 0-4 in a plain run.
-	for _, seed := range [][]byte{
+	proptest.Fuzz(f, proptest.Corpus{
 		[]byte(""),
 		[]byte("indent"),
 		[]byte("settings"),
 		[]byte("four layers"),
 		[]byte("many layers"),
 		[]byte("separators"),
-	} {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	}, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		defaults := options.Default()
@@ -270,7 +193,7 @@ func FuzzPatchApplyLayeringProperty(f *testing.F) {
 		}
 
 		got := fold(defaults, layers)
-		want := modelLayered(defaults, layers...)
+		want := proptest.ModelLayered(defaults, layers...)
 
 		require.Equal(t, patchFields(want), patchFields(got), "fieldwise layering, layers %d", count)
 
@@ -374,18 +297,14 @@ func document(patch options.Patch) map[string]any {
 func FuzzParseRoundTripProperty(f *testing.F) {
 	// Seed bytes are arbitrary: the stream is derived from their hash, so the
 	// seeds are picked to draw every unknown key and value in a plain run.
-	for _, seed := range [][]byte{
+	proptest.Fuzz(f, proptest.Corpus{
 		[]byte(""),
 		[]byte("four layers"),
 		[]byte("root"),
 		[]byte("settings"),
 		[]byte("patch"),
 		[]byte("defaults"),
-	} {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	}, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		patch := drawPatch(t)
@@ -417,18 +336,14 @@ func FuzzParseRoundTripProperty(f *testing.F) {
 func FuzzValidateProperty(f *testing.F) {
 	// Seed bytes are arbitrary: the stream is derived from their hash, so the
 	// seeds are picked to break every field in turn in a plain run.
-	for _, seed := range [][]byte{
+	proptest.Fuzz(f, proptest.Corpus{
 		[]byte("four layers"),
 		[]byte("root"),
 		[]byte("settings"),
 		[]byte("patch"),
 		[]byte("defaults"),
 		[]byte("separators"),
-	} {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	}, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		patch := drawPatch(t)
@@ -462,18 +377,14 @@ func FuzzValidateProperty(f *testing.F) {
 func FuzzAnchorIncludesProperty(f *testing.F) {
 	// Seed bytes are arbitrary: the stream is derived from their hash, so the
 	// seeds are picked to draw every include directory and path shape.
-	for _, seed := range [][]byte{
+	proptest.Fuzz(f, proptest.Corpus{
 		[]byte("layer"),
 		[]byte("layers"),
 		[]byte("separators"),
 		[]byte("settings"),
 		[]byte("overrides"),
 		[]byte("include paths"),
-	} {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	}, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		dir := fuzzgen.SampledFrom([]string{"/cfg", "/cfg/a/b", "/"}).Draw(t)
@@ -509,18 +420,14 @@ func FuzzAnchorIncludesProperty(f *testing.F) {
 func FuzzFindNearestConfigProperty(f *testing.F) {
 	// Seed bytes are arbitrary: the stream is derived from their hash, so the
 	// seeds are picked to draw every walk-up depth 0-3 in a plain run.
-	for _, seed := range [][]byte{
+	proptest.Fuzz(f, proptest.Corpus{
 		[]byte("indent"),
 		[]byte("layers"),
 		[]byte("config"),
 		[]byte("layer"),
 		[]byte("root only"),
 		[]byte("walk up"),
-	} {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	}, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		root := tb.TempDir()

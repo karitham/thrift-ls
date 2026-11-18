@@ -14,6 +14,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/internal/fuzzgen"
+	"github.com/karitham/thrift-ls/internal/proptest"
 )
 
 // ppContainsFolder is the documented containment test: the file lives strictly
@@ -433,16 +434,12 @@ func (h *ppSessionHarness) check(ctx context.Context, t *fuzzgen.T) {
 // FuzzPropertySessionRouting drives add/remove/place/route/walk sequences and
 // compares every routing decision with the model.
 func FuzzPropertySessionRouting(f *testing.F) {
-	for _, seed := range [][]byte{
+	proptest.Fuzz(f, proptest.Corpus{
 		[]byte("route"),
 		[]byte("s1"),
 		[]byte("sessions"),
 		[]byte(""),
-	} {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	}, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		h := ppNewSessionHarness(t)
@@ -466,16 +463,12 @@ func FuzzPropertySessionRouting(f *testing.F) {
 // FuzzPropertySessionNestedPrecedence checks the longest-prefix rule on a
 // nested folder tree, including a trailing-slash spelling of one folder.
 func FuzzPropertySessionNestedPrecedence(f *testing.F) {
-	for _, seed := range [][]byte{
+	proptest.Fuzz(f, proptest.Corpus{
 		[]byte("nested"),
 		[]byte("p1"),
 		[]byte("slash"),
 		[]byte(""),
-	} {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	}, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		root := "/proptest/nested"

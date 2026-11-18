@@ -15,6 +15,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/internal/fuzzgen"
+	"github.com/karitham/thrift-ls/internal/proptest"
 	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
@@ -1448,7 +1449,7 @@ func mdlModelDesc(t *mdlType) string {
 // from. fuzzgen.New derives its draw stream from the bytes' hash, so each entry
 // starts one independent stream per target, and the fuzzer varies the bytes
 // from there.
-var resolveSeeds = [][]byte{
+var resolveSeeds = proptest.Corpus{
 	[]byte("T U N"),
 	[]byte("struct T {\n  1: U u,\n}\ninclude \"f0.thrift\"\n"),
 	[]byte("include \"./f1.thrift\"\ninclude \"f1.thrift\"\n"),
@@ -1460,11 +1461,7 @@ var resolveSeeds = [][]byte{
 // FuzzReferenceIndexMatchesSource checks that a file's reference index holds
 // its source references in order, at their written offsets.
 func FuzzReferenceIndexMatchesSource(f *testing.F) {
-	for _, seed := range resolveSeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, resolveSeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		ctx := t.Context()
@@ -1549,11 +1546,7 @@ func resolveDifferential(tb *testing.T, seed []byte) resolveCoverage {
 // values (enum members and consts, bare and qualified), and services, over
 // generated include graphs that cycle, self-include, repeat, and dangle.
 func FuzzIndexResolveDifferential(f *testing.F) {
-	for _, seed := range resolveSeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, resolveSeeds, func(tb *testing.T, seed []byte) {
 		resolveDifferential(tb, seed)
 	})
 }
@@ -1689,11 +1682,7 @@ func indexMemoTransparency(tb *testing.T, seed []byte) memoCoverage {
 // memoizing Index match fresh-Index answers, including unresolved results and
 // the same name resolved as different kinds.
 func FuzzIndexMemoTransparency(f *testing.F) {
-	for _, seed := range resolveSeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, resolveSeeds, func(tb *testing.T, seed []byte) {
 		indexMemoTransparency(tb, seed)
 	})
 }
@@ -1862,11 +1851,7 @@ func referencesToDifferential(tb *testing.T, seed []byte) refsToCoverage {
 // in the workspace (structs, unions, exceptions, enums, typedefs, consts,
 // enum members, services) under all-kinds and per-kind filters.
 func FuzzIndexReferencesToDifferential(f *testing.F) {
-	for _, seed := range resolveSeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, resolveSeeds, func(tb *testing.T, seed []byte) {
 		referencesToDifferential(tb, seed)
 	})
 }
@@ -1890,11 +1875,7 @@ func TestIndexReferencesToDifferentialCoversEnumSegments(t *testing.T) {
 // reference search: bare-name matching over the file and its transitive
 // dependents, filtered by grammar slot.
 func FuzzIndexReferencesNameMatchedDifferential(f *testing.F) {
-	for _, seed := range resolveSeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, resolveSeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		ctx := t.Context()
@@ -2020,11 +2001,7 @@ func underlyingTypeDifferential(tb *testing.T, seed []byte) underlyingCoverage {
 // the model: chains that cross files, stop at a container or a struct, hit an
 // unresolvable name, or cycle until the depth cap.
 func FuzzIndexUnderlyingTypeDifferential(f *testing.F) {
-	for _, seed := range resolveSeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, resolveSeeds, func(tb *testing.T, seed []byte) {
 		underlyingTypeDifferential(tb, seed)
 	})
 }
@@ -2052,11 +2029,7 @@ func TestIndexUnderlyingTypeDifferentialCoversChainEnds(t *testing.T) {
 // the model, both through the known-files table and through the directory-walk
 // fallback an unindexed workspace takes.
 func FuzzIndexFindInWorkspaceDifferential(f *testing.F) {
-	for _, seed := range resolveSeeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, resolveSeeds, func(tb *testing.T, seed []byte) {
 		t := fuzzgen.New(tb, seed)
 
 		ctx := t.Context()
