@@ -282,8 +282,10 @@ func (x *Index) resolveService(ctx context.Context, from *store.ParsedFile, name
 // preserved so a rename can rewrite includes correctly.
 type Hit struct {
 	File uri.URI
-	Span Span   // parser coordinates; the frontend maps them
-	Text string // as written: "User", "shared.User", "shared.thrift.User"
+	Span Span // parser coordinates; the frontend maps them
+	// Text is the reference as written. Qualification uses the include name;
+	// a dotted-filename spelling is raw and resolves nowhere.
+	Text string
 
 	// Kind is the grammar slot the reference sits in, so callers can tell
 	// type hits from value hits (e.g. for highlight kinds).

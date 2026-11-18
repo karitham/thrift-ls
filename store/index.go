@@ -29,16 +29,15 @@ const (
 	RefAnnotationType
 )
 
-// Reference is one name occurrence that resolves to a definition somewhere:
-// in this file or in an included one. It is a raw fact — the name text as
-// written, uninterpreted. Qualifier parsing ("shared.User" vs
-// "shared.thrift.User") and definition matching live in the source layer,
-// which knows the include graph.
+// Reference is one name occurrence that resolves to a definition in this file
+// or an included one. Name is the text as written; qualifier parsing and
+// definition matching belong to the source layer, which knows the include
+// graph.
 type Reference struct {
 	Kind RefKind
 
-	// Name is the reference text as written: "User", "shared.User", or
-	// "shared.thrift.User".
+	// Name is the reference text as written, including an invalid
+	// dotted-filename spelling, which resolves nowhere.
 	Name string
 
 	// Node carries the reference's position: *syntax.Identifier for type
