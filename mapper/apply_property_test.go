@@ -123,9 +123,7 @@ func FuzzApplyEditsSameStartTie(f *testing.F) {
 		[]byte("abc"),
 		[]byte("aé😀 b\n"),
 		[]byte("insertion and replacement"),
-	}, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	}, func(t *proptest.T) {
 		alphabet := []string{"a", "b", "c", "é", "😀", "日", "\n", " "}
 
 		content := strings.Join(proptest.SliceOfN(proptest.SampledFrom(alphabet), 0, 12).Draw(t), "")

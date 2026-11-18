@@ -5,8 +5,7 @@
 // each input:
 //
 //	func FuzzX(f *testing.F) {
-//		proptest.Fuzz(f, seeds, func(tb *testing.T, seed []byte) {
-//			t := proptest.New(tb, seed)
+//		proptest.Fuzz(f, seeds, func(t *proptest.T) {
 //			_ = proptest.IntRange(1, 10).Draw(t)
 //		})
 //	}
@@ -200,9 +199,11 @@ func (c Corpus) Run(t *testing.T, body func(*T)) {
 }
 
 // Fuzz registers the corpus and runs the target for every fuzz input.
-func Fuzz(f *testing.F, seeds Corpus, body func(*testing.T, []byte)) {
+func Fuzz(f *testing.F, seeds Corpus, body func(*T)) {
 	seeds.Add(f)
-	f.Fuzz(body)
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		body(New(tb, seed))
+	})
 }
 
 // RuneBoundaries returns the byte offsets of rune starts plus the end of the

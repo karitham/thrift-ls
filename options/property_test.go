@@ -179,9 +179,7 @@ func FuzzPatchApplyLayeringProperty(f *testing.F) {
 		[]byte("four layers"),
 		[]byte("many layers"),
 		[]byte("separators"),
-	}, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	}, func(t *proptest.T) {
 		defaults := options.Default()
 
 		count := proptest.IntRange(0, 4).Draw(t)
@@ -303,9 +301,7 @@ func FuzzParseRoundTripProperty(f *testing.F) {
 		[]byte("settings"),
 		[]byte("patch"),
 		[]byte("defaults"),
-	}, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	}, func(t *proptest.T) {
 		patch := drawPatch(t)
 
 		data, err := json.Marshal(document(patch))
@@ -342,9 +338,7 @@ func FuzzValidateProperty(f *testing.F) {
 		[]byte("patch"),
 		[]byte("defaults"),
 		[]byte("separators"),
-	}, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	}, func(t *proptest.T) {
 		patch := drawPatch(t)
 		require.NoError(t, patch.Validate(), "a generated patch must be valid")
 
@@ -383,9 +377,7 @@ func FuzzAnchorIncludesProperty(f *testing.F) {
 		[]byte("settings"),
 		[]byte("overrides"),
 		[]byte("include paths"),
-	}, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	}, func(t *proptest.T) {
 		dir := proptest.SampledFrom([]string{"/cfg", "/cfg/a/b", "/"}).Draw(t)
 		paths := proptest.SliceOfN(proptest.SampledFrom([]string{"inc", "../up", "./here", "/abs/inc", "a/b"}), 0, 3).Draw(t)
 
@@ -426,10 +418,8 @@ func FuzzFindNearestConfigProperty(f *testing.F) {
 		[]byte("layer"),
 		[]byte("root only"),
 		[]byte("walk up"),
-	}, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
-		root := tb.TempDir()
+	}, func(t *proptest.T) {
+		root := t.TempDir()
 		segments := []string{"alpha", "beta", "gamma"}
 
 		dir := root

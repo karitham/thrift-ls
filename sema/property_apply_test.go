@@ -452,9 +452,7 @@ var applySeeds = proptest.Corpus{
 // bytes and the same applied/skipped partition as production, for every
 // generated fix batch.
 func FuzzApplyMatchesModel(f *testing.F) {
-	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, applySeeds, func(t *proptest.T) {
 		c := drawApplyCase(t)
 
 		gotOut, gotApplied, gotSkipped, err := sema.Apply([]byte(c.content), c.fixes)
@@ -560,9 +558,7 @@ func drawDisjointFixes(t *proptest.T, bounds []int, n int) []sema.Fix {
 // argument order, equals applying them one at a time in that order with
 // offset compensation.
 func FuzzApplyDisjointCommutation(f *testing.F) {
-	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, applySeeds, func(t *proptest.T) {
 		content := drawContent(t)
 		bounds := proptest.RuneBoundaries(content)
 
@@ -607,9 +603,7 @@ func FuzzApplyDisjointCommutation(f *testing.F) {
 // number of insertions land in argument order, immediately before a
 // replacement starting there, in whatever order the fixes are passed.
 func FuzzApplySameOffsetTie(f *testing.F) {
-	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, applySeeds, func(t *proptest.T) {
 		content := drawContent(t)
 		bounds := proptest.RuneBoundaries(content)
 
@@ -666,9 +660,7 @@ func FuzzApplySameOffsetTie(f *testing.F) {
 // insertions never conflict with each other: any number of them at any
 // offsets all apply, in argument order per offset.
 func FuzzApplyInsertionsNeverConflict(f *testing.F) {
-	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, applySeeds, func(t *proptest.T) {
 		content := drawContent(t)
 		bounds := proptest.RuneBoundaries(content)
 
@@ -699,9 +691,7 @@ func FuzzApplyInsertionsNeverConflict(f *testing.F) {
 // FuzzApplySelfOverlapSkipsWholeFix: a fix whose own edits overlap is
 // skipped whole, leaving the content untouched.
 func FuzzApplySelfOverlapSkipsWholeFix(f *testing.F) {
-	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, applySeeds, func(t *proptest.T) {
 		content := drawContent(t)
 		bounds := proptest.RuneBoundaries(content)
 
@@ -731,9 +721,7 @@ func FuzzApplySelfOverlapSkipsWholeFix(f *testing.F) {
 // the whole call, the error names the offending fix, and no result is
 // returned.
 func FuzzApplyRangeErrors(f *testing.F) {
-	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, applySeeds, func(t *proptest.T) {
 		c := drawApplyCase(t)
 
 		// Corrupt one fix in the batch: the error must veto the rest.
@@ -1128,9 +1116,7 @@ func normalizeURIs(uris []uri.URI) []uri.URI {
 // unparseable, and a converged run applies nothing when run again with the
 // same report.
 func FuzzFixAllConverges(f *testing.F) {
-	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, applySeeds, func(t *proptest.T) {
 		c := drawFixCase(t)
 		pipeline := analyzers.DefaultPipeline(sema.Config{})
 
@@ -1219,9 +1205,7 @@ func FuzzFixAllConverges(f *testing.F) {
 // remaining report, and content. Nothing in the loop may depend on map
 // iteration order.
 func FuzzFixAllDeterministic(f *testing.F) {
-	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, applySeeds, func(t *proptest.T) {
 		c := drawFixCase(t)
 		pipeline := analyzers.DefaultPipeline(sema.Config{})
 		targets := targetURIs(c)
@@ -1252,9 +1236,7 @@ func FuzzFixAllDeterministic(f *testing.F) {
 // file must be exactly Apply's output for that file's fixes in that pass's
 // report.
 func FuzzFixAllFirstPassMatchesApply(f *testing.F) {
-	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, applySeeds, func(t *proptest.T) {
 		c := drawFixCase(t)
 		pipeline := analyzers.DefaultPipeline(sema.Config{})
 		targets := targetURIs(c)
@@ -1320,9 +1302,7 @@ func FuzzFixAllFirstPassMatchesApply(f *testing.F) {
 // persist that landed before it, count only those fixes, and leave the
 // failing file and everything after it untouched.
 func FuzzFixAllPersistFailurePartialSummary(f *testing.F) {
-	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, applySeeds, func(t *proptest.T) {
 		c := drawFixCase(t)
 		pipeline := analyzers.DefaultPipeline(sema.Config{})
 		targets := targetURIs(c)
@@ -1462,9 +1442,7 @@ func TestFixAllPersistFailureAccounting(t *testing.T) {
 // loop behaves like a persist that never reaches the file source:
 // it runs to the pass cap and stops, writing nothing.
 func FuzzFixAllNilPersistStalls(f *testing.F) {
-	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, applySeeds, func(t *proptest.T) {
 		c := drawFixCase(t)
 		pipeline := analyzers.DefaultPipeline(sema.Config{})
 		targets := targetURIs(c)
@@ -1494,9 +1472,7 @@ func FuzzFixAllNilPersistStalls(f *testing.F) {
 // reach the view: the loop reaches the pass cap without error and counts
 // every applied fix.
 func FuzzFixAllInvisiblePersistStopsAtCap(f *testing.F) {
-	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, applySeeds, func(t *proptest.T) {
 		c := drawFixCase(t)
 		pipeline := analyzers.DefaultPipeline(sema.Config{})
 		targets := targetURIs(c)
@@ -1595,9 +1571,7 @@ func (toggleFixer) Fix(_ context.Context, f sema.File, d sema.Diagnostic) []sema
 // must hit the pass cap and stop rather than loop forever, and the result
 // must account for every applied fix.
 func FuzzFixAllOscillatingFixerStopsAtCap(f *testing.F) {
-	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, applySeeds, func(t *proptest.T) {
 		var doc strings.Builder
 
 		doc.WriteString("struct S {\n  1: i32 a,\n}\n")
@@ -1671,9 +1645,7 @@ func drawBrokenCase(t *proptest.T) fixCase {
 // diagnostics are reported in Skipped with the parse-error reason, and the
 // skip list is the final pass's only.
 func FuzzFixAllParseErrorFileUntouched(f *testing.F) {
-	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, applySeeds, func(t *proptest.T) {
 		c := drawBrokenCase(t)
 		pipeline := analyzers.DefaultPipeline(sema.Config{})
 		targets := targetURIs(c)

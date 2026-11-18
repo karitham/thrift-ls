@@ -49,9 +49,7 @@ func FuzzFormattingEditsSameStartInsertion(f *testing.F) {
 		[]byte("one field"),
 		[]byte("two fields"),
 		[]byte("gamma"),
-	}, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	}, func(t *proptest.T) {
 		doc := drawUnformattedDocument(t)
 
 		srv := newMemServer(nil)

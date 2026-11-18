@@ -972,9 +972,7 @@ func FuzzPropertyViewOperationsMatchModel(f *testing.F) {
 		[]byte("trace"),
 		[]byte("mixed-ops"),
 		[]byte(""),
-	}, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	}, func(t *proptest.T) {
 		h := ppGeneratedHarness(t)
 		ctx := t.Context()
 
@@ -992,9 +990,7 @@ func FuzzPropertyViewChainPatterns(f *testing.F) {
 		[]byte("diamond"),
 		[]byte("dotted"),
 		[]byte(""),
-	}, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	}, func(t *proptest.T) {
 		names := []string{"a.thrift", "b.thrift", "c.thrift", "d.thrift", ppGhostName}
 		folder := uri.File("/proptest/chain")
 
@@ -1080,9 +1076,7 @@ func FuzzPropertyViewReplayDeterminism(f *testing.F) {
 		[]byte("r2"),
 		[]byte("same-history"),
 		[]byte(""),
-	}, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	}, func(t *proptest.T) {
 		// Draw the universe and history once, then replay them twice.
 		folder := uri.File("/proptest/replay")
 		count := proptest.IntRange(2, 5).Draw(t)
@@ -1131,9 +1125,7 @@ func FuzzPropertyViewConcurrentReaders(f *testing.F) {
 		[]byte("c1"),
 		[]byte("readers"),
 		[]byte(""),
-	}, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	}, func(t *proptest.T) {
 		h := ppGeneratedHarness(t)
 		ctx := t.Context()
 
@@ -1299,9 +1291,7 @@ func FuzzPropertyViewCorpusHistories(f *testing.F) {
 		[]byte("abyss"),
 		[]byte("sds"),
 		[]byte(""),
-	}, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	}, func(t *proptest.T) {
 		folder := uri.File("/proptest/corpus")
 		allNames := append(slices.Clone(names), ppGhostName)
 

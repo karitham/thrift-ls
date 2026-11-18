@@ -1287,9 +1287,7 @@ var propertySeeds = proptest.Corpus{
 // FuzzValidDocumentsProduceNoFindings is the acceptance direction: the
 // generator only emits valid Thrift, so any diagnostic is a false positive.
 func FuzzValidDocumentsProduceNoFindings(f *testing.F) {
-	proptest.Fuzz(f, propertySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, propertySeeds, func(t *proptest.T) {
 		p := renderValid(t)
 		p.verify(t, p.collect(t, p.full(t)))
 	})
@@ -1351,9 +1349,7 @@ func Test_ValidNearMissesProduceNoFindings(t *testing.T) {
 // report matches the model exactly: the offending code, at the offending
 // span, once, and nothing else.
 func FuzzSingleDefectIsDetected(f *testing.F) {
-	proptest.Fuzz(f, propertySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, propertySeeds, func(t *proptest.T) {
 		p := newProgram()
 		renderDefect(t, p, proptest.SampledFrom(allDefects).Draw(t))
 		p.verify(t, p.collect(t, p.full(t)))
@@ -1379,9 +1375,7 @@ func Test_SingleDefectIsDetected(t *testing.T) {
 // metamorphic: the combined report is the union of the per-analyzer reports,
 // and Disabled removes exactly the named check's findings.
 func FuzzDisabledAnalyzersRemoveExactlyTheirFindings(f *testing.F) {
-	proptest.Fuzz(f, propertySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, propertySeeds, func(t *proptest.T) {
 		p := renderCase(t)
 		v := p.view(t)
 
@@ -1452,9 +1446,7 @@ func FuzzDisabledAnalyzersRemoveExactlyTheirFindings(f *testing.F) {
 // rewrites severity and nothing else: same diagnostics, same spans, same
 // messages, same order.
 func FuzzSeverityOverridesChangeOnlySeverity(f *testing.F) {
-	proptest.Fuzz(f, propertySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, propertySeeds, func(t *proptest.T) {
 		p := renderCase(t)
 		v := p.view(t)
 
@@ -1510,9 +1502,7 @@ func FuzzSeverityOverridesChangeOnlySeverity(f *testing.F) {
 // FuzzReportIsDeterministic checks that fresh views report diagnostics in
 // the same order.
 func FuzzReportIsDeterministic(f *testing.F) {
-	proptest.Fuzz(f, propertySeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, propertySeeds, func(t *proptest.T) {
 		p := renderCase(t)
 
 		first := p.collect(t, p.analyze(t, p.view(t), sema.Config{}))

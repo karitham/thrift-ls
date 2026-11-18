@@ -264,9 +264,7 @@ func FuzzFileConfigSourceDiscovery(f *testing.F) {
 		[]byte("four depths"),
 		[]byte("malformed config"),
 		[]byte("override"),
-	}, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	}, func(t *proptest.T) {
 		depth := proptest.IntRange(0, 3).Draw(t)
 
 		path := "/cfg-root"
@@ -322,9 +320,9 @@ func FuzzFileConfigSourceDiscovery(f *testing.F) {
 		}
 
 		if override > 0 {
-			tb.Setenv("THRIFT_LS_CONFIG", overridePath)
+			t.Setenv("THRIFT_LS_CONFIG", overridePath)
 		} else {
-			tb.Setenv("THRIFT_LS_CONFIG", "")
+			t.Setenv("THRIFT_LS_CONFIG", "")
 		}
 
 		source := FileConfigSource(store.NewMemFS(seeded))
@@ -408,9 +406,7 @@ func FuzzProjectViewConfigLayering(f *testing.F) {
 		[]byte("document above root"),
 		[]byte("malformed document"),
 		[]byte("loader include paths"),
-	}, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	}, func(t *proptest.T) {
 		rootPath := proptest.SampledFrom([]string{"/proj", "/proj/sub", "/proj/sub/deeper"}).Draw(t)
 
 		frontend := drawPropertyPatch(t)
@@ -536,9 +532,7 @@ func FuzzLSPSettingsContract(f *testing.F) {
 		[]byte("every field"),
 		[]byte("unknown key"),
 		[]byte("severity map"),
-	}, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	}, func(t *proptest.T) {
 		patch := drawPropertyPatch(t)
 
 		doc := patchDocument(patch)

@@ -438,9 +438,7 @@ func FuzzPropertySessionRouting(f *testing.F) {
 		[]byte("s1"),
 		[]byte("sessions"),
 		[]byte(""),
-	}, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	}, func(t *proptest.T) {
 		h := ppNewSessionHarness(t)
 		ctx := t.Context()
 
@@ -467,9 +465,7 @@ func FuzzPropertySessionNestedPrecedence(f *testing.F) {
 		[]byte("p1"),
 		[]byte("slash"),
 		[]byte(""),
-	}, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	}, func(t *proptest.T) {
 		root := "/proptest/nested"
 		depth := proptest.IntRange(1, 3).Draw(t)
 

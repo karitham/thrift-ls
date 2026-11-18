@@ -1033,8 +1033,8 @@ var workspaceRoutingSeeds = proptest.Corpus{
 // every event, then replayed on a fresh server to prove the sequence is
 // deterministic (same routing, same publish log).
 func FuzzWorkspaceRoutingModelProperty(f *testing.F) {
-	proptest.Fuzz(f, workspaceRoutingSeeds, func(tb *testing.T, seed []byte) {
-		workspaceRoutingCase(proptest.New(tb, seed), &workspacePropertyCoverage{})
+	proptest.Fuzz(f, workspaceRoutingSeeds, func(t *proptest.T) {
+		workspaceRoutingCase(t, &workspacePropertyCoverage{})
 	})
 }
 
@@ -1158,10 +1158,10 @@ var implicitFolderSeeds = proptest.Corpus{
 // directory as a folder (one reconcile), every later open joins it, and
 // closing an overlay-only file evicts it from the view it joined.
 func FuzzImplicitFolderRouting(f *testing.F) {
-	proptest.Fuzz(f, implicitFolderSeeds, func(tb *testing.T, seed []byte) {
+	proptest.Fuzz(f, implicitFolderSeeds, func(t *proptest.T) {
 		seeded, diagnostics := implicitFolderDiskContents()
 
-		implicitFolderRoutingCase(proptest.New(tb, seed), &workspacePropertyCoverage{}, seeded, diagnostics)
+		implicitFolderRoutingCase(t, &workspacePropertyCoverage{}, seeded, diagnostics)
 	})
 }
 

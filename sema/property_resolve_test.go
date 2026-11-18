@@ -1460,9 +1460,7 @@ var resolveSeeds = proptest.Corpus{
 // FuzzReferenceIndexMatchesSource checks that a file's reference index holds
 // its source references in order, at their written offsets.
 func FuzzReferenceIndexMatchesSource(f *testing.F) {
-	proptest.Fuzz(f, resolveSeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, resolveSeeds, func(t *proptest.T) {
 		ctx := t.Context()
 		ws := mdlDrawWorkspace(t)
 		view := mdlNewView(ws.files, true)
@@ -1498,9 +1496,7 @@ type resolveCoverage struct {
 // resolveDifferential runs the resolution differential over the stream seed
 // derives from: every question the model can ask, answered by production and
 // by the model. The counts say which outcomes the run covered.
-func resolveDifferential(tb *testing.T, seed []byte) resolveCoverage {
-	t := proptest.New(tb, seed)
-
+func resolveDifferential(t *proptest.T) resolveCoverage {
 	var cov resolveCoverage
 
 	ctx := t.Context()
@@ -1545,8 +1541,8 @@ func resolveDifferential(tb *testing.T, seed []byte) resolveCoverage {
 // values (enum members and consts, bare and qualified), and services, over
 // generated include graphs that cycle, self-include, repeat, and dangle.
 func FuzzIndexResolveDifferential(f *testing.F) {
-	proptest.Fuzz(f, resolveSeeds, func(tb *testing.T, seed []byte) {
-		resolveDifferential(tb, seed)
+	proptest.Fuzz(f, resolveSeeds, func(t *proptest.T) {
+		resolveDifferential(t)
 	})
 }
 
@@ -1556,7 +1552,8 @@ func TestIndexResolveDifferentialCoversResolvers(t *testing.T) {
 	var total resolveCoverage
 
 	for _, seed := range resolveSeeds {
-		c := resolveDifferential(t, seed)
+		c := resolveDifferential(proptest.New(t, seed))
+
 		total.resolvedType += c.resolvedType
 		total.resolvedValue += c.resolvedValue
 		total.resolvedService += c.resolvedService
@@ -1581,9 +1578,7 @@ type memoCoverage struct {
 // indexMemoTransparency runs the memo-transparency property over the stream
 // seed derives from. The counts say how much cross-kind material the run
 // covered.
-func indexMemoTransparency(tb *testing.T, seed []byte) memoCoverage {
-	t := proptest.New(tb, seed)
-
+func indexMemoTransparency(t *proptest.T) memoCoverage {
 	var cov memoCoverage
 
 	ctx := t.Context()
@@ -1681,8 +1676,8 @@ func indexMemoTransparency(tb *testing.T, seed []byte) memoCoverage {
 // memoizing Index match fresh-Index answers, including unresolved results and
 // the same name resolved as different kinds.
 func FuzzIndexMemoTransparency(f *testing.F) {
-	proptest.Fuzz(f, resolveSeeds, func(tb *testing.T, seed []byte) {
-		indexMemoTransparency(tb, seed)
+	proptest.Fuzz(f, resolveSeeds, func(t *proptest.T) {
+		indexMemoTransparency(t)
 	})
 }
 
@@ -1692,7 +1687,8 @@ func TestIndexMemoTransparencyCoversCrossKindNames(t *testing.T) {
 	var total memoCoverage
 
 	for _, seed := range resolveSeeds {
-		c := indexMemoTransparency(t, seed)
+		c := indexMemoTransparency(proptest.New(t, seed))
+
 		total.crossKind += c.crossKind
 	}
 
@@ -1773,9 +1769,7 @@ type refsToCoverage struct {
 // referencesToDifferential runs the ReferencesTo differential over the stream
 // seed derives from. The counts say how many hits and enum-segment hits the
 // run covered.
-func referencesToDifferential(tb *testing.T, seed []byte) refsToCoverage {
-	t := proptest.New(tb, seed)
-
+func referencesToDifferential(t *proptest.T) refsToCoverage {
 	var cov refsToCoverage
 
 	ctx := t.Context()
@@ -1850,8 +1844,8 @@ func referencesToDifferential(tb *testing.T, seed []byte) refsToCoverage {
 // in the workspace (structs, unions, exceptions, enums, typedefs, consts,
 // enum members, services) under all-kinds and per-kind filters.
 func FuzzIndexReferencesToDifferential(f *testing.F) {
-	proptest.Fuzz(f, resolveSeeds, func(tb *testing.T, seed []byte) {
-		referencesToDifferential(tb, seed)
+	proptest.Fuzz(f, resolveSeeds, func(t *proptest.T) {
+		referencesToDifferential(t)
 	})
 }
 
@@ -1861,7 +1855,8 @@ func TestIndexReferencesToDifferentialCoversEnumSegments(t *testing.T) {
 	var total refsToCoverage
 
 	for _, seed := range resolveSeeds {
-		c := referencesToDifferential(t, seed)
+		c := referencesToDifferential(proptest.New(t, seed))
+
 		total.hits += c.hits
 		total.segmentHits += c.segmentHits
 	}
@@ -1874,9 +1869,7 @@ func TestIndexReferencesToDifferentialCoversEnumSegments(t *testing.T) {
 // reference search: bare-name matching over the file and its transitive
 // dependents, filtered by grammar slot.
 func FuzzIndexReferencesNameMatchedDifferential(f *testing.F) {
-	proptest.Fuzz(f, resolveSeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, resolveSeeds, func(t *proptest.T) {
 		ctx := t.Context()
 		ws := mdlDrawWorkspace(t)
 		view := mdlNewView(ws.files, true)
@@ -1925,9 +1918,7 @@ type underlyingCoverage struct {
 // underlyingTypeDifferential runs the UnderlyingType differential over the
 // stream seed derives from. The counts say how the generated typedef chains
 // ended.
-func underlyingTypeDifferential(tb *testing.T, seed []byte) underlyingCoverage {
-	t := proptest.New(tb, seed)
-
+func underlyingTypeDifferential(t *proptest.T) underlyingCoverage {
 	var cov underlyingCoverage
 
 	ctx := t.Context()
@@ -2000,8 +1991,8 @@ func underlyingTypeDifferential(tb *testing.T, seed []byte) underlyingCoverage {
 // the model: chains that cross files, stop at a container or a struct, hit an
 // unresolvable name, or cycle until the depth cap.
 func FuzzIndexUnderlyingTypeDifferential(f *testing.F) {
-	proptest.Fuzz(f, resolveSeeds, func(tb *testing.T, seed []byte) {
-		underlyingTypeDifferential(tb, seed)
+	proptest.Fuzz(f, resolveSeeds, func(t *proptest.T) {
+		underlyingTypeDifferential(t)
 	})
 }
 
@@ -2011,7 +2002,8 @@ func TestIndexUnderlyingTypeDifferentialCoversChainEnds(t *testing.T) {
 	var total underlyingCoverage
 
 	for _, seed := range resolveSeeds {
-		c := underlyingTypeDifferential(t, seed)
+		c := underlyingTypeDifferential(proptest.New(t, seed))
+
 		total.nilChains += c.nilChains
 		total.baseChains += c.baseChains
 		total.containerChains += c.containerChains
@@ -2028,9 +2020,7 @@ func TestIndexUnderlyingTypeDifferentialCoversChainEnds(t *testing.T) {
 // the model, both through the known-files table and through the directory-walk
 // fallback an unindexed workspace takes.
 func FuzzIndexFindInWorkspaceDifferential(f *testing.F) {
-	proptest.Fuzz(f, resolveSeeds, func(tb *testing.T, seed []byte) {
-		t := proptest.New(tb, seed)
-
+	proptest.Fuzz(f, resolveSeeds, func(t *proptest.T) {
 		ctx := t.Context()
 		ws := mdlDrawWorkspace(t)
 		view := mdlNewView(ws.files, true)
