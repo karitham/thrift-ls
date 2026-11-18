@@ -22,6 +22,7 @@ func Apply(content []byte, fixes []Fix) (out []byte, applied, skipped []Fix, err
 
 	edits := make([][]edit, len(fixes))
 	accepted := make([]bool, len(fixes))
+	skippedAt := make([]bool, len(fixes))
 
 	for i, fx := range fixes {
 		es := make([]edit, 0, len(fx.Edits))
@@ -41,7 +42,7 @@ func Apply(content []byte, fixes []Fix) (out []byte, applied, skipped []Fix, err
 
 		for j := 1; j < len(es) && ok; j++ {
 			if es[j-1].end > es[j].start {
-				skipped = append(skipped, fx)
+				skippedAt[i] = true
 				ok = false
 			}
 		}
@@ -56,7 +57,7 @@ func Apply(content []byte, fixes []Fix) (out []byte, applied, skipped []Fix, err
 	// Accept in argument order: the first fix asking for a region wins.
 	taken := make([]edit, 0, len(fixes))
 
-	for i, fx := range fixes {
+	for i := range fixes {
 		if edits[i] == nil {
 			continue
 		}
@@ -66,13 +67,20 @@ func Apply(content []byte, fixes []Fix) (out []byte, applied, skipped []Fix, err
 				return e.start < t.end && t.start < e.end
 			})
 		}) {
-			skipped = append(skipped, fx)
+			skippedAt[i] = true
 
 			continue
 		}
 
 		accepted[i] = true
 		taken = append(taken, edits[i]...)
+	}
+
+	// Emit skipped fixes in argument order, whatever the reason.
+	for i, fx := range fixes {
+		if skippedAt[i] {
+			skipped = append(skipped, fx)
+		}
 	}
 
 	// Ascending by start, zero-length first on ties, then splice back to

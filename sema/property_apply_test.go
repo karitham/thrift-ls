@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -859,13 +858,8 @@ func TestApplyPinnedEdgeCases(t *testing.T) {
 }
 
 // TestApplySkippedOrderContract checks that skipped fixes follow argument
-// order even when a batch mixes self-overlap and conflict skips. The test is
-// opt-in until the fix lands.
+// order even when a batch mixes self-overlap and conflict skips.
 func TestApplySkippedOrderContract(t *testing.T) {
-	if os.Getenv("THRIFT_LS_KNOWN_BUGS") == "" {
-		t.Skip("known contract violation: skipped fixes are not reported in argument order; run with THRIFT_LS_KNOWN_BUGS=1")
-	}
-
 	fixes := []sema.Fix{
 		// f0 wins [0:2).
 		{Title: "f0", Edits: []sema.Edit{{Span: offsetSpan(0, 2), NewText: "X"}}},
