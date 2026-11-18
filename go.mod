@@ -10,6 +10,7 @@ require (
 	go.lsp.dev/protocol v1.0.1
 	go.lsp.dev/uri v1.0.1
 	golang.org/x/text v0.41.0
+	pgregory.net/rapid v1.3.0
 )
 
 require (
