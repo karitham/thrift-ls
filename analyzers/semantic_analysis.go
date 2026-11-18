@@ -141,7 +141,8 @@ func (s *SemanticAnalysis) checkValueType(ctx context.Context, ix *sema.Index, r
 		}
 
 	case syntax.ValueString:
-		if isBase(ut, syntax.TokenString) {
+		// Thrift writes binary constants and defaults as string literals.
+		if isBase(ut, syntax.TokenString) || isBase(ut, syntax.TokenBinary) {
 			return nil
 		}
 

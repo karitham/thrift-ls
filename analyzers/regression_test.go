@@ -7,6 +7,26 @@ import (
 	"github.com/karitham/thrift-ls/sema"
 )
 
+func TestBinaryConstAcceptsStringLiteral(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		source string
+	}{
+		{"constant", `const binary Blob = "x"`},
+		{"field default", "struct Payload {\n  1: binary body = \"y\",\n}"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p := newProgram()
+			p.add("main.thrift", tt.source)
+
+			got := p.collect(t, p.full(t))
+			if len(got["main.thrift"]) != 0 {
+				t.Errorf("binary values take string literals; findings: %v", got["main.thrift"])
+			}
+		})
+	}
+}
+
 func TestIncludeCycleReportedOncePerEdge(t *testing.T) {
 	twoFiles := func(p *program) {
 		p.add("main.thrift", `include "other.thrift"`)
