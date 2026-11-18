@@ -776,7 +776,7 @@ func (w *mdlWorkspace) contents() map[uri.URI][]byte {
 // mdlDrawWorkspace draws a generated workspace: the file set, its model, and
 // the rendered content.
 func mdlDrawWorkspace(t *proptest.T) *mdlWorkspace {
-	n := proptest.IntRange(2, 5).Draw(t)
+	n := proptest.Int(t, 2, 5)
 
 	names := make([]string, n)
 	for i := range names {
@@ -789,24 +789,22 @@ func mdlDrawWorkspace(t *proptest.T) *mdlWorkspace {
 	for i, name := range names {
 		doc := &mdlDoc{uri: uri.File(mdlRoot + "/" + name + ".thrift")}
 
-		for range proptest.IntRange(0, 3).Draw(t) {
+		for range proptest.Int(t, 0, 3) {
 			doc.includes = append(doc.includes, mdlDrawIncludePath(t, names))
 		}
 
 		// Names are distinct within one file, so a file's definition table is
 		// unambiguous; the three-name pool still collides constantly across
 		// files.
-		defCount := proptest.IntRange(0, 3).Draw(t)
-		picked := proptest.SliceOfNDistinct(
-			proptest.SampledFrom(mdlNames), defCount, defCount, func(s string) string { return s },
-		).Draw(t)
+		defCount := proptest.Int(t, 0, 3)
+		picked := proptest.Distinct(t, proptest.SampledFrom(mdlNames), defCount, defCount, func(s string) string { return s })
 
 		for _, name := range picked {
 			doc.defs = append(doc.defs, mdlDrawDef(t, name, names))
 		}
 
 		// Probe structs carry references without introducing pool names.
-		for j := range proptest.IntRange(0, 2).Draw(t) {
+		for j := range proptest.Int(t, 0, 2) {
 			doc.defs = append(doc.defs, mdlDrawProbe(t, fmt.Sprintf("P%d_%d", i, j), names))
 		}
 
@@ -883,17 +881,17 @@ func mdlAddEnumRefs(t *proptest.T, docs []*mdlDoc, byURI map[uri.URI]*mdlDoc) {
 		// An enum-qualified reference from a file that reaches the enum: the
 		// most interesting case for reference search, so it is always present
 		// when the workspace has an enum in scope.
-		for j := range proptest.IntRange(0, 2).Draw(t) {
+		for j := range proptest.Int(t, 0, 2) {
 			if len(candidates) == 0 {
 				break
 			}
 
-			c := candidates[proptest.IntRange(0, len(candidates)-1).Draw(t)]
-			member := c.def.values[proptest.IntRange(0, len(c.def.values)-1).Draw(t)]
+			c := candidates[proptest.Int(t, 0, len(candidates)-1)]
+			member := c.def.values[proptest.Int(t, 0, len(c.def.values)-1)]
 
 			var text string
 
-			switch proptest.IntRange(0, 5).Draw(t) {
+			switch proptest.Int(t, 0, 5) {
 			case 0, 1, 2:
 				text = c.def.name + "." + member
 			case 3:
@@ -917,14 +915,14 @@ func mdlAddEnumRefs(t *proptest.T, docs []*mdlDoc, byURI map[uri.URI]*mdlDoc) {
 	// to that enum directly.
 	for _, doc := range docs {
 		for _, def := range doc.defs {
-			if def.kind != mdlEnum || len(def.values) == 0 || !proptest.Bool().Draw(t) {
+			if def.kind != mdlEnum || len(def.values) == 0 || !proptest.Bool(t) {
 				continue
 			}
 
-			member := def.values[proptest.IntRange(0, len(def.values)-1).Draw(t)]
+			member := def.values[proptest.Int(t, 0, len(def.values)-1)]
 
 			text := def.name + "." + member
-			if proptest.Bool().Draw(t) {
+			if proptest.Bool(t) {
 				text = def.name + ".thrift." + member
 			}
 
@@ -956,8 +954,8 @@ func mdlQualify(includeName, name string) string {
 // the same file, possibly spelled "./x.thrift"), or a file that does not
 // exist.
 func mdlDrawIncludePath(t *proptest.T, names []string) string {
-	pick := proptest.IntRange(0, 5).Draw(t)
-	target := names[proptest.IntRange(0, len(names)-1).Draw(t)]
+	pick := proptest.Int(t, 0, 5)
+	target := names[proptest.Int(t, 0, len(names)-1)]
 
 	switch pick {
 	case 0, 1:
@@ -965,7 +963,7 @@ func mdlDrawIncludePath(t *proptest.T, names []string) string {
 	case 2, 3:
 		return "./" + target + ".thrift"
 	case 4:
-		return "ghost" + strconv.Itoa(proptest.IntRange(0, 2).Draw(t)) + ".thrift"
+		return "ghost" + strconv.Itoa(proptest.Int(t, 0, 2)) + ".thrift"
 	}
 
 	return target + ".thrift"
@@ -975,9 +973,9 @@ func mdlDrawIncludePath(t *proptest.T, names []string) string {
 // reference, the invalid dotted-filename spelling, a missing name, or a
 // container of one of those.
 func mdlDrawType(t *proptest.T, depth int, names []string) *mdlType {
-	pick := proptest.IntRange(0, 10).Draw(t)
-	file := func() string { return names[proptest.IntRange(0, len(names)-1).Draw(t)] }
-	name := func() string { return mdlNames[proptest.IntRange(0, len(mdlNames)-1).Draw(t)] }
+	pick := proptest.Int(t, 0, 10)
+	file := func() string { return names[proptest.Int(t, 0, len(names)-1)] }
+	name := func() string { return mdlNames[proptest.Int(t, 0, len(mdlNames)-1)] }
 
 	switch pick {
 	case 0:
@@ -1017,11 +1015,11 @@ func mdlDrawType(t *proptest.T, depth int, names []string) *mdlType {
 // identifier reference (bare, qualified, enum-qualified, and the
 // dotted-filename spelling).
 func mdlDrawValue(t *proptest.T, names []string) *mdlValue {
-	pick := proptest.IntRange(0, 9).Draw(t)
-	file := func() string { return names[proptest.IntRange(0, len(names)-1).Draw(t)] }
-	name := func() string { return mdlNames[proptest.IntRange(0, len(mdlNames)-1).Draw(t)] }
+	pick := proptest.Int(t, 0, 9)
+	file := func() string { return names[proptest.Int(t, 0, len(names)-1)] }
+	name := func() string { return mdlNames[proptest.Int(t, 0, len(mdlNames)-1)] }
 	enumValue := func() string {
-		return mdlEnumValues[proptest.IntRange(0, len(mdlEnumValues)-1).Draw(t)]
+		return mdlEnumValues[proptest.Int(t, 0, len(mdlEnumValues)-1)]
 	}
 
 	switch pick {
@@ -1050,7 +1048,7 @@ func mdlDrawValue(t *proptest.T, names []string) *mdlValue {
 
 // mdlDrawDef draws one definition of a given name.
 func mdlDrawDef(t *proptest.T, name string, names []string) *mdlDef {
-	pick := proptest.IntRange(0, 6).Draw(t)
+	pick := proptest.Int(t, 0, 6)
 
 	switch pick {
 	case 0:
@@ -1060,10 +1058,8 @@ func mdlDrawDef(t *proptest.T, name string, names []string) *mdlDef {
 	case 2:
 		return &mdlDef{kind: mdlException, name: name, target: mdlDrawType(t, 0, names)}
 	case 3:
-		count := proptest.IntRange(1, 2).Draw(t)
-		values := proptest.SliceOfNDistinct(
-			proptest.SampledFrom(mdlEnumValues), count, count, func(s string) string { return s },
-		).Draw(t)
+		count := proptest.Int(t, 1, 2)
+		values := proptest.Distinct(t, proptest.SampledFrom(mdlEnumValues), count, count, func(s string) string { return s })
 
 		return &mdlDef{kind: mdlEnum, name: name, values: values}
 	case 4:
@@ -1074,16 +1070,16 @@ func mdlDrawDef(t *proptest.T, name string, names []string) *mdlDef {
 
 	def := &mdlDef{kind: mdlService, name: name}
 
-	switch proptest.IntRange(0, 3).Draw(t) {
+	switch proptest.Int(t, 0, 3) {
 	case 0:
 	case 1:
-		def.extend = mdlNames[proptest.IntRange(0, len(mdlNames)-1).Draw(t)]
+		def.extend = mdlNames[proptest.Int(t, 0, len(mdlNames)-1)]
 	case 2:
-		def.extend = names[proptest.IntRange(0, len(names)-1).Draw(t)] +
-			"." + mdlNames[proptest.IntRange(0, len(mdlNames)-1).Draw(t)]
+		def.extend = names[proptest.Int(t, 0, len(names)-1)] +
+			"." + mdlNames[proptest.Int(t, 0, len(mdlNames)-1)]
 	case 3:
-		def.extend = names[proptest.IntRange(0, len(names)-1).Draw(t)] +
-			".thrift." + mdlNames[proptest.IntRange(0, len(mdlNames)-1).Draw(t)]
+		def.extend = names[proptest.Int(t, 0, len(names)-1)] +
+			".thrift." + mdlNames[proptest.Int(t, 0, len(mdlNames)-1)]
 	}
 
 	return def
@@ -1100,7 +1096,7 @@ func mdlDrawProbe(t *proptest.T, name string, names []string) *mdlDef {
 // names are drawn from their own pool, so a chain never collides with the
 // definition-name pool.
 func mdlDrawChain(t *proptest.T, names []string) []*mdlDef {
-	length := proptest.IntRange(1, 3).Draw(t)
+	length := proptest.Int(t, 1, 3)
 
 	links := make([]string, length)
 	for i := range links {
@@ -1113,7 +1109,7 @@ func mdlDrawChain(t *proptest.T, names []string) []*mdlDef {
 		def := &mdlDef{kind: mdlTypedef, name: links[i]}
 		last := i+1 == length
 
-		switch proptest.IntRange(0, 5).Draw(t) {
+		switch proptest.Int(t, 0, 5) {
 		case 0:
 			def.target = &mdlType{base: "i32"}
 		case 1:
@@ -1127,7 +1123,7 @@ func mdlDrawChain(t *proptest.T, names []string) []*mdlDef {
 				def.target = &mdlType{ident: links[0]} // closes the chain into a cycle
 			}
 		case 4:
-			file := names[proptest.IntRange(0, len(names)-1).Draw(t)]
+			file := names[proptest.Int(t, 0, len(names)-1)]
 			if !last {
 				def.target = &mdlType{ident: file + "." + links[i+1]}
 			} else {
@@ -1145,7 +1141,7 @@ func mdlDrawChain(t *proptest.T, names []string) []*mdlDef {
 
 // mdlDrawOptionalValue draws a field default half the time.
 func mdlDrawOptionalValue(t *proptest.T, names []string) *mdlValue {
-	if !proptest.Bool().Draw(t) {
+	if !proptest.Bool(t) {
 		return nil
 	}
 
@@ -1591,7 +1587,7 @@ func indexMemoTransparency(t *proptest.T) memoCoverage {
 		qs = append(qs, ws.model.queries(ws.model.docs[u])...)
 	}
 
-	qs = proptest.Permutation(qs).Draw(t)
+	qs = proptest.Permute(t, qs)
 
 	// Count the (file, name) pairs whose three resolvers disagree: the
 	// property is only meaningful if the generator produces them.
@@ -1784,7 +1780,7 @@ func referencesToDifferential(t *proptest.T) refsToCoverage {
 
 		var kinds []store.RefKind
 
-		switch proptest.IntRange(0, 2).Draw(t) {
+		switch proptest.Int(t, 0, 2) {
 		case 0:
 		case 1:
 			kinds = sema.RefKindsFor(target.kind.semaKind())
@@ -1793,7 +1789,7 @@ func referencesToDifferential(t *proptest.T) refsToCoverage {
 				store.RefFieldType, store.RefSignatureType, store.RefConstValue,
 				store.RefServiceExtends, store.RefAnnotationType,
 			}
-			kinds = []store.RefKind{all[proptest.IntRange(0, len(all)-1).Draw(t)]}
+			kinds = []store.RefKind{all[proptest.Int(t, 0, len(all)-1)]}
 		}
 
 		got, err := sema.NewIndex(view).ReferencesTo(ctx, def, kinds...)
@@ -1885,7 +1881,7 @@ func FuzzIndexReferencesNameMatchedDifferential(f *testing.F) {
 			for _, name := range names {
 				var kinds []store.RefKind
 
-				switch proptest.IntRange(0, 3).Draw(t) {
+				switch proptest.Int(t, 0, 3) {
 				case 0:
 				case 1:
 					kinds = []store.RefKind{store.RefFieldType}

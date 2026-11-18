@@ -50,11 +50,11 @@ func modelApply(content string, specs []editSpec) string {
 }
 
 func drawSpecs(t *proptest.T, boundaries []int) []editSpec {
-	anchor := proptest.SampledFrom(boundaries).Draw(t)
+	anchor := proptest.Pick(t, boundaries)
 
 	// The anchor is either an insertion or a replacement starting at anchor.
 	anchorEnd := anchor
-	if proptest.Bool().Draw(t) {
+	if proptest.Bool(t) {
 		var ends []int
 		for _, boundary := range boundaries {
 			if boundary > anchor {
@@ -63,21 +63,21 @@ func drawSpecs(t *proptest.T, boundaries []int) []editSpec {
 		}
 
 		if len(ends) > 0 {
-			anchorEnd = proptest.SampledFrom(ends).Draw(t)
+			anchorEnd = proptest.Pick(t, ends)
 		}
 	}
 
-	specs := []editSpec{{start: anchor, end: anchorEnd, text: proptest.SampledFrom([]string{"R", "", "replacement"}).Draw(t)}}
+	specs := []editSpec{{start: anchor, end: anchorEnd, text: proptest.Pick(t, []string{"R", "", "replacement"})}}
 
 	// Insertions at the same offset as the anchor: the tie class under test.
-	insertions := proptest.IntRange(0, 3).Draw(t)
+	insertions := proptest.Int(t, 0, 3)
 	for i := 0; i < insertions; i++ {
-		specs = append(specs, editSpec{start: anchor, end: anchor, text: proptest.SampledFrom([]string{"1", "2", "", "×"}).Draw(t)})
+		specs = append(specs, editSpec{start: anchor, end: anchor, text: proptest.Pick(t, []string{"1", "2", "", "×"})})
 	}
 
 	// Optionally one insertion elsewhere, outside the anchor's range: it
 	// must not disturb the tie group.
-	if proptest.Bool().Draw(t) {
+	if proptest.Bool(t) {
 		var outside []int
 		for _, boundary := range boundaries {
 			if boundary < anchor || boundary > anchorEnd {
@@ -86,11 +86,11 @@ func drawSpecs(t *proptest.T, boundaries []int) []editSpec {
 		}
 
 		if len(outside) > 0 {
-			outsideAt := proptest.SampledFrom(outside).Draw(t)
+			outsideAt := proptest.Pick(t, outside)
 			specs = append(specs, editSpec{
 				start: outsideAt,
 				end:   outsideAt,
-				text:  proptest.SampledFrom([]string{"x", "yy"}).Draw(t),
+				text:  proptest.Pick(t, []string{"x", "yy"}),
 			})
 		}
 	}
@@ -126,13 +126,13 @@ func FuzzApplyEditsSameStartTie(f *testing.F) {
 	}, func(t *proptest.T) {
 		alphabet := []string{"a", "b", "c", "é", "😀", "日", "\n", " "}
 
-		content := strings.Join(proptest.SliceOfN(proptest.SampledFrom(alphabet), 0, 12).Draw(t), "")
+		content := strings.Join(proptest.Slice(t, proptest.SampledFrom(alphabet), 0, 12), "")
 		boundaries := proptest.RuneBoundaries(content)
 		specs := drawSpecs(t, boundaries)
 
 		orders := [][]editSpec{
 			specs,
-			proptest.Permutation(specs).Draw(t),
+			proptest.Permute(t, specs),
 		}
 
 		var bySecondOrder string

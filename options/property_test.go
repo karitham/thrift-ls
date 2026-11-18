@@ -102,53 +102,53 @@ var (
 func drawPatch(t *proptest.T) options.Patch {
 	var patch options.Patch
 
-	patch.PrintWidth = proptest.Ptr(proptest.IntRange(1, 120), true).Draw(t)
-	patch.TabWidth = proptest.Ptr(proptest.IntRange(1, 8), true).Draw(t)
-	patch.Align = proptest.Ptr(proptest.SampledFrom(alignValues), true).Draw(t)
-	patch.LogLevel = proptest.Ptr(proptest.IntRange(-4, 8), true).Draw(t)
-	patch.Indent = proptest.Ptr(proptest.Map(proptest.SampledFrom(indentValues), func(value string) formatter.Indent {
+	patch.PrintWidth = proptest.Ptr(t, proptest.IntRange(1, 120), true)
+	patch.TabWidth = proptest.Ptr(t, proptest.IntRange(1, 8), true)
+	patch.Align = proptest.Ptr(t, proptest.SampledFrom(alignValues), true)
+	patch.LogLevel = proptest.Ptr(t, proptest.IntRange(-4, 8), true)
+	patch.Indent = proptest.Ptr(t, proptest.Map(proptest.SampledFrom(indentValues), func(value string) formatter.Indent {
 		indent, err := formatter.ParseIndentValue(value)
 		if err != nil {
 			panic(err)
 		}
 
 		return indent
-	}), true).Draw(t)
+	}), true)
 
-	if proptest.Bool().Draw(t) {
+	if proptest.Bool(t) {
 		var separators formatter.Separators
 
 		for _, construct := range formatter.AllConstructs {
-			if proptest.Bool().Draw(t) {
-				separators.Set(construct, new(proptest.SampledFrom(separatorValues).Draw(t)))
+			if proptest.Bool(t) {
+				separators.Set(construct, new(proptest.Pick(t, separatorValues)))
 			}
 		}
 
 		patch.Separators = &separators
 	}
 
-	if proptest.Bool().Draw(t) {
+	if proptest.Bool(t) {
 		var breaks formatter.Break
 
 		for _, construct := range formatter.AllConstructs {
-			if proptest.Bool().Draw(t) {
-				breaks.Set(construct, new(proptest.Bool().Draw(t)))
+			if proptest.Bool(t) {
+				breaks.Set(construct, new(proptest.Bool(t)))
 			}
 		}
 
 		patch.Break = &breaks
 	}
 
-	if proptest.Bool().Draw(t) {
-		patch.IncludePaths = proptest.Ptr(proptest.SliceOfN(
+	if proptest.Bool(t) {
+		patch.IncludePaths = proptest.Ptr(t, proptest.SliceOfN(
 			proptest.SampledFrom([]string{"inc", "../shared", "gen", "/abs/inc"}), 0, 3,
-		), false).Draw(t)
+		), false)
 	}
 
-	if proptest.Bool().Draw(t) {
+	if proptest.Bool(t) {
 		lint := options.LintConfig{
-			Disabled: proptest.Ptr(proptest.SliceOfN(proptest.SampledFrom(analyzerNames), 0, 2), true).Draw(t),
-			Severity: proptest.Ptr(proptest.MapOfN(proptest.SampledFrom(analyzerNames), proptest.SampledFrom(severityValues), 0, 2), true).Draw(t),
+			Disabled: proptest.Ptr(t, proptest.SliceOfN(proptest.SampledFrom(analyzerNames), 0, 2), true),
+			Severity: proptest.Ptr(t, proptest.MapOfN(proptest.SampledFrom(analyzerNames), proptest.SampledFrom(severityValues), 0, 2), true),
 		}
 		patch.Lint = &lint
 	}
@@ -182,7 +182,7 @@ func FuzzPatchApplyLayeringProperty(f *testing.F) {
 	}, func(t *proptest.T) {
 		defaults := options.Default()
 
-		count := proptest.IntRange(0, 4).Draw(t)
+		count := proptest.Int(t, 0, 4)
 
 		layers := make([]options.Patch, count)
 		for i := range layers {
@@ -313,9 +313,9 @@ func FuzzParseRoundTripProperty(f *testing.F) {
 		require.Equal(t, patchFields(patch), patchFields(*parsed), "document round-trip")
 
 		// Unknown keys are rejected, and the error names the key.
-		unknown := proptest.SampledFrom([]string{"printWidthExtra", "indentt", "lintt", "algin", "logLevle"}).Draw(t)
+		unknown := proptest.Pick(t, []string{"printWidthExtra", "indentt", "lintt", "algin", "logLevle"})
 		bad := document(patch)
-		bad[unknown] = proptest.SampledFrom([]any{1, "x", true}).Draw(t)
+		bad[unknown] = proptest.Pick(t, []any{1, "x", true})
 
 		data, err = json.Marshal(bad)
 		require.NoError(t, err)
@@ -344,7 +344,7 @@ func FuzzValidateProperty(f *testing.F) {
 
 		broken := patch
 
-		switch proptest.IntRange(0, 4).Draw(t) {
+		switch proptest.Int(t, 0, 4) {
 		case 0:
 			broken.PrintWidth = new(0)
 		case 1:
@@ -378,8 +378,8 @@ func FuzzAnchorIncludesProperty(f *testing.F) {
 		[]byte("overrides"),
 		[]byte("include paths"),
 	}, func(t *proptest.T) {
-		dir := proptest.SampledFrom([]string{"/cfg", "/cfg/a/b", "/"}).Draw(t)
-		paths := proptest.SliceOfN(proptest.SampledFrom([]string{"inc", "../up", "./here", "/abs/inc", "a/b"}), 0, 3).Draw(t)
+		dir := proptest.Pick(t, []string{"/cfg", "/cfg/a/b", "/"})
+		paths := proptest.Slice(t, proptest.SampledFrom([]string{"inc", "../up", "./here", "/abs/inc", "a/b"}), 0, 3)
 
 		patch := options.Patch{IncludePaths: &paths}
 		options.AnchorIncludes(&patch, dir)
@@ -424,7 +424,7 @@ func FuzzFindNearestConfigProperty(f *testing.F) {
 
 		dir := root
 
-		depth := proptest.IntRange(0, 3).Draw(t)
+		depth := proptest.Int(t, 0, 3)
 		for i := 0; i < depth; i++ {
 			dir = filepath.Join(dir, segments[i])
 		}
@@ -446,7 +446,7 @@ func FuzzFindNearestConfigProperty(f *testing.F) {
 		planted := map[int]bool{len(ancestors) - 1: true}
 
 		for i := range ancestors {
-			if proptest.Bool().Draw(t) {
+			if proptest.Bool(t) {
 				planted[i] = true
 			}
 		}

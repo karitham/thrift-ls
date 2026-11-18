@@ -42,9 +42,6 @@ func New(t *testing.T, seed []byte) *T {
 // Gen draws a value from a stream.
 type Gen[V any] func(*T) V
 
-// Draw produces the next value.
-func (g Gen[V]) Draw(t *T) V { return g(t) }
-
 // IntRange draws an integer in [lo, hi].
 func (t *T) IntRange(lo, hi int) int {
 	if hi <= lo {
@@ -60,19 +57,16 @@ func (t *T) Bool() bool { return t.r.Intn(2) == 0 }
 // Int64 draws a non-negative integer.
 func (t *T) Int64() int64 { return t.r.Int63() }
 
-// Custom adapts a draw function to a generator.
-func Custom[V any](fn func(*T) V) Gen[V] { return fn }
+// Bool draws a boolean.
+func Bool(t *T) bool { return t.Bool() }
 
-// IntRange draws integers in [lo, hi].
+// Int64 draws a non-negative integer.
+func Int64(t *T) int64 { return t.Int64() }
+
+// IntRange builds a generator over integers in [lo, hi].
 func IntRange(lo, hi int) Gen[int] {
 	return func(t *T) int { return t.IntRange(lo, hi) }
 }
-
-// Bool draws booleans.
-func Bool() Gen[bool] { return (*T).Bool }
-
-// Int64 draws non-negative integers.
-func Int64() Gen[int64] { return (*T).Int64 }
 
 // SampledFrom draws one element of xs. The zero value is drawn for an empty
 // slice.
@@ -94,31 +88,7 @@ func SliceOfN[E any](elem Gen[E], minLen, maxLen int) Gen[[]E] {
 		out := make([]E, 0, n)
 
 		for range n {
-			out = append(out, elem.Draw(t))
-		}
-
-		return out
-	}
-}
-
-// SliceOfNDistinct draws a slice with unique keys.
-func SliceOfNDistinct[E any, K comparable](elem Gen[E], minLen, maxLen int, keyFn func(E) K) Gen[[]E] {
-	return func(t *T) []E {
-		n := t.IntRange(minLen, maxLen)
-		seen := make(map[K]struct{}, n)
-		out := make([]E, 0, n)
-
-		// Redraw collisions until the slice reaches n entries. The cap
-		// keeps an input with too few distinct keys from looping forever.
-		for attempts := 0; len(out) < n && attempts < n*20+100; attempts++ {
-			v := elem.Draw(t)
-			k := keyFn(v)
-			if _, ok := seen[k]; ok {
-				continue
-			}
-
-			seen[k] = struct{}{}
-			out = append(out, v)
+			out = append(out, elem(t))
 		}
 
 		return out
@@ -132,7 +102,7 @@ func MapOfN[K comparable, V any](key Gen[K], val Gen[V], minLen, maxLen int) Gen
 		out := make(map[K]V, n)
 
 		for range n {
-			out[key.Draw(t)] = val.Draw(t)
+			out[key(t)] = val(t)
 		}
 
 		return out
@@ -141,30 +111,88 @@ func MapOfN[K comparable, V any](key Gen[K], val Gen[V], minLen, maxLen int) Gen
 
 // Map transforms a generator's output.
 func Map[U, V any](g Gen[U], fn func(U) V) Gen[V] {
-	return func(t *T) V { return fn(g.Draw(t)) }
+	return func(t *T) V { return fn(g(t)) }
 }
 
-// Ptr draws a value and returns its address, optionally drawing nil.
-func Ptr[E any](elem Gen[E], allowNil bool) Gen[*E] {
-	return func(t *T) *E {
-		if allowNil && t.Bool() {
-			return nil
+// Int draws an integer in [lo, hi].
+func Int(t *T, lo, hi int) int { return t.IntRange(lo, hi) }
+
+// Pick draws one element of xs. The zero value is drawn for an empty slice.
+func Pick[S ~[]E, E any](t *T, xs S) E {
+	if len(xs) == 0 {
+		var zero E
+		return zero
+	}
+
+	return xs[t.IntRange(0, len(xs)-1)]
+}
+
+// Slice draws a slice with length in [minLen, maxLen].
+func Slice[E any](t *T, elem Gen[E], minLen, maxLen int) []E {
+	n := t.IntRange(minLen, maxLen)
+	out := make([]E, 0, n)
+
+	for range n {
+		out = append(out, elem(t))
+	}
+
+	return out
+}
+
+// Distinct draws a slice with unique keys and exact length n.
+func Distinct[E any, K comparable](t *T, elem Gen[E], minLen, maxLen int, keyFn func(E) K) []E {
+	n := t.IntRange(minLen, maxLen)
+	seen := make(map[K]struct{}, n)
+	out := make([]E, 0, n)
+
+	// Redraw collisions until the slice reaches n entries. The cap keeps an
+	// input with too few distinct keys from looping forever.
+	for attempts := 0; len(out) < n && attempts < n*20+100; attempts++ {
+		v := elem(t)
+		k := keyFn(v)
+		if _, ok := seen[k]; ok {
+			continue
 		}
 
-		v := elem.Draw(t)
-
-		return &v
+		seen[k] = struct{}{}
+		out = append(out, v)
 	}
+
+	return out
 }
 
-// Permutation draws a shuffled copy of xs.
-func Permutation[S ~[]E, E any](xs S) Gen[S] {
-	return func(t *T) S {
-		out := slices.Clone(xs)
-		t.r.Shuffle(len(out), func(i, j int) { out[i], out[j] = out[j], out[i] })
+// MapN draws a map with size in [minLen, maxLen].
+func MapN[K comparable, V any](t *T, key Gen[K], val Gen[V], minLen, maxLen int) map[K]V {
+	n := t.IntRange(minLen, maxLen)
+	out := make(map[K]V, n)
 
-		return out
+	for range n {
+		out[key(t)] = val(t)
 	}
+
+	return out
+}
+
+// Mapped transforms a generator's output.
+func Mapped[U, V any](t *T, g Gen[U], fn func(U) V) V { return fn(g(t)) }
+
+// Ptr draws a value and returns its address, optionally drawing nil.
+func Ptr[E any](t *T, elem Gen[E], allowNil bool) *E {
+	if allowNil && t.Bool() {
+		return nil
+	}
+
+	v := elem(t)
+
+	return &v
+}
+
+// Permute draws a shuffled copy of xs.
+func Permute[S ~[]E, E any](t *T, xs S) S {
+	out := slices.Clone(xs)
+	t.r.Shuffle(len(out), func(i, j int) { out[i], out[j] = out[j], out[i] })
+
+	return out
 }
 
 // Corpus is a set of raw fuzz inputs.

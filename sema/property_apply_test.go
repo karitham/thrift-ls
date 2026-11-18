@@ -38,12 +38,12 @@ var applyTextAlphabet = []string{"x", "Y", "é", "\n", " "}
 
 // drawContent generates a short document from the alphabet.
 func drawContent(t *proptest.T) string {
-	n := proptest.IntRange(0, 12).Draw(t)
+	n := proptest.Int(t, 0, 12)
 
 	var b strings.Builder
 
 	for i := 0; i < n; i++ {
-		b.WriteString(proptest.SampledFrom(applyAlphabet).Draw(t))
+		b.WriteString(proptest.Pick(t, applyAlphabet))
 	}
 
 	return b.String()
@@ -51,12 +51,12 @@ func drawContent(t *proptest.T) string {
 
 // drawText generates a replacement text, sometimes empty.
 func drawText(t *proptest.T) string {
-	n := proptest.IntRange(0, 3).Draw(t)
+	n := proptest.Int(t, 0, 3)
 
 	var b strings.Builder
 
 	for i := 0; i < n; i++ {
-		b.WriteString(proptest.SampledFrom(applyTextAlphabet).Draw(t))
+		b.WriteString(proptest.Pick(t, applyTextAlphabet))
 	}
 
 	return b.String()
@@ -79,8 +79,8 @@ func boundsStrictlyInside(bounds []int, lo, hi int) []int {
 // drawSpan draws a span from the rune boundaries of the content.
 func drawSpan(t *proptest.T, bounds []int) (int, int) {
 	// bounds is never empty: it always carries 0.
-	i := proptest.IntRange(0, len(bounds)-1).Draw(t)
-	j := proptest.IntRange(i, len(bounds)-1).Draw(t)
+	i := proptest.Int(t, 0, len(bounds)-1)
+	j := proptest.Int(t, i, len(bounds)-1)
 
 	return bounds[i], bounds[j]
 }
@@ -107,7 +107,7 @@ func pickPrevSpan(t *proptest.T, prev []sema.Fix) (sema.Span, bool) {
 		return sema.Span{}, false
 	}
 
-	return spans[proptest.IntRange(0, len(spans)-1).Draw(t)], true
+	return spans[proptest.Int(t, 0, len(spans)-1)], true
 }
 
 // drawFix generates one fix: a plain 1-3 edit fix, a repeat of an earlier
@@ -117,9 +117,9 @@ func pickPrevSpan(t *proptest.T, prev []sema.Fix) (sema.Span, bool) {
 func drawFix(t *proptest.T, label string, bounds []int, prev []sema.Fix) sema.Fix {
 	fx := sema.Fix{Title: label}
 
-	shape := proptest.SampledFrom([]string{
+	shape := proptest.Pick(t, []string{
 		"plain", "plain", "repeat", "nested", "same-start", "self-overlap", "empty",
-	}).Draw(t)
+	})
 
 	switch shape {
 	case "empty":
@@ -129,7 +129,7 @@ func drawFix(t *proptest.T, label string, bounds []int, prev []sema.Fix) sema.Fi
 		if span, ok := pickPrevSpan(t, prev); ok {
 			fx.Edits = append(fx.Edits, sema.Edit{Span: span, NewText: drawText(t)})
 
-			if proptest.Bool().Draw(t) {
+			if proptest.Bool(t) {
 				fx.Edits = append(fx.Edits, drawRandomEdit(t, bounds))
 			}
 
@@ -139,8 +139,8 @@ func drawFix(t *proptest.T, label string, bounds []int, prev []sema.Fix) sema.Fi
 	case "nested":
 		if outer, ok := pickPrevSpan(t, prev); ok {
 			if inner := boundsStrictlyInside(bounds, outer.Start.Offset, outer.End.Offset); len(inner) >= 1 {
-				a := proptest.IntRange(0, len(inner)-1).Draw(t)
-				b := proptest.IntRange(a, len(inner)-1).Draw(t)
+				a := proptest.Int(t, 0, len(inner)-1)
+				b := proptest.Int(t, a, len(inner)-1)
 
 				fx.Edits = append(fx.Edits,
 					sema.Edit{Span: outer, NewText: drawText(t)},
@@ -153,8 +153,8 @@ func drawFix(t *proptest.T, label string, bounds []int, prev []sema.Fix) sema.Fi
 
 	case "same-start":
 		if len(bounds) >= 2 {
-			i := proptest.IntRange(0, len(bounds)-2).Draw(t)
-			j := proptest.IntRange(i+1, len(bounds)-1).Draw(t)
+			i := proptest.Int(t, 0, len(bounds)-2)
+			j := proptest.Int(t, i+1, len(bounds)-1)
 			start, end := bounds[i], bounds[j]
 
 			ins := sema.Edit{Span: offsetSpan(start, start), NewText: drawText(t)}
@@ -163,7 +163,7 @@ func drawFix(t *proptest.T, label string, bounds []int, prev []sema.Fix) sema.Fi
 			// Both declaration orders: the splicer's self-overlap check
 			// sorts by start and keeps declaration order on ties, so the
 			// two orders are not equivalent.
-			if proptest.Bool().Draw(t) {
+			if proptest.Bool(t) {
 				fx.Edits = []sema.Edit{ins, rep}
 			} else {
 				fx.Edits = []sema.Edit{rep, ins}
@@ -174,10 +174,10 @@ func drawFix(t *proptest.T, label string, bounds []int, prev []sema.Fix) sema.Fi
 
 	case "self-overlap":
 		if len(bounds) >= 3 {
-			i := proptest.IntRange(0, len(bounds)-3).Draw(t)
-			j := proptest.IntRange(i+2, len(bounds)-1).Draw(t)
+			i := proptest.Int(t, 0, len(bounds)-3)
+			j := proptest.Int(t, i+2, len(bounds)-1)
 			start, end := bounds[i], bounds[j]
-			mid := bounds[proptest.IntRange(i+1, j-1).Draw(t)]
+			mid := bounds[proptest.Int(t, i+1, j-1)]
 
 			// An insertion inside a replacement overlaps it.
 			fx.Edits = []sema.Edit{
@@ -189,7 +189,7 @@ func drawFix(t *proptest.T, label string, bounds []int, prev []sema.Fix) sema.Fi
 		}
 	}
 
-	n := proptest.IntRange(1, 3).Draw(t)
+	n := proptest.Int(t, 1, 3)
 
 	for k := 0; k < n; k++ {
 		fx.Edits = append(fx.Edits, drawRandomEdit(t, bounds))
@@ -229,7 +229,7 @@ func drawApplyCase(t *proptest.T) applyCase {
 
 	var fixes []sema.Fix
 
-	n := proptest.IntRange(0, 4).Draw(t)
+	n := proptest.Int(t, 0, 4)
 	for i := 0; i < n; i++ {
 		fixes = append(fixes, drawFix(t, fmt.Sprintf("f%d", i), bounds, fixes))
 	}
@@ -237,14 +237,14 @@ func drawApplyCase(t *proptest.T) applyCase {
 	// The tie pair: an insertion at a replacement's start offset, in either
 	// argument order. The insertion's text must land before the replacement's.
 	if len(bounds) >= 2 {
-		i := proptest.IntRange(0, len(bounds)-2).Draw(t)
-		j := proptest.IntRange(i+1, len(bounds)-1).Draw(t)
+		i := proptest.Int(t, 0, len(bounds)-2)
+		j := proptest.Int(t, i+1, len(bounds)-1)
 		start, end := bounds[i], bounds[j]
 
 		ins := sema.Fix{Title: "tie-insert", Edits: []sema.Edit{{Span: offsetSpan(start, start), NewText: drawText(t)}}}
 		rep := sema.Fix{Title: "tie-replace", Edits: []sema.Edit{{Span: offsetSpan(start, end), NewText: drawText(t)}}}
 
-		if proptest.Bool().Draw(t) {
+		if proptest.Bool(t) {
 			fixes = append([]sema.Fix{ins, rep}, fixes...)
 		} else {
 			fixes = append([]sema.Fix{rep, ins}, fixes...)
@@ -536,7 +536,7 @@ func drawDisjointFixes(t *proptest.T, bounds []int, n int) []sema.Fix {
 
 	maxIdx := len(bounds) - 1
 
-	idx := proptest.SliceOfNDistinct(proptest.IntRange(0, maxIdx), 2, min(2*n, maxIdx+1), func(i int) int { return i }).Draw(t)
+	idx := proptest.Distinct(t, proptest.IntRange(0, maxIdx), 2, min(2*n, maxIdx+1), func(i int) int { return i })
 
 	slices.Sort(idx)
 	idx = slices.Compact(idx)
@@ -562,13 +562,13 @@ func FuzzApplyDisjointCommutation(f *testing.F) {
 		content := drawContent(t)
 		bounds := proptest.RuneBoundaries(content)
 
-		fixes := drawDisjointFixes(t, bounds, proptest.IntRange(1, 4).Draw(t))
+		fixes := drawDisjointFixes(t, bounds, proptest.Int(t, 1, 4))
 		if len(fixes) < 2 {
 			return
 		}
 
-		order1 := proptest.Permutation(fixes).Draw(t)
-		order2 := proptest.Permutation(fixes).Draw(t)
+		order1 := proptest.Permute(t, fixes)
+		order2 := proptest.Permute(t, fixes)
 
 		want, _, _, err := modelApply(content, order1)
 		require.NoError(t, err)
@@ -611,13 +611,13 @@ func FuzzApplySameOffsetTie(f *testing.F) {
 			return
 		}
 
-		i := proptest.IntRange(0, len(bounds)-2).Draw(t)
-		j := proptest.IntRange(i+1, len(bounds)-1).Draw(t)
+		i := proptest.Int(t, 0, len(bounds)-2)
+		j := proptest.Int(t, i+1, len(bounds)-1)
 		start, end := bounds[i], bounds[j]
 
 		rep := sema.Fix{Title: "replace", Edits: []sema.Edit{{Span: offsetSpan(start, end), NewText: drawText(t)}}}
 
-		n := proptest.IntRange(1, 3).Draw(t)
+		n := proptest.Int(t, 1, 3)
 
 		var inserts []sema.Fix
 
@@ -629,7 +629,7 @@ func FuzzApplySameOffsetTie(f *testing.F) {
 		}
 
 		fixes := append([]sema.Fix{rep}, inserts...)
-		fixes = proptest.Permutation(fixes).Draw(t)
+		fixes = proptest.Permute(t, fixes)
 
 		out, applied, skipped, err := sema.Apply([]byte(content), fixes)
 		require.NoError(t, err)
@@ -664,12 +664,12 @@ func FuzzApplyInsertionsNeverConflict(f *testing.F) {
 		content := drawContent(t)
 		bounds := proptest.RuneBoundaries(content)
 
-		n := proptest.IntRange(1, 5).Draw(t)
+		n := proptest.Int(t, 1, 5)
 
 		var fixes []sema.Fix
 
 		for k := 0; k < n; k++ {
-			at := bounds[proptest.IntRange(0, len(bounds)-1).Draw(t)]
+			at := bounds[proptest.Int(t, 0, len(bounds)-1)]
 			fixes = append(fixes, sema.Fix{
 				Title: fmt.Sprintf("i%d", k),
 				Edits: []sema.Edit{{Span: offsetSpan(at, at), NewText: drawText(t)}},
@@ -699,10 +699,10 @@ func FuzzApplySelfOverlapSkipsWholeFix(f *testing.F) {
 			return
 		}
 
-		i := proptest.IntRange(0, len(bounds)-3).Draw(t)
-		j := proptest.IntRange(i+2, len(bounds)-1).Draw(t)
+		i := proptest.Int(t, 0, len(bounds)-3)
+		j := proptest.Int(t, i+2, len(bounds)-1)
 		start, end := bounds[i], bounds[j]
-		mid := bounds[proptest.IntRange(i+1, j-1).Draw(t)]
+		mid := bounds[proptest.Int(t, i+1, j-1)]
 
 		bad := sema.Fix{Title: "bad", Edits: []sema.Edit{
 			{Span: offsetSpan(start, end), NewText: "Z"},
@@ -725,22 +725,22 @@ func FuzzApplyRangeErrors(f *testing.F) {
 		c := drawApplyCase(t)
 
 		// Corrupt one fix in the batch: the error must veto the rest.
-		mode := proptest.SampledFrom([]string{"past-end", "negative", "reversed"}).Draw(t)
+		mode := proptest.Pick(t, []string{"past-end", "negative", "reversed"})
 
 		var bad sema.Fix
 
 		switch mode {
 		case "past-end":
-			bad = sema.Fix{Title: "bad", Edits: []sema.Edit{{Span: offsetSpan(len(c.content), len(c.content)+1+proptest.IntRange(0, 3).Draw(t)), NewText: "X"}}}
+			bad = sema.Fix{Title: "bad", Edits: []sema.Edit{{Span: offsetSpan(len(c.content), len(c.content)+1+proptest.Int(t, 0, 3)), NewText: "X"}}}
 		case "negative":
-			bad = sema.Fix{Title: "bad", Edits: []sema.Edit{{Span: offsetSpan(-1-proptest.IntRange(0, 3).Draw(t), 0), NewText: "X"}}}
+			bad = sema.Fix{Title: "bad", Edits: []sema.Edit{{Span: offsetSpan(-1-proptest.Int(t, 0, 3), 0), NewText: "X"}}}
 		case "reversed":
 			bad = sema.Fix{Title: "bad", Edits: []sema.Edit{{Span: offsetSpan(1, 0), NewText: "X"}}}
 		}
 
 		// Anywhere in the batch: validation covers the whole call, so the
 		// valid fixes before it must not run either.
-		pos := proptest.IntRange(0, len(c.fixes)).Draw(t)
+		pos := proptest.Int(t, 0, len(c.fixes))
 		fixes := append(append(slices.Clone(c.fixes[:pos]), bad), c.fixes[pos:]...)
 
 		out, applied, skipped, err := sema.Apply([]byte(c.content), fixes)
@@ -949,12 +949,12 @@ func drawFixCase(t *proptest.T) fixCase {
 	// values, which are fixable when dep is a target.
 	var depType string
 
-	switch proptest.IntRange(0, 1).Draw(t) {
+	switch proptest.Int(t, 0, 1) {
 	case 0:
 		files["dep.thrift"] = "struct User {\n  1: i32 id,\n}\n"
 		depType = "User"
 	case 1:
-		members := []string{"RED", "GREEN", "BLUE"}[:proptest.IntRange(1, 3).Draw(t)]
+		members := []string{"RED", "GREEN", "BLUE"}[:proptest.Int(t, 1, 3)]
 
 		var b strings.Builder
 
@@ -972,13 +972,13 @@ func drawFixCase(t *proptest.T) fixCase {
 
 	// other.thrift: a second definition site, so the include fixer has to
 	// choose among files.
-	if proptest.Bool().Draw(t) {
+	if proptest.Bool(t) {
 		files["other.thrift"] = "struct Ghost {\n  1: i32 g,\n}\n"
 	}
 
-	include := proptest.Bool().Draw(t)
-	use := proptest.Bool().Draw(t)
-	useGhost := proptest.Bool().Draw(t)
+	include := proptest.Bool(t)
+	use := proptest.Bool(t)
+	useGhost := proptest.Bool(t)
 
 	var main strings.Builder
 
@@ -1000,13 +1000,13 @@ func drawFixCase(t *proptest.T) fixCase {
 	// An included-but-unused file and a used-but-unincluded file are both
 	// fixable. When neither applies the file is clean, so force the third
 	// fixable source, an implicit enum value.
-	if include == use || proptest.Bool().Draw(t) {
+	if include == use || proptest.Bool(t) {
 		main.WriteString("\nenum E {\n  A,\n  B,\n}\n")
 	}
 
 	files["main.thrift"] = main.String()
 
-	if proptest.Bool().Draw(t) {
+	if proptest.Bool(t) {
 		files["broken.thrift"] = "include \"dep.thrift\"\n\nstruct Broken {\n  1: i32 a\n  @@@\n}\n"
 	}
 
@@ -1022,7 +1022,7 @@ func drawFixCase(t *proptest.T) fixCase {
 	targets := []string{"main.thrift"}
 
 	for _, name := range []string{"dep.thrift", "other.thrift", "broken.thrift"} {
-		if _, ok := files[name]; ok && proptest.Bool().Draw(t) {
+		if _, ok := files[name]; ok && proptest.Bool(t) {
 			targets = append(targets, name)
 		}
 	}
@@ -1317,7 +1317,7 @@ func FuzzFixAllPersistFailurePartialSummary(f *testing.F) {
 		require.NotEmpty(t, refRec.calls, "the generated case must be fixable: %v", c.files)
 
 		// k in [1, n]: fail that call. k == n+1: no fault at all.
-		k := proptest.IntRange(1, len(refRec.calls)+1).Draw(t)
+		k := proptest.Int(t, 1, len(refRec.calls)+1)
 
 		view, source := newFixWorkspace(t, c)
 		before := cloneContents(source)
@@ -1576,7 +1576,7 @@ func FuzzFixAllOscillatingFixerStopsAtCap(f *testing.F) {
 
 		doc.WriteString("struct S {\n  1: i32 a,\n}\n")
 
-		for i := 0; i < proptest.IntRange(0, 2).Draw(t); i++ {
+		for i := 0; i < proptest.Int(t, 0, 2); i++ {
 			fmt.Fprintf(&doc, "\nstruct N%d {\n  1: i32 n,\n}\n", i)
 		}
 
@@ -1626,7 +1626,7 @@ func drawBrokenCase(t *proptest.T) fixCase {
 	// file carries a fixable inline fix the guard must refuse.
 	files["broken.thrift"] = "include \"dep.thrift\"\n\nstruct Broken {\n  1: i32 a\n  @@@\n}\n"
 
-	if proptest.Bool().Draw(t) {
+	if proptest.Bool(t) {
 		files["broken2.thrift"] = "include \"dep.thrift\"\n\nstruct Broken2 {\n  @@@\n}\n"
 	}
 

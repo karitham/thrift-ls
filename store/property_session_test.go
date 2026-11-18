@@ -187,9 +187,9 @@ func ppNewSessionHarness(t *proptest.T) *ppSessionHarness {
 	root := "/proptest/ws"
 	folders := []uri.URI{uri.File(root)}
 
-	for range proptest.IntRange(0, 3).Draw(t) {
-		parent := folders[proptest.IntRange(0, len(folders)-1).Draw(t)]
-		segment := proptest.SampledFrom([]string{"a", "b", "c"}).Draw(t)
+	for range proptest.Int(t, 0, 3) {
+		parent := folders[proptest.Int(t, 0, len(folders)-1)]
+		segment := proptest.Pick(t, []string{"a", "b", "c"})
 		candidate := uri.File(parent.Path() + "/" + segment)
 
 		if slices.Contains(folders, candidate) {
@@ -199,8 +199,8 @@ func ppNewSessionHarness(t *proptest.T) *ppSessionHarness {
 		folders = append(folders, candidate)
 	}
 
-	if proptest.Bool().Draw(t) {
-		variant := uri.URI(string(folders[proptest.IntRange(0, len(folders)-1).Draw(t)]) + "/")
+	if proptest.Bool(t) {
+		variant := uri.URI(string(folders[proptest.Int(t, 0, len(folders)-1)]) + "/")
 		if !slices.Contains(folders, variant) {
 			folders = append(folders, variant)
 		}
@@ -210,13 +210,13 @@ func ppNewSessionHarness(t *proptest.T) *ppSessionHarness {
 
 	var files []uri.URI
 
-	for i := range proptest.IntRange(1, 5).Draw(t) {
+	for i := range proptest.Int(t, 1, 5) {
 		name := fmt.Sprintf("f%d.thrift", i)
-		folder := folders[proptest.IntRange(0, len(folders)-1).Draw(t)]
+		folder := folders[proptest.Int(t, 0, len(folders)-1)]
 
 		var path string
 
-		switch proptest.IntRange(0, 2).Draw(t) {
+		switch proptest.Int(t, 0, 2) {
 		case 0: // directly inside the folder
 			path = folder.Path() + "/" + name
 		case 1: // in a directory under the folder: still inside it
@@ -244,23 +244,23 @@ func ppNewSessionHarness(t *proptest.T) *ppSessionHarness {
 }
 
 func ppSessionOpGen(folders, files int) proptest.Gen[ppSessionOp] {
-	return proptest.Custom(func(t *proptest.T) ppSessionOp {
+	return func(t *proptest.T) ppSessionOp {
 		op := ppSessionOp{
-			kind: proptest.SampledFrom([]ppSessionOpKind{
+			kind: proptest.Pick(t, []ppSessionOpKind{
 				ppSessionAddView, ppSessionAddView, ppSessionAddView,
 				ppSessionRemoveView, ppSessionRemoveView,
 				ppSessionPlace, ppSessionPlace, ppSessionPlace,
 				ppSessionRoute, ppSessionRoute,
 				ppSessionWalk,
 				ppSessionObserve,
-			}).Draw(t),
-			folder: proptest.IntRange(0, folders-1).Draw(t),
-			file:   proptest.IntRange(0, files-1).Draw(t),
-			view:   proptest.IntRange(0, folders-1).Draw(t),
+			}),
+			folder: proptest.Int(t, 0, folders-1),
+			file:   proptest.Int(t, 0, files-1),
+			view:   proptest.Int(t, 0, folders-1),
 		}
 
 		return op
-	})
+	}
 }
 
 func (h *ppSessionHarness) apply(ctx context.Context, t *proptest.T, op ppSessionOp) {
@@ -442,9 +442,7 @@ func FuzzPropertySessionRouting(f *testing.F) {
 		h := ppNewSessionHarness(t)
 		ctx := t.Context()
 
-		trace := proptest.SliceOfN(
-			ppSessionOpGen(len(h.folders), len(h.files)), 1, 24,
-		).Draw(t)
+		trace := proptest.Slice(t, ppSessionOpGen(len(h.folders), len(h.files)), 1, 24)
 
 		// The first step registers a view about half the time: routing with no
 		// views registered must be an error, never a panic.
@@ -467,7 +465,7 @@ func FuzzPropertySessionNestedPrecedence(f *testing.F) {
 		[]byte(""),
 	}, func(t *proptest.T) {
 		root := "/proptest/nested"
-		depth := proptest.IntRange(1, 3).Draw(t)
+		depth := proptest.Int(t, 1, 3)
 
 		folders := make([]uri.URI, 0, depth+1)
 		folders = append(folders, uri.File(root))
@@ -479,7 +477,7 @@ func FuzzPropertySessionNestedPrecedence(f *testing.F) {
 		}
 
 		// A trailing-slash twin of one folder covers the same files.
-		slashFolder := folders[proptest.IntRange(0, len(folders)-1).Draw(t)]
+		slashFolder := folders[proptest.Int(t, 0, len(folders)-1)]
 		folders = append(folders, uri.URI(string(slashFolder)+"/"))
 
 		disk := map[uri.URI][]byte{}
@@ -500,7 +498,7 @@ func FuzzPropertySessionNestedPrecedence(f *testing.F) {
 
 		// Register in a shuffled order: registration order must only matter
 		// for ties.
-		perm := proptest.Permutation(slices.Clone(folders)).Draw(t)
+		perm := proptest.Permute(t, slices.Clone(folders))
 
 		model := newPPSessionModel()
 		for _, folder := range perm {

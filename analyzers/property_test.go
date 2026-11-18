@@ -375,14 +375,14 @@ func defaultFor(typ string) (string, bool) {
 func fieldIDs(t *proptest.T, n int) []int {
 	pool := []int{1, 2, 3, 5, 8, 13, 42, 100, 999, 32766, 32767}
 
-	return proptest.SliceOfNDistinct(proptest.SampledFrom(pool), n, n, func(v int) int { return v }).Draw(t)
+	return proptest.Distinct(t, proptest.SampledFrom(pool), n, n, func(v int) int { return v })
 }
 
 // enumValues draws n distinct explicit enum constants.
 func enumValues(t *proptest.T, n int) []int {
 	pool := []int{0, 1, 2, 3, 5, 10, 100, 1000, 1 << 20, 1<<31 - 1}
 
-	return proptest.SliceOfNDistinct(proptest.SampledFrom(pool), n, n, func(v int) int { return v }).Draw(t)
+	return proptest.Distinct(t, proptest.SampledFrom(pool), n, n, func(v int) int { return v })
 }
 
 // drawType draws a field type that resolves: a scalar, one of the named types
@@ -391,17 +391,17 @@ func enumValues(t *proptest.T, n int) []int {
 func drawType(t *proptest.T, named []string) string {
 	base := append(slices.Clone(scalarTypes), named...)
 
-	switch proptest.IntRange(0, 3).Draw(t) {
+	switch proptest.Int(t, 0, 3) {
 	case 0:
-		return proptest.SampledFrom(base).Draw(t)
+		return proptest.Pick(t, base)
 	case 1:
-		return "list<" + proptest.SampledFrom(base).Draw(t) + ">"
+		return "list<" + proptest.Pick(t, base) + ">"
 	case 2:
-		return "set<" + proptest.SampledFrom(base).Draw(t) + ">"
+		return "set<" + proptest.Pick(t, base) + ">"
 	default:
-		key := proptest.SampledFrom(scalarTypes).Draw(t)
+		key := proptest.Pick(t, scalarTypes)
 
-		return "map<" + key + ", " + proptest.SampledFrom(base).Draw(t) + ">"
+		return "map<" + key + ", " + proptest.Pick(t, base) + ">"
 	}
 }
 
@@ -410,22 +410,22 @@ func drawType(t *proptest.T, named []string) string {
 // a declared exception.
 func renderFunction(t *proptest.T, nm *namer, named, exceptions []string) string {
 	ret := "void"
-	if proptest.Bool().Draw(t) {
+	if proptest.Bool(t) {
 		ret = drawType(t, named)
 	}
 
-	argCount := proptest.IntRange(0, 2).Draw(t)
+	argCount := proptest.Int(t, 0, 2)
 	ids := fieldIDs(t, argCount)
 
 	args := make([]string, 0, argCount)
 	for i := range argCount {
-		args = append(args, fmt.Sprintf("%d: %s %s", ids[i], proptest.SampledFrom(scalarTypes).Draw(t), nm.next("a")))
+		args = append(args, fmt.Sprintf("%d: %s %s", ids[i], proptest.Pick(t, scalarTypes), nm.next("a")))
 	}
 
 	line := fmt.Sprintf("  %s %s(%s)", ret, nm.next("fn"), strings.Join(args, ", "))
 
-	if len(exceptions) > 0 && proptest.Bool().Draw(t) {
-		line += fmt.Sprintf(" throws (1: %s %s)", proptest.SampledFrom(exceptions).Draw(t), nm.next("e"))
+	if len(exceptions) > 0 && proptest.Bool(t) {
+		line += fmt.Sprintf(" throws (1: %s %s)", proptest.Pick(t, exceptions), nm.next("e"))
 	}
 
 	return line
@@ -440,7 +440,7 @@ func renderValid(t *proptest.T) *program {
 	nm := &namer{}
 
 	// Include targets: self-contained files, no includes of their own.
-	nInc := proptest.IntRange(0, 2).Draw(t)
+	nInc := proptest.Int(t, 0, 2)
 	incFiles := make([]string, nInc)
 	incTypes := make([]string, nInc)
 
@@ -452,7 +452,7 @@ func renderValid(t *proptest.T) *program {
 		p.add(incFiles[i], "struct "+incTypes[i]+" {")
 		p.add(incFiles[i], "  1: i32 v,")
 
-		if proptest.Bool().Draw(t) {
+		if proptest.Bool(t) {
 			p.add(incFiles[i], "  2: optional string label,")
 		}
 
@@ -465,7 +465,7 @@ func renderValid(t *proptest.T) *program {
 	var included []int
 
 	for i := range nInc {
-		if proptest.Bool().Draw(t) {
+		if proptest.Bool(t) {
 			included = append(included, i)
 			p.add(main, fmt.Sprintf("include %q", incFiles[i]))
 		}
@@ -478,12 +478,12 @@ func renderValid(t *proptest.T) *program {
 	// Named types in definition order, so every use follows its definition.
 	var named []string
 
-	for range proptest.IntRange(0, 2).Draw(t) {
+	for range proptest.Int(t, 0, 2) {
 		name := nm.next("E")
 
 		p.add(main, "enum "+name+" {")
 
-		for _, v := range enumValues(t, proptest.IntRange(1, 4).Draw(t)) {
+		for _, v := range enumValues(t, proptest.Int(t, 1, 4)) {
 			p.add(main, fmt.Sprintf("  %s = %d,", nm.next("v"), v))
 		}
 
@@ -492,10 +492,10 @@ func renderValid(t *proptest.T) *program {
 		named = append(named, name)
 	}
 
-	for range proptest.IntRange(0, 1).Draw(t) {
+	for range proptest.Int(t, 0, 1) {
 		name := nm.next("T")
 
-		switch proptest.IntRange(0, 2).Draw(t) {
+		switch proptest.Int(t, 0, 2) {
 		case 0:
 			p.add(main, "typedef i32 "+name)
 		case 1:
@@ -507,7 +507,7 @@ func renderValid(t *proptest.T) *program {
 		named = append(named, name)
 	}
 
-	structs := proptest.IntRange(0, 3).Draw(t)
+	structs := proptest.Int(t, 0, 3)
 	if len(included) > 0 && structs == 0 {
 		structs = 1
 	}
@@ -515,10 +515,10 @@ func renderValid(t *proptest.T) *program {
 	var exceptions []string
 
 	for i := range structs {
-		kind := proptest.SampledFrom([]string{"struct", "struct", "union", "exception"}).Draw(t)
+		kind := proptest.Pick(t, []string{"struct", "struct", "union", "exception"})
 		name := nm.next("S")
 
-		fields := proptest.IntRange(0, 3).Draw(t)
+		fields := proptest.Int(t, 0, 3)
 		if kind != "struct" && fields == 0 {
 			// union and exception need at least one member.
 			fields = 1
@@ -544,12 +544,12 @@ func renderValid(t *proptest.T) *program {
 
 			line := fmt.Sprintf("  %d: %s%s %s",
 				ids[j],
-				proptest.SampledFrom([]string{"", "required ", "optional "}).Draw(t),
+				proptest.Pick(t, []string{"", "required ", "optional "}),
 				typ,
 				nm.next("f"),
 			)
 
-			if def, ok := defaultFor(typ); ok && proptest.Bool().Draw(t) {
+			if def, ok := defaultFor(typ); ok && proptest.Bool(t) {
 				line += " = " + def
 			}
 
@@ -565,15 +565,15 @@ func renderValid(t *proptest.T) *program {
 		named = append(named, name)
 	}
 
-	for range proptest.IntRange(0, 2).Draw(t) {
-		shape := constShapes[proptest.IntRange(0, len(constShapes)-1).Draw(t)]
+	for range proptest.Int(t, 0, 2) {
+		shape := constShapes[proptest.Int(t, 0, len(constShapes)-1)]
 		p.add(main, "const "+shape.typ+" "+nm.next("K")+" = "+shape.val)
 	}
 
-	for range proptest.IntRange(0, 1).Draw(t) {
+	for range proptest.Int(t, 0, 1) {
 		p.add(main, "service "+nm.next("Svc")+" {")
 
-		for range proptest.IntRange(0, 3).Draw(t) {
+		for range proptest.Int(t, 0, 3) {
 			p.add(main, renderFunction(t, nm, named, exceptions)+",")
 		}
 
@@ -582,7 +582,7 @@ func renderValid(t *proptest.T) *program {
 
 	// Case near-misses: the duplicate check is case-sensitive, so names that
 	// differ only in case are legal in one scope and must stay silent.
-	if proptest.Bool().Draw(t) {
+	if proptest.Bool(t) {
 		name := nm.next("S")
 		field := nm.next("f")
 
@@ -776,7 +776,7 @@ func renderDefect(t *proptest.T, p *program, d defect) {
 	switch d {
 	case defDupStructName:
 		main := baseDoc(p)
-		name := "Dup" + strconv.Itoa(proptest.IntRange(1, 3).Draw(t))
+		name := "Dup" + strconv.Itoa(proptest.Int(t, 1, 3))
 
 		p.add(main, "struct "+name+" {")
 		p.add(main, "  1: i32 first,")
@@ -790,7 +790,7 @@ func renderDefect(t *proptest.T, p *program, d defect) {
 
 	case defDupCrossKind:
 		main := baseDoc(p)
-		name := "Ambig" + strconv.Itoa(proptest.IntRange(1, 3).Draw(t))
+		name := "Ambig" + strconv.Itoa(proptest.Int(t, 1, 3))
 
 		p.add(main, "struct "+name+" {")
 		p.add(main, "  1: i32 only,")
@@ -861,7 +861,7 @@ func renderDefect(t *proptest.T, p *program, d defect) {
 
 	case defDupEnumValue:
 		main := baseDoc(p)
-		value := proptest.SampledFrom([]int{1, 2, 5}).Draw(t)
+		value := proptest.Pick(t, []int{1, 2, 5})
 
 		p.add(main, "enum Values {")
 		p.add(main, fmt.Sprintf("  First = %d,", value))
@@ -872,7 +872,7 @@ func renderDefect(t *proptest.T, p *program, d defect) {
 
 	case defEnumChainCollision:
 		main := baseDoc(p)
-		first := proptest.IntRange(0, 5).Draw(t)
+		first := proptest.Int(t, 0, 5)
 
 		p.add(main, "enum Chain {")
 		p.add(main, fmt.Sprintf("  A = %d,", first))
@@ -901,7 +901,7 @@ func renderDefect(t *proptest.T, p *program, d defect) {
 
 	case defFieldIDDuplicate:
 		main := baseDoc(p)
-		id := proptest.SampledFrom([]string{"1", "2", "42", "32767"}).Draw(t)
+		id := proptest.Pick(t, []string{"1", "2", "42", "32767"})
 
 		p.add(main, "struct Clash {")
 		line1 := p.add(main, "  "+id+": i32 a,")
@@ -913,7 +913,7 @@ func renderDefect(t *proptest.T, p *program, d defect) {
 
 	case defFieldIDOutOfRange:
 		main := baseDoc(p)
-		lit := proptest.SampledFrom([]string{"0", "-1", "32768", "0x8000", "2147483648"}).Draw(t)
+		lit := proptest.Pick(t, []string{"0", "-1", "32768", "0x8000", "2147483648"})
 
 		p.add(main, "struct Bad {")
 		line := p.add(main, "  "+lit+": i32 value,")
@@ -923,7 +923,7 @@ func renderDefect(t *proptest.T, p *program, d defect) {
 
 	case defMapKeyDuplicate:
 		main := baseDoc(p)
-		c := proptest.SampledFrom(mapKeyCases).Draw(t)
+		c := proptest.Pick(t, mapKeyCases)
 
 		entries := make([]string, 0, len(c.keys))
 		for i, key := range c.keys {
@@ -948,7 +948,7 @@ func renderDefect(t *proptest.T, p *program, d defect) {
 
 	case defSetValueDuplicate:
 		main := baseDoc(p)
-		c := proptest.SampledFrom(setValueCases).Draw(t)
+		c := proptest.Pick(t, setValueCases)
 
 		line := p.add(main, "const "+c.typ+" S = [ "+strings.Join(c.vals, ", ")+" ]")
 
@@ -1102,7 +1102,7 @@ func renderDefect(t *proptest.T, p *program, d defect) {
 
 	case defUndefinedType:
 		main := baseDoc(p)
-		name := proptest.SampledFrom([]string{"Missing", "Nope", "Absent"}).Draw(t)
+		name := proptest.Pick(t, []string{"Missing", "Nope", "Absent"})
 
 		p.add(main, "struct Bad {")
 		line := p.add(main, "  1: "+name+" value,")
@@ -1112,7 +1112,7 @@ func renderDefect(t *proptest.T, p *program, d defect) {
 
 	case defUndefinedValueDefault:
 		main := baseDoc(p)
-		name := proptest.SampledFrom([]string{"Missing", "Nope", "Absent"}).Draw(t)
+		name := proptest.Pick(t, []string{"Missing", "Nope", "Absent"})
 
 		p.add(main, "struct Bad {")
 		line := p.add(main, "  1: i32 value = "+name+",")
@@ -1122,7 +1122,7 @@ func renderDefect(t *proptest.T, p *program, d defect) {
 
 	case defUndefinedValueConst:
 		main := baseDoc(p)
-		name := proptest.SampledFrom([]string{"Missing", "Nope", "Absent"}).Draw(t)
+		name := proptest.Pick(t, []string{"Missing", "Nope", "Absent"})
 
 		line := p.add(main, "const i32 K = "+name)
 
@@ -1194,9 +1194,9 @@ var setValueCases = []struct {
 // renderCase renders either a valid document or one carrying a single defect,
 // so the lint-config properties see both shapes.
 func renderCase(t *proptest.T) *program {
-	if proptest.Bool().Draw(t) {
+	if proptest.Bool(t) {
 		p := newProgram()
-		renderDefect(t, p, proptest.SampledFrom(allDefects).Draw(t))
+		renderDefect(t, p, proptest.Pick(t, allDefects))
 
 		return p
 	}
@@ -1351,7 +1351,7 @@ func Test_ValidNearMissesProduceNoFindings(t *testing.T) {
 func FuzzSingleDefectIsDetected(f *testing.F) {
 	proptest.Fuzz(f, propertySeeds, func(t *proptest.T) {
 		p := newProgram()
-		renderDefect(t, p, proptest.SampledFrom(allDefects).Draw(t))
+		renderDefect(t, p, proptest.Pick(t, allDefects))
 		p.verify(t, p.collect(t, p.full(t)))
 	})
 }
@@ -1413,7 +1413,7 @@ func FuzzDisabledAnalyzersRemoveExactlyTheirFindings(f *testing.F) {
 			t.Fatalf("per-analyzer runs report files the combined run does not: %v vs %v\n%s", union, want, p.dump())
 		}
 
-		disabled := proptest.SampledFrom(names).Draw(t)
+		disabled := proptest.Pick(t, names)
 		got := p.collect(t, p.analyze(t, v, sema.Config{Disabled: []string{disabled}}))
 
 		gotSigs := make(map[string][]string, len(got))
@@ -1466,10 +1466,10 @@ func FuzzSeverityOverridesChangeOnlySeverity(f *testing.F) {
 			return
 		}
 
-		code := proptest.SampledFrom(codes).Draw(t)
-		sev := proptest.SampledFrom([]sema.Severity{
+		code := proptest.Pick(t, codes)
+		sev := proptest.Pick(t, []sema.Severity{
 			sema.SeverityError, sema.SeverityWarning, sema.SeverityInfo, sema.SeverityHint,
-		}).Draw(t)
+		})
 
 		got := p.collect(t, p.analyze(t, v, sema.Config{Severity: map[string]sema.Severity{code: sev}}))
 

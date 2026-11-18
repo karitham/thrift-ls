@@ -99,10 +99,10 @@ func patchFields(p options.Patch) map[string]any {
 func drawPropertyPatch(t *proptest.T) options.Patch {
 	var patch options.Patch
 
-	patch.PrintWidth = proptest.Ptr(proptest.IntRange(20, 120), true).Draw(t)
-	patch.TabWidth = proptest.Ptr(proptest.IntRange(1, 8), true).Draw(t)
-	patch.Align = proptest.Ptr(proptest.SampledFrom([]string{"field", "assign", "disable"}), true).Draw(t)
-	patch.Indent = proptest.Ptr(proptest.Map(
+	patch.PrintWidth = proptest.Ptr(t, proptest.IntRange(20, 120), true)
+	patch.TabWidth = proptest.Ptr(t, proptest.IntRange(1, 8), true)
+	patch.Align = proptest.Ptr(t, proptest.SampledFrom([]string{"field", "assign", "disable"}), true)
+	patch.Indent = proptest.Ptr(t, proptest.Map(
 		proptest.SampledFrom([]string{"  ", "    ", "\t"}),
 		func(value string) formatter.Indent {
 			indent, err := formatter.ParseIndentValue(value)
@@ -112,50 +112,50 @@ func drawPropertyPatch(t *proptest.T) options.Patch {
 
 			return indent
 		},
-	), true).Draw(t)
+	), true)
 
-	if proptest.Bool().Draw(t) {
+	if proptest.Bool(t) {
 		var separators formatter.Separators
 
 		for _, construct := range formatter.AllConstructs {
-			if !proptest.Bool().Draw(t) {
+			if !proptest.Bool(t) {
 				continue
 			}
 
-			separators.Set(construct, new(proptest.SampledFrom([]string{"comma", "semicolon", "none", "preserve"}).Draw(t)))
+			separators.Set(construct, new(proptest.Pick(t, []string{"comma", "semicolon", "none", "preserve"})))
 		}
 
 		patch.Separators = &separators
 	}
 
-	if proptest.Bool().Draw(t) {
+	if proptest.Bool(t) {
 		var breaks formatter.Break
 
 		for _, construct := range formatter.AllConstructs {
-			if proptest.Bool().Draw(t) {
-				breaks.Set(construct, new(proptest.Bool().Draw(t)))
+			if proptest.Bool(t) {
+				breaks.Set(construct, new(proptest.Bool(t)))
 			}
 		}
 
 		patch.Break = &breaks
 	}
 
-	if proptest.Bool().Draw(t) {
-		patch.IncludePaths = proptest.Ptr(proptest.SliceOfN(
+	if proptest.Bool(t) {
+		patch.IncludePaths = proptest.Ptr(t, proptest.SliceOfN(
 			proptest.SampledFrom([]string{"inc", "../shared", "gen", "/abs/inc"}), 0, 3,
-		), false).Draw(t)
+		), false)
 	}
 
-	patch.LogLevel = proptest.Ptr(proptest.IntRange(-4, 8), true).Draw(t)
+	patch.LogLevel = proptest.Ptr(t, proptest.IntRange(-4, 8), true)
 
-	if proptest.Bool().Draw(t) {
+	if proptest.Bool(t) {
 		lint := options.LintConfig{}
-		lint.Disabled = proptest.Ptr(proptest.SliceOfN(
+		lint.Disabled = proptest.Ptr(t, proptest.SliceOfN(
 			proptest.SampledFrom([]string{"duplicate", "field-id", "unused-include"}), 0, 2,
-		), true).Draw(t)
-		lint.Severity = proptest.Ptr(proptest.MapOfN(
+		), true)
+		lint.Severity = proptest.Ptr(t, proptest.MapOfN(
 			proptest.SampledFrom([]string{"duplicate", "field-id"}), proptest.SampledFrom([]string{"error", "warning", "info", "hint"}), 0, 2,
-		), true).Draw(t)
+		), true)
 		patch.Lint = &lint
 	}
 
@@ -265,7 +265,7 @@ func FuzzFileConfigSourceDiscovery(f *testing.F) {
 		[]byte("malformed config"),
 		[]byte("override"),
 	}, func(t *proptest.T) {
-		depth := proptest.IntRange(0, 3).Draw(t)
+		depth := proptest.Int(t, 0, 3)
 
 		path := "/cfg-root"
 		for i := 0; i < depth; i++ {
@@ -284,17 +284,17 @@ func FuzzFileConfigSourceDiscovery(f *testing.F) {
 
 		docDirs := map[string]int{}
 		for _, dir := range ancestors {
-			if !proptest.Bool().Draw(t) {
+			if !proptest.Bool(t) {
 				continue
 			}
 
-			docDirs[dir] = proptest.IntRange(20, 60).Draw(t)
+			docDirs[dir] = proptest.Int(t, 20, 60)
 		}
 
 		seeded := map[uri.URI][]byte{}
 		malformed := map[string]int{}
 		for dir, width := range docDirs {
-			kind := proptest.IntRange(0, 5).Draw(t)
+			kind := proptest.Int(t, 0, 5)
 			malformed[dir] = kind
 
 			switch kind {
@@ -309,7 +309,7 @@ func FuzzFileConfigSourceDiscovery(f *testing.F) {
 
 		// THRIFT_LS_CONFIG, when set, replaces discovery: it may name a
 		// seeded document, a malformed one, or nothing at all.
-		override := proptest.IntRange(0, 4).Draw(t)
+		override := proptest.Int(t, 0, 4)
 		overridePath := "/env/explicit.json"
 
 		switch override {
@@ -407,7 +407,7 @@ func FuzzProjectViewConfigLayering(f *testing.F) {
 		[]byte("malformed document"),
 		[]byte("loader include paths"),
 	}, func(t *proptest.T) {
-		rootPath := proptest.SampledFrom([]string{"/proj", "/proj/sub", "/proj/sub/deeper"}).Draw(t)
+		rootPath := proptest.Pick(t, []string{"/proj", "/proj/sub", "/proj/sub/deeper"})
 
 		frontend := drawPropertyPatch(t)
 		document := drawPropertyPatch(t)
@@ -415,14 +415,14 @@ func FuzzProjectViewConfigLayering(f *testing.F) {
 
 		// The document may sit at the root or one level up, and may be
 		// malformed: then it is skipped and an issue diagnostic appears.
-		docDepth := proptest.IntRange(0, 2).Draw(t)
+		docDepth := proptest.Int(t, 0, 2)
 		docPath := rootPath
 		for i := 0; i < docDepth; i++ {
 			docPath = filepath.Dir(docPath)
 		}
 
 		docURI := uri.File(filepath.Join(docPath, options.ConfigFileName))
-		broken := proptest.IntRange(0, 5).Draw(t) == 0
+		broken := proptest.Int(t, 0, 5) == 0
 
 		files := map[uri.URI][]byte{}
 		if broken {
@@ -473,7 +473,7 @@ func FuzzProjectViewConfigLayering(f *testing.F) {
 
 		// A loader's include paths are authoritative over the document and
 		// CLI, and empty ones fall back to them.
-		loaderIncludes := proptest.SampledFrom([][]string{nil, {"/from-build-system"}, {"/one", "/two"}}).Draw(t)
+		loaderIncludes := proptest.Pick(t, [][]string{nil, {"/from-build-system"}, {"/one", "/two"}})
 
 		project := Project{
 			ConfigURI:    uri.File(filepath.Join(rootPath, "build.json")),
@@ -536,7 +536,7 @@ func FuzzLSPSettingsContract(f *testing.F) {
 		patch := drawPropertyPatch(t)
 
 		doc := patchDocument(patch)
-		doc["path"] = proptest.SampledFrom([]string{"/usr/bin/thrift-ls", "", "/tmp/bin"}).Draw(t)
+		doc["path"] = proptest.Pick(t, []string{"/usr/bin/thrift-ls", "", "/tmp/bin"})
 
 		got, err := lspSettings(mustJSON(t, doc))
 		require.NoError(t, err)
@@ -544,10 +544,10 @@ func FuzzLSPSettingsContract(f *testing.F) {
 
 		// Unknown keys are rejected, never silently ignored: a typo must not
 		// format with stale options.
-		unknown := proptest.SampledFrom([]string{"printWhidt", "includePath", "lintt", "algin", "tabwidht"}).Draw(t)
+		unknown := proptest.Pick(t, []string{"printWhidt", "includePath", "lintt", "algin", "tabwidht"})
 		bad := patchDocument(patch)
 		bad["path"] = "/bin/x"
-		bad[unknown] = proptest.SampledFrom([]any{100, "field", true, []any{"x"}}).Draw(t)
+		bad[unknown] = proptest.Pick(t, []any{100, "field", true, []any{"x"}})
 
 		_, err = lspSettings(mustJSON(t, bad))
 		require.Error(t, err, "unknown key %q must be rejected", unknown)

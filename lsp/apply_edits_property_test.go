@@ -19,15 +19,15 @@ var propertyFieldTypes = []string{"i32", "string", "bool", "double"}
 // drawUnformattedDocument draws a small IDL document the formatter always
 // rewrites: one field per line, which the default width collapses.
 func drawUnformattedDocument(t *proptest.T) string {
-	name := proptest.SampledFrom([]string{"Alpha", "Beta", "Gamma"}).Draw(t)
-	fields := proptest.IntRange(1, 2).Draw(t)
+	name := proptest.Pick(t, []string{"Alpha", "Beta", "Gamma"})
+	fields := proptest.Int(t, 1, 2)
 
 	var doc strings.Builder
 
 	fmt.Fprintf(&doc, "struct %s {\n", name)
 
 	for i := 1; i <= fields; i++ {
-		fmt.Fprintf(&doc, "%d: %s f%d\n", i, proptest.SampledFrom(propertyFieldTypes).Draw(t), i)
+		fmt.Fprintf(&doc, "%d: %s f%d\n", i, proptest.Pick(t, propertyFieldTypes), i)
 	}
 
 	doc.WriteString("}\n")
