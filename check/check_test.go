@@ -61,16 +61,14 @@ func Test_CheckMadeInAbyss(t *testing.T) {
 		assert.Empty(t, diags[filepath.Join(root, name)], "%s must be clean", name)
 	}
 
-	// The mutual include cycle: one warning on cycle_a (its include of
-	// cycle_b closes the cycle), two on cycle_b.
+	// The mutual include cycle: one warning per include edge.
 	cycleA := diags[filepath.Join(root, "cycle_a.thrift")]
 	require.Len(t, cycleA, 1)
 	assert.Contains(t, cycleA[0].Message, "cycle dependency")
 
 	cycleB := diags[filepath.Join(root, "cycle_b.thrift")]
-	require.Len(t, cycleB, 2)
+	require.Len(t, cycleB, 1)
 	assert.Contains(t, cycleB[0].Message, "cycle dependency")
-	assert.Contains(t, cycleB[1].Message, "cycle dependency")
 
 	// The mistake showcase: 18 errors and 7 warnings.
 	lints := diags[filepath.Join(root, "lints.thrift")]

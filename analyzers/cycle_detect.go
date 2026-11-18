@@ -70,6 +70,12 @@ type Include struct {
 // view so the ParsedFiles (and the include edges parsing records) are
 // shared with the rest of the analysis.
 func getIncludes(ctx context.Context, view sema.Graph, file uri.URI, includesMap *map[uri.URI][]Include) error {
+	// The closure is shared across targets; walking a file twice would
+	// double its edges and their cycle reports.
+	if _, ok := (*includesMap)[file]; ok {
+		return nil
+	}
+
 	pf, err := view.Parse(ctx, file)
 	if err != nil {
 		return err
