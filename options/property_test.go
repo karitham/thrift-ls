@@ -5,15 +5,14 @@ package options_test
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"pgregory.net/rapid"
 
 	"github.com/karitham/thrift-ls/formatter"
+	"github.com/karitham/thrift-ls/internal/fuzzgen"
 	"github.com/karitham/thrift-ls/options"
 )
 
@@ -100,56 +99,56 @@ var (
 
 // drawPatch draws one partial patch: every field independently set or unset,
 // with the per-construct maps partially filled.
-func drawPatch(t *rapid.T, name string) options.Patch {
+func drawPatch(t *fuzzgen.T) options.Patch {
 	var patch options.Patch
 
-	patch.PrintWidth = rapid.Ptr(rapid.IntRange(1, 120), true).Draw(t, name+".printWidth")
-	patch.TabWidth = rapid.Ptr(rapid.IntRange(1, 8), true).Draw(t, name+".tabWidth")
-	patch.Align = rapid.Ptr(rapid.SampledFrom(alignValues), true).Draw(t, name+".align")
-	patch.LogLevel = rapid.Ptr(rapid.IntRange(-4, 8), true).Draw(t, name+".logLevel")
-	patch.Indent = rapid.Ptr(rapid.Map(rapid.SampledFrom(indentValues), func(value string) formatter.Indent {
+	patch.PrintWidth = fuzzgen.Ptr(fuzzgen.IntRange(1, 120), true).Draw(t)
+	patch.TabWidth = fuzzgen.Ptr(fuzzgen.IntRange(1, 8), true).Draw(t)
+	patch.Align = fuzzgen.Ptr(fuzzgen.SampledFrom(alignValues), true).Draw(t)
+	patch.LogLevel = fuzzgen.Ptr(fuzzgen.IntRange(-4, 8), true).Draw(t)
+	patch.Indent = fuzzgen.Ptr(fuzzgen.Map(fuzzgen.SampledFrom(indentValues), func(value string) formatter.Indent {
 		indent, err := formatter.ParseIndentValue(value)
 		if err != nil {
 			panic(err)
 		}
 
 		return indent
-	}), true).Draw(t, name+".indent")
+	}), true).Draw(t)
 
-	if rapid.Bool().Draw(t, name+".separatorsSet") {
+	if fuzzgen.Bool().Draw(t) {
 		var separators formatter.Separators
 
 		for _, construct := range formatter.AllConstructs {
-			if rapid.Bool().Draw(t, name+".separator."+construct.String()) {
-				separators.Set(construct, new(rapid.SampledFrom(separatorValues).Draw(t, name+".separatorValue")))
+			if fuzzgen.Bool().Draw(t) {
+				separators.Set(construct, new(fuzzgen.SampledFrom(separatorValues).Draw(t)))
 			}
 		}
 
 		patch.Separators = &separators
 	}
 
-	if rapid.Bool().Draw(t, name+".breakSet") {
+	if fuzzgen.Bool().Draw(t) {
 		var breaks formatter.Break
 
 		for _, construct := range formatter.AllConstructs {
-			if rapid.Bool().Draw(t, name+".break."+construct.String()) {
-				breaks.Set(construct, new(rapid.Bool().Draw(t, name+".breakValue")))
+			if fuzzgen.Bool().Draw(t) {
+				breaks.Set(construct, new(fuzzgen.Bool().Draw(t)))
 			}
 		}
 
 		patch.Break = &breaks
 	}
 
-	if rapid.Bool().Draw(t, name+".includePathsSet") {
-		patch.IncludePaths = rapid.Ptr(rapid.SliceOfN(
-			rapid.SampledFrom([]string{"inc", "../shared", "gen", "/abs/inc"}), 0, 3,
-		), false).Draw(t, name+".includePaths")
+	if fuzzgen.Bool().Draw(t) {
+		patch.IncludePaths = fuzzgen.Ptr(fuzzgen.SliceOfN(
+			fuzzgen.SampledFrom([]string{"inc", "../shared", "gen", "/abs/inc"}), 0, 3,
+		), false).Draw(t)
 	}
 
-	if rapid.Bool().Draw(t, name+".lintSet") {
+	if fuzzgen.Bool().Draw(t) {
 		lint := options.LintConfig{
-			Disabled: rapid.Ptr(rapid.SliceOfN(rapid.SampledFrom(analyzerNames), 0, 2), true).Draw(t, name+".lint.disabled"),
-			Severity: rapid.Ptr(rapid.MapOfN(rapid.SampledFrom(analyzerNames), rapid.SampledFrom(severityValues), 0, 2), true).Draw(t, name+".lint.severity"),
+			Disabled: fuzzgen.Ptr(fuzzgen.SliceOfN(fuzzgen.SampledFrom(analyzerNames), 0, 2), true).Draw(t),
+			Severity: fuzzgen.Ptr(fuzzgen.MapOfN(fuzzgen.SampledFrom(analyzerNames), fuzzgen.SampledFrom(severityValues), 0, 2), true).Draw(t),
 		}
 		patch.Lint = &lint
 	}
@@ -241,18 +240,33 @@ func fold(lowest options.Patch, layers []options.Patch) options.Patch {
 	return out
 }
 
-// TestPatchApplyLayeringProperty checks the fold against the fieldwise model
+// FuzzPatchApplyLayeringProperty checks the fold against the fieldwise model
 // and against two other groupings of the same layers: composing the overlays
 // before applying them once, and Effective over a single layer.
-func TestPatchApplyLayeringProperty(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
+func FuzzPatchApplyLayeringProperty(f *testing.F) {
+	// Seed bytes are arbitrary: the stream is derived from their hash, so the
+	// seeds are picked to draw every layer count 0-4 in a plain run.
+	for _, seed := range [][]byte{
+		[]byte(""),
+		[]byte("indent"),
+		[]byte("settings"),
+		[]byte("four layers"),
+		[]byte("many layers"),
+		[]byte("separators"),
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		t := fuzzgen.New(tb, seed)
+
 		defaults := options.Default()
 
-		count := rapid.IntRange(0, 4).Draw(t, "layers")
+		count := fuzzgen.IntRange(0, 4).Draw(t)
 
 		layers := make([]options.Patch, count)
 		for i := range layers {
-			layers[i] = drawPatch(t, fmt.Sprintf("layer%d", i))
+			layers[i] = drawPatch(t)
 		}
 
 		got := fold(defaults, layers)
@@ -355,11 +369,26 @@ func document(patch options.Patch) map[string]any {
 	return doc
 }
 
-// TestParseRoundTripProperty checks that parsing keeps set fields and rejects
+// FuzzParseRoundTripProperty checks that parsing keeps set fields and rejects
 // unknown keys.
-func TestParseRoundTripProperty(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
-		patch := drawPatch(t, "patch")
+func FuzzParseRoundTripProperty(f *testing.F) {
+	// Seed bytes are arbitrary: the stream is derived from their hash, so the
+	// seeds are picked to draw every unknown key and value in a plain run.
+	for _, seed := range [][]byte{
+		[]byte(""),
+		[]byte("four layers"),
+		[]byte("root"),
+		[]byte("settings"),
+		[]byte("patch"),
+		[]byte("defaults"),
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		t := fuzzgen.New(tb, seed)
+
+		patch := drawPatch(t)
 
 		data, err := json.Marshal(document(patch))
 		require.NoError(t, err)
@@ -370,9 +399,9 @@ func TestParseRoundTripProperty(t *testing.T) {
 		require.Equal(t, patchFields(patch), patchFields(*parsed), "document round-trip")
 
 		// Unknown keys are rejected, and the error names the key.
-		unknown := rapid.SampledFrom([]string{"printWidthExtra", "indentt", "lintt", "algin", "logLevle"}).Draw(t, "unknown")
+		unknown := fuzzgen.SampledFrom([]string{"printWidthExtra", "indentt", "lintt", "algin", "logLevle"}).Draw(t)
 		bad := document(patch)
-		bad[unknown] = rapid.SampledFrom([]any{1, "x", true}).Draw(t, "unknownValue")
+		bad[unknown] = fuzzgen.SampledFrom([]any{1, "x", true}).Draw(t)
 
 		data, err = json.Marshal(bad)
 		require.NoError(t, err)
@@ -383,16 +412,31 @@ func TestParseRoundTripProperty(t *testing.T) {
 	})
 }
 
-// TestValidateProperty checks that a generated patch is valid and that
+// FuzzValidateProperty checks that a generated patch is valid and that
 // breaking one field makes it invalid.
-func TestValidateProperty(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
-		patch := drawPatch(t, "patch")
+func FuzzValidateProperty(f *testing.F) {
+	// Seed bytes are arbitrary: the stream is derived from their hash, so the
+	// seeds are picked to break every field in turn in a plain run.
+	for _, seed := range [][]byte{
+		[]byte("four layers"),
+		[]byte("root"),
+		[]byte("settings"),
+		[]byte("patch"),
+		[]byte("defaults"),
+		[]byte("separators"),
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		t := fuzzgen.New(tb, seed)
+
+		patch := drawPatch(t)
 		require.NoError(t, patch.Validate(), "a generated patch must be valid")
 
 		broken := patch
 
-		switch rapid.IntRange(0, 4).Draw(t, "which") {
+		switch fuzzgen.IntRange(0, 4).Draw(t) {
 		case 0:
 			broken.PrintWidth = new(0)
 		case 1:
@@ -413,12 +457,27 @@ func TestValidateProperty(t *testing.T) {
 	})
 }
 
-// TestAnchorIncludesProperty checks relative and absolute include paths and
+// FuzzAnchorIncludesProperty checks relative and absolute include paths and
 // that anchoring twice matches anchoring once.
-func TestAnchorIncludesProperty(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
-		dir := rapid.SampledFrom([]string{"/cfg", "/cfg/a/b", "/"}).Draw(t, "dir")
-		paths := rapid.SliceOfN(rapid.SampledFrom([]string{"inc", "../up", "./here", "/abs/inc", "a/b"}), 0, 3).Draw(t, "paths")
+func FuzzAnchorIncludesProperty(f *testing.F) {
+	// Seed bytes are arbitrary: the stream is derived from their hash, so the
+	// seeds are picked to draw every include directory and path shape.
+	for _, seed := range [][]byte{
+		[]byte("layer"),
+		[]byte("layers"),
+		[]byte("separators"),
+		[]byte("settings"),
+		[]byte("overrides"),
+		[]byte("include paths"),
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		t := fuzzgen.New(tb, seed)
+
+		dir := fuzzgen.SampledFrom([]string{"/cfg", "/cfg/a/b", "/"}).Draw(t)
+		paths := fuzzgen.SliceOfN(fuzzgen.SampledFrom([]string{"inc", "../up", "./here", "/abs/inc", "a/b"}), 0, 3).Draw(t)
 
 		patch := options.Patch{IncludePaths: &paths}
 		options.AnchorIncludes(&patch, dir)
@@ -445,20 +504,31 @@ func TestAnchorIncludesProperty(t *testing.T) {
 	})
 }
 
-// TestFindNearestConfigProperty checks the walk-up, absolute results, and
-// the THRIFT_LS_CONFIG override.
-func TestFindNearestConfigProperty(t *testing.T) {
-	outer := t
-	root := t.TempDir()
-	segments := []string{"alpha", "beta", "gamma"}
-	cases := 0
+// FuzzFindNearestConfigProperty checks the walk-up, absolute results, and the
+// THRIFT_LS_CONFIG override.
+func FuzzFindNearestConfigProperty(f *testing.F) {
+	// Seed bytes are arbitrary: the stream is derived from their hash, so the
+	// seeds are picked to draw every walk-up depth 0-3 in a plain run.
+	for _, seed := range [][]byte{
+		[]byte("indent"),
+		[]byte("layers"),
+		[]byte("config"),
+		[]byte("layer"),
+		[]byte("root only"),
+		[]byte("walk up"),
+	} {
+		f.Add(seed)
+	}
 
-	rapid.Check(t, func(t *rapid.T) {
-		cases++
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		t := fuzzgen.New(tb, seed)
 
-		dir := filepath.Join(root, fmt.Sprintf("case%d", cases))
+		root := tb.TempDir()
+		segments := []string{"alpha", "beta", "gamma"}
 
-		depth := rapid.IntRange(0, 3).Draw(t, "depth")
+		dir := root
+
+		depth := fuzzgen.IntRange(0, 3).Draw(t)
 		for i := 0; i < depth; i++ {
 			dir = filepath.Join(dir, segments[i])
 		}
@@ -480,7 +550,7 @@ func TestFindNearestConfigProperty(t *testing.T) {
 		planted := map[int]bool{len(ancestors) - 1: true}
 
 		for i := range ancestors {
-			if rapid.Bool().Draw(t, fmt.Sprintf("doc%d", i)) {
+			if fuzzgen.Bool().Draw(t) {
 				planted[i] = true
 			}
 		}
@@ -503,7 +573,7 @@ func TestFindNearestConfigProperty(t *testing.T) {
 		// THRIFT_LS_CONFIG replaces the search for FindConfig but does not
 		// change FindNearestConfig.
 		override := filepath.Join(root, "override.json")
-		outer.Setenv("THRIFT_LS_CONFIG", override)
+		t.Setenv("THRIFT_LS_CONFIG", override)
 
 		require.Equal(t, filepath.ToSlash(want), filepath.ToSlash(mustNearest(t, dir)))
 
@@ -511,7 +581,7 @@ func TestFindNearestConfigProperty(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, override, got)
 
-		outer.Setenv("THRIFT_LS_CONFIG", "")
+		t.Setenv("THRIFT_LS_CONFIG", "")
 	})
 }
 

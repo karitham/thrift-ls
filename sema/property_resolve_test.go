@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
-	"pgregory.net/rapid"
 
+	"github.com/karitham/thrift-ls/internal/fuzzgen"
 	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
 	"github.com/karitham/thrift-ls/syntax"
@@ -775,8 +775,8 @@ func (w *mdlWorkspace) contents() map[uri.URI][]byte {
 
 // mdlDrawWorkspace draws a generated workspace: the file set, its model, and
 // the rendered content.
-func mdlDrawWorkspace(t *rapid.T) *mdlWorkspace {
-	n := rapid.IntRange(2, 5).Draw(t, "fileCount")
+func mdlDrawWorkspace(t *fuzzgen.T) *mdlWorkspace {
+	n := fuzzgen.IntRange(2, 5).Draw(t)
 
 	names := make([]string, n)
 	for i := range names {
@@ -789,24 +789,24 @@ func mdlDrawWorkspace(t *rapid.T) *mdlWorkspace {
 	for i, name := range names {
 		doc := &mdlDoc{uri: uri.File(mdlRoot + "/" + name + ".thrift")}
 
-		for range rapid.IntRange(0, 3).Draw(t, "includeCount") {
+		for range fuzzgen.IntRange(0, 3).Draw(t) {
 			doc.includes = append(doc.includes, mdlDrawIncludePath(t, names))
 		}
 
 		// Names are distinct within one file, so a file's definition table is
 		// unambiguous; the three-name pool still collides constantly across
 		// files.
-		defCount := rapid.IntRange(0, 3).Draw(t, "defCount")
-		picked := rapid.SliceOfNDistinct(
-			rapid.SampledFrom(mdlNames), defCount, defCount, rapid.ID[string],
-		).Draw(t, "defNames")
+		defCount := fuzzgen.IntRange(0, 3).Draw(t)
+		picked := fuzzgen.SliceOfNDistinct(
+			fuzzgen.SampledFrom(mdlNames), defCount, defCount, func(s string) string { return s },
+		).Draw(t)
 
 		for _, name := range picked {
 			doc.defs = append(doc.defs, mdlDrawDef(t, name, names))
 		}
 
 		// Probe structs carry references without introducing pool names.
-		for j := range rapid.IntRange(0, 2).Draw(t, "probeCount") {
+		for j := range fuzzgen.IntRange(0, 2).Draw(t) {
 			doc.defs = append(doc.defs, mdlDrawProbe(t, fmt.Sprintf("P%d_%d", i, j), names))
 		}
 
@@ -850,7 +850,7 @@ func mdlDrawWorkspace(t *rapid.T) *mdlWorkspace {
 // the name is shadowed by an earlier definition of the same name), through a
 // direct include, in the invalid dotted-filename spelling, and behind a
 // qualifier that names no include at all.
-func mdlAddEnumRefs(t *rapid.T, docs []*mdlDoc, byURI map[uri.URI]*mdlDoc) {
+func mdlAddEnumRefs(t *fuzzgen.T, docs []*mdlDoc, byURI map[uri.URI]*mdlDoc) {
 	extra := make(map[uri.URI][]*mdlDef, len(docs))
 
 	for _, doc := range docs {
@@ -883,17 +883,17 @@ func mdlAddEnumRefs(t *rapid.T, docs []*mdlDoc, byURI map[uri.URI]*mdlDoc) {
 		// An enum-qualified reference from a file that reaches the enum: the
 		// most interesting case for reference search, so it is always present
 		// when the workspace has an enum in scope.
-		for j := range rapid.IntRange(0, 2).Draw(t, "enumRefCount") {
+		for j := range fuzzgen.IntRange(0, 2).Draw(t) {
 			if len(candidates) == 0 {
 				break
 			}
 
-			c := candidates[rapid.IntRange(0, len(candidates)-1).Draw(t, "enumRef")]
-			member := c.def.values[rapid.IntRange(0, len(c.def.values)-1).Draw(t, "enumRefMember")]
+			c := candidates[fuzzgen.IntRange(0, len(candidates)-1).Draw(t)]
+			member := c.def.values[fuzzgen.IntRange(0, len(c.def.values)-1).Draw(t)]
 
 			var text string
 
-			switch rapid.IntRange(0, 5).Draw(t, "enumRefKind") {
+			switch fuzzgen.IntRange(0, 5).Draw(t) {
 			case 0, 1, 2:
 				text = c.def.name + "." + member
 			case 3:
@@ -917,14 +917,14 @@ func mdlAddEnumRefs(t *rapid.T, docs []*mdlDoc, byURI map[uri.URI]*mdlDoc) {
 	// to that enum directly.
 	for _, doc := range docs {
 		for _, def := range doc.defs {
-			if def.kind != mdlEnum || len(def.values) == 0 || !rapid.Bool().Draw(t, "ownEnumRef") {
+			if def.kind != mdlEnum || len(def.values) == 0 || !fuzzgen.Bool().Draw(t) {
 				continue
 			}
 
-			member := def.values[rapid.IntRange(0, len(def.values)-1).Draw(t, "ownEnumRefMember")]
+			member := def.values[fuzzgen.IntRange(0, len(def.values)-1).Draw(t)]
 
 			text := def.name + "." + member
-			if rapid.Bool().Draw(t, "ownEnumRefQualified") {
+			if fuzzgen.Bool().Draw(t) {
 				text = def.name + ".thrift." + member
 			}
 
@@ -955,9 +955,9 @@ func mdlQualify(includeName, name string) string {
 // mdlDrawIncludePath draws one include path text: an existing file (possibly
 // the same file, possibly spelled "./x.thrift"), or a file that does not
 // exist.
-func mdlDrawIncludePath(t *rapid.T, names []string) string {
-	pick := rapid.IntRange(0, 5).Draw(t, "includeKind")
-	target := names[rapid.IntRange(0, len(names)-1).Draw(t, "includeTarget")]
+func mdlDrawIncludePath(t *fuzzgen.T, names []string) string {
+	pick := fuzzgen.IntRange(0, 5).Draw(t)
+	target := names[fuzzgen.IntRange(0, len(names)-1).Draw(t)]
 
 	switch pick {
 	case 0, 1:
@@ -965,7 +965,7 @@ func mdlDrawIncludePath(t *rapid.T, names []string) string {
 	case 2, 3:
 		return "./" + target + ".thrift"
 	case 4:
-		return "ghost" + strconv.Itoa(rapid.IntRange(0, 2).Draw(t, "ghost")) + ".thrift"
+		return "ghost" + strconv.Itoa(fuzzgen.IntRange(0, 2).Draw(t)) + ".thrift"
 	}
 
 	return target + ".thrift"
@@ -974,10 +974,10 @@ func mdlDrawIncludePath(t *rapid.T, names []string) string {
 // mdlDrawType draws a type reference: a base type, a bare name, a qualified
 // reference, the invalid dotted-filename spelling, a missing name, or a
 // container of one of those.
-func mdlDrawType(t *rapid.T, depth int, names []string) *mdlType {
-	pick := rapid.IntRange(0, 10).Draw(t, "typeKind")
-	file := func() string { return names[rapid.IntRange(0, len(names)-1).Draw(t, "typeFile")] }
-	name := func() string { return mdlNames[rapid.IntRange(0, len(mdlNames)-1).Draw(t, "typeName")] }
+func mdlDrawType(t *fuzzgen.T, depth int, names []string) *mdlType {
+	pick := fuzzgen.IntRange(0, 10).Draw(t)
+	file := func() string { return names[fuzzgen.IntRange(0, len(names)-1).Draw(t)] }
+	name := func() string { return mdlNames[fuzzgen.IntRange(0, len(mdlNames)-1).Draw(t)] }
 
 	switch pick {
 	case 0:
@@ -1016,12 +1016,12 @@ func mdlDrawType(t *rapid.T, depth int, names []string) *mdlType {
 // mdlDrawValue draws a const value: an int literal, a boolean literal, or an
 // identifier reference (bare, qualified, enum-qualified, and the
 // dotted-filename spelling).
-func mdlDrawValue(t *rapid.T, names []string) *mdlValue {
-	pick := rapid.IntRange(0, 9).Draw(t, "valueKind")
-	file := func() string { return names[rapid.IntRange(0, len(names)-1).Draw(t, "valueFile")] }
-	name := func() string { return mdlNames[rapid.IntRange(0, len(mdlNames)-1).Draw(t, "valueName")] }
+func mdlDrawValue(t *fuzzgen.T, names []string) *mdlValue {
+	pick := fuzzgen.IntRange(0, 9).Draw(t)
+	file := func() string { return names[fuzzgen.IntRange(0, len(names)-1).Draw(t)] }
+	name := func() string { return mdlNames[fuzzgen.IntRange(0, len(mdlNames)-1).Draw(t)] }
 	enumValue := func() string {
-		return mdlEnumValues[rapid.IntRange(0, len(mdlEnumValues)-1).Draw(t, "valueEnum")]
+		return mdlEnumValues[fuzzgen.IntRange(0, len(mdlEnumValues)-1).Draw(t)]
 	}
 
 	switch pick {
@@ -1049,8 +1049,8 @@ func mdlDrawValue(t *rapid.T, names []string) *mdlValue {
 }
 
 // mdlDrawDef draws one definition of a given name.
-func mdlDrawDef(t *rapid.T, name string, names []string) *mdlDef {
-	pick := rapid.IntRange(0, 6).Draw(t, "defKind")
+func mdlDrawDef(t *fuzzgen.T, name string, names []string) *mdlDef {
+	pick := fuzzgen.IntRange(0, 6).Draw(t)
 
 	switch pick {
 	case 0:
@@ -1060,10 +1060,10 @@ func mdlDrawDef(t *rapid.T, name string, names []string) *mdlDef {
 	case 2:
 		return &mdlDef{kind: mdlException, name: name, target: mdlDrawType(t, 0, names)}
 	case 3:
-		count := rapid.IntRange(1, 2).Draw(t, "enumCount")
-		values := rapid.SliceOfNDistinct(
-			rapid.SampledFrom(mdlEnumValues), count, count, rapid.ID[string],
-		).Draw(t, "enumValues")
+		count := fuzzgen.IntRange(1, 2).Draw(t)
+		values := fuzzgen.SliceOfNDistinct(
+			fuzzgen.SampledFrom(mdlEnumValues), count, count, func(s string) string { return s },
+		).Draw(t)
 
 		return &mdlDef{kind: mdlEnum, name: name, values: values}
 	case 4:
@@ -1074,23 +1074,23 @@ func mdlDrawDef(t *rapid.T, name string, names []string) *mdlDef {
 
 	def := &mdlDef{kind: mdlService, name: name}
 
-	switch rapid.IntRange(0, 3).Draw(t, "extendsKind") {
+	switch fuzzgen.IntRange(0, 3).Draw(t) {
 	case 0:
 	case 1:
-		def.extend = mdlNames[rapid.IntRange(0, len(mdlNames)-1).Draw(t, "extendsName")]
+		def.extend = mdlNames[fuzzgen.IntRange(0, len(mdlNames)-1).Draw(t)]
 	case 2:
-		def.extend = names[rapid.IntRange(0, len(names)-1).Draw(t, "extendsFile")] +
-			"." + mdlNames[rapid.IntRange(0, len(mdlNames)-1).Draw(t, "extendsName")]
+		def.extend = names[fuzzgen.IntRange(0, len(names)-1).Draw(t)] +
+			"." + mdlNames[fuzzgen.IntRange(0, len(mdlNames)-1).Draw(t)]
 	case 3:
-		def.extend = names[rapid.IntRange(0, len(names)-1).Draw(t, "extendsFile")] +
-			".thrift." + mdlNames[rapid.IntRange(0, len(mdlNames)-1).Draw(t, "extendsName")]
+		def.extend = names[fuzzgen.IntRange(0, len(names)-1).Draw(t)] +
+			".thrift." + mdlNames[fuzzgen.IntRange(0, len(mdlNames)-1).Draw(t)]
 	}
 
 	return def
 }
 
 // mdlDrawProbe draws a struct whose fields exist only to carry references.
-func mdlDrawProbe(t *rapid.T, name string, names []string) *mdlDef {
+func mdlDrawProbe(t *fuzzgen.T, name string, names []string) *mdlDef {
 	return &mdlDef{kind: mdlStruct, name: name, target: mdlDrawType(t, 0, names), value: mdlDrawOptionalValue(t, names)}
 }
 
@@ -1099,8 +1099,8 @@ func mdlDrawProbe(t *rapid.T, name string, names []string) *mdlDef {
 // unresolvable name; the last link may close the chain into a cycle. Chain
 // names are drawn from their own pool, so a chain never collides with the
 // definition-name pool.
-func mdlDrawChain(t *rapid.T, names []string) []*mdlDef {
-	length := rapid.IntRange(1, 3).Draw(t, "chainLen")
+func mdlDrawChain(t *fuzzgen.T, names []string) []*mdlDef {
+	length := fuzzgen.IntRange(1, 3).Draw(t)
 
 	links := make([]string, length)
 	for i := range links {
@@ -1113,7 +1113,7 @@ func mdlDrawChain(t *rapid.T, names []string) []*mdlDef {
 		def := &mdlDef{kind: mdlTypedef, name: links[i]}
 		last := i+1 == length
 
-		switch rapid.IntRange(0, 5).Draw(t, "chainLink") {
+		switch fuzzgen.IntRange(0, 5).Draw(t) {
 		case 0:
 			def.target = &mdlType{base: "i32"}
 		case 1:
@@ -1127,7 +1127,7 @@ func mdlDrawChain(t *rapid.T, names []string) []*mdlDef {
 				def.target = &mdlType{ident: links[0]} // closes the chain into a cycle
 			}
 		case 4:
-			file := names[rapid.IntRange(0, len(names)-1).Draw(t, "chainFile")]
+			file := names[fuzzgen.IntRange(0, len(names)-1).Draw(t)]
 			if !last {
 				def.target = &mdlType{ident: file + "." + links[i+1]}
 			} else {
@@ -1144,8 +1144,8 @@ func mdlDrawChain(t *rapid.T, names []string) []*mdlDef {
 }
 
 // mdlDrawOptionalValue draws a field default half the time.
-func mdlDrawOptionalValue(t *rapid.T, names []string) *mdlValue {
-	if !rapid.Bool().Draw(t, "hasDefault") {
+func mdlDrawOptionalValue(t *fuzzgen.T, names []string) *mdlValue {
+	if !fuzzgen.Bool().Draw(t) {
 		return nil
 	}
 
@@ -1444,10 +1444,29 @@ func mdlModelDesc(t *mdlType) string {
 	return "unknown"
 }
 
-// TestReferenceIndexMatchesSource checks that a file's reference index holds
+// resolveSeeds is the corpus every resolution property in this file starts
+// from. fuzzgen.New derives its draw stream from the bytes' hash, so each entry
+// starts one independent stream per target, and the fuzzer varies the bytes
+// from there.
+var resolveSeeds = [][]byte{
+	[]byte("T U N"),
+	[]byte("struct T {\n  1: U u,\n}\ninclude \"f0.thrift\"\n"),
+	[]byte("include \"./f1.thrift\"\ninclude \"f1.thrift\"\n"),
+	[]byte("shared.Color.RED"),
+	[]byte("typedef C0 C1\ntypedef C1 C0\n"),
+	[]byte("ghost.thrift.Ghost"),
+}
+
+// FuzzReferenceIndexMatchesSource checks that a file's reference index holds
 // its source references in order, at their written offsets.
-func TestReferenceIndexMatchesSource(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
+func FuzzReferenceIndexMatchesSource(f *testing.F) {
+	for _, seed := range resolveSeeds {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		t := fuzzgen.New(tb, seed)
+
 		ctx := t.Context()
 		ws := mdlDrawWorkspace(t)
 		view := mdlNewView(ws.files, true)
@@ -1470,154 +1489,226 @@ func TestReferenceIndexMatchesSource(t *testing.T) {
 	})
 }
 
-// TestIndexResolveDifferential compares every resolution question the model
+// resolveCoverage counts the resolution outcomes the differential must
+// exercise: a generator that never resolves, or never fails to resolve, would
+// make the property vacuous.
+type resolveCoverage struct {
+	resolvedType    int
+	resolvedValue   int
+	resolvedService int
+	unresolved      int
+}
+
+// resolveDifferential runs the resolution differential over the stream seed
+// derives from: every question the model can ask, answered by production and
+// by the model. The counts say which outcomes the run covered.
+func resolveDifferential(tb *testing.T, seed []byte) resolveCoverage {
+	t := fuzzgen.New(tb, seed)
+
+	var cov resolveCoverage
+
+	ctx := t.Context()
+	ws := mdlDrawWorkspace(t)
+	view := mdlNewView(ws.files, true)
+
+	for _, u := range ws.model.uris {
+		d := ws.model.docs[u]
+
+		pf, err := view.Parse(ctx, u)
+		require.NoError(t, err)
+		require.Empty(t, pf.Errors(), "generated document must parse cleanly:\n%s", d.content)
+
+		for _, q := range ws.model.queries(d) {
+			want := ws.model.answer(d, q)
+
+			if !want.ok {
+				cov.unresolved++
+			} else {
+				switch q.kind {
+				case mdlQueryType:
+					cov.resolvedType++
+				case mdlQueryValue:
+					cov.resolvedValue++
+				case mdlQueryService:
+					cov.resolvedService++
+				}
+			}
+
+			got, err := mdlAsk(ctx, view, pf, q)
+			require.NoError(t, err)
+			require.Equal(t, want, got, "resolving %q (resolver %d) from %s in\n%s",
+				q.text, q.kind, u.Path(), d.content)
+		}
+	}
+
+	return cov
+}
+
+// FuzzIndexResolveDifferential compares every resolution question the model
 // can ask against a fresh index's answer: qualified and unqualified types,
 // values (enum members and consts, bare and qualified), and services, over
 // generated include graphs that cycle, self-include, repeat, and dangle.
-func TestIndexResolveDifferential(t *testing.T) {
-	var resolvedType, resolvedValue, resolvedService, unresolved int
+func FuzzIndexResolveDifferential(f *testing.F) {
+	for _, seed := range resolveSeeds {
+		f.Add(seed)
+	}
 
-	rapid.Check(t, func(t *rapid.T) {
-		ctx := t.Context()
-		ws := mdlDrawWorkspace(t)
-		view := mdlNewView(ws.files, true)
-
-		for _, u := range ws.model.uris {
-			d := ws.model.docs[u]
-
-			pf, err := view.Parse(ctx, u)
-			require.NoError(t, err)
-			require.Empty(t, pf.Errors(), "generated document must parse cleanly:\n%s", d.content)
-
-			for _, q := range ws.model.queries(d) {
-				want := ws.model.answer(d, q)
-
-				if !want.ok {
-					unresolved++
-				} else {
-					switch q.kind {
-					case mdlQueryType:
-						resolvedType++
-					case mdlQueryValue:
-						resolvedValue++
-					case mdlQueryService:
-						resolvedService++
-					}
-				}
-
-				got, err := mdlAsk(ctx, view, pf, q)
-				require.NoError(t, err)
-				require.Equal(t, want, got, "resolving %q (resolver %d) from %s in\n%s",
-					q.text, q.kind, u.Path(), d.content)
-			}
-		}
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		resolveDifferential(tb, seed)
 	})
+}
+
+// TestIndexResolveDifferentialCoversResolvers pins the generator coverage the
+// differential leans on, over the same seed corpus the fuzz target runs.
+func TestIndexResolveDifferentialCoversResolvers(t *testing.T) {
+	var total resolveCoverage
+
+	for _, seed := range resolveSeeds {
+		c := resolveDifferential(t, seed)
+		total.resolvedType += c.resolvedType
+		total.resolvedValue += c.resolvedValue
+		total.resolvedService += c.resolvedService
+		total.unresolved += c.unresolved
+	}
 
 	// A differential that never resolves anything proves nothing: the
 	// generated workspaces must exercise every resolver in both directions.
-	assert.Greater(t, resolvedType, 0, "no generated type reference ever resolved")
-	assert.Greater(t, resolvedValue, 0, "no generated value reference ever resolved")
-	assert.Greater(t, resolvedService, 0, "no generated service name ever resolved")
-	assert.Greater(t, unresolved, 0, "no generated name ever failed to resolve")
+	assert.Greater(t, total.resolvedType, 0, "no generated type reference ever resolved")
+	assert.Greater(t, total.resolvedValue, 0, "no generated value reference ever resolved")
+	assert.Greater(t, total.resolvedService, 0, "no generated service name ever resolved")
+	assert.Greater(t, total.unresolved, 0, "no generated name ever failed to resolve")
 }
 
-// TestIndexMemoTransparency checks that repeated questions answered through a
-// memoizing Index match fresh-Index answers, including unresolved results and
-// the same name resolved as different kinds.
-func TestIndexMemoTransparency(t *testing.T) {
-	crossKind := 0
+// memoCoverage counts the (file, name) pairs whose three resolvers disagree.
+// Without them the transparency property never exercises memo keys that mix
+// definition kinds.
+type memoCoverage struct {
+	crossKind int
+}
 
-	rapid.Check(t, func(t *rapid.T) {
-		ctx := t.Context()
-		ws := mdlDrawWorkspace(t)
-		view := mdlNewView(ws.files, true)
+// indexMemoTransparency runs the memo-transparency property over the stream
+// seed derives from. The counts say how much cross-kind material the run
+// covered.
+func indexMemoTransparency(tb *testing.T, seed []byte) memoCoverage {
+	t := fuzzgen.New(tb, seed)
 
-		var qs []mdlQuery
+	var cov memoCoverage
 
-		for _, u := range ws.model.uris {
-			qs = append(qs, ws.model.queries(ws.model.docs[u])...)
-		}
+	ctx := t.Context()
+	ws := mdlDrawWorkspace(t)
+	view := mdlNewView(ws.files, true)
 
-		qs = rapid.Permutation(qs).Draw(t, "order")
+	var qs []mdlQuery
 
-		// Count the (file, name) pairs whose three resolvers disagree: the
-		// property is only meaningful if the generator produces them.
-		for _, u := range ws.model.uris {
-			d := ws.model.docs[u]
+	for _, u := range ws.model.uris {
+		qs = append(qs, ws.model.queries(ws.model.docs[u])...)
+	}
 
-			for _, name := range mdlNames {
-				asType := ws.model.answer(d, mdlQuery{file: u, kind: mdlQueryType, text: name})
-				asValue := ws.model.answer(d, mdlQuery{file: u, kind: mdlQueryValue, text: name})
-				asService := ws.model.answer(d, mdlQuery{file: u, kind: mdlQueryService, text: name})
+	qs = fuzzgen.Permutation(qs).Draw(t)
 
-				if asType != asValue || asType != asService || asValue != asService {
-					crossKind++
-				}
+	// Count the (file, name) pairs whose three resolvers disagree: the
+	// property is only meaningful if the generator produces them.
+	for _, u := range ws.model.uris {
+		d := ws.model.docs[u]
+
+		for _, name := range mdlNames {
+			asType := ws.model.answer(d, mdlQuery{file: u, kind: mdlQueryType, text: name})
+			asValue := ws.model.answer(d, mdlQuery{file: u, kind: mdlQueryValue, text: name})
+			asService := ws.model.answer(d, mdlQuery{file: u, kind: mdlQueryService, text: name})
+
+			if asType != asValue || asType != asService || asValue != asService {
+				cov.crossKind++
 			}
 		}
+	}
 
-		ix := sema.NewIndex(view)
-		pfs := make(map[uri.URI]*store.ParsedFile, len(ws.model.docs))
+	ix := sema.NewIndex(view)
+	pfs := make(map[uri.URI]*store.ParsedFile, len(ws.model.docs))
 
-		parsed := func(u uri.URI) *store.ParsedFile {
-			if pf, ok := pfs[u]; ok {
-				return pf
-			}
-
-			pf, err := view.Parse(ctx, u)
-			require.NoError(t, err)
-			pfs[u] = pf
-
+	parsed := func(u uri.URI) *store.ParsedFile {
+		if pf, ok := pfs[u]; ok {
 			return pf
 		}
 
-		ask := func(q mdlQuery) mdlAnswer {
-			pf := parsed(q.file)
+		pf, err := view.Parse(ctx, u)
+		require.NoError(t, err)
+		pfs[u] = pf
 
-			var (
-				def *sema.Resolved
-				err error
-			)
+		return pf
+	}
 
-			switch q.kind {
-			case mdlQueryType:
-				def, err = ix.ResolveType(ctx, pf, mdlFieldType(q.text))
-			case mdlQueryValue:
-				def, err = ix.ResolveValue(ctx, pf, &syntax.ConstValue{Kind: syntax.ValueIdent, Text: q.text})
-			case mdlQueryService:
-				def, err = ix.ResolveService(ctx, pf, &syntax.Identifier{Text: q.text})
-			}
+	ask := func(q mdlQuery) mdlAnswer {
+		pf := parsed(q.file)
 
-			require.NoError(t, err)
+		var (
+			def *sema.Resolved
+			err error
+		)
 
-			if def == nil {
-				return mdlAnswer{}
-			}
-
-			return mdlAnswer{ok: true, file: def.File, name: def.Name.Text, kind: def.Kind}
+		switch q.kind {
+		case mdlQueryType:
+			def, err = ix.ResolveType(ctx, pf, mdlFieldType(q.text))
+		case mdlQueryValue:
+			def, err = ix.ResolveValue(ctx, pf, &syntax.ConstValue{Kind: syntax.ValueIdent, Text: q.text})
+		case mdlQueryService:
+			def, err = ix.ResolveService(ctx, pf, &syntax.Identifier{Text: q.text})
 		}
 
-		warm := make([]mdlAnswer, len(qs))
-		for i, q := range qs {
-			warm[i] = ask(q)
+		require.NoError(t, err)
+
+		if def == nil {
+			return mdlAnswer{}
 		}
 
-		// The same questions again on the same index: no drift.
-		for i, q := range qs {
-			require.Equal(t, warm[i], ask(q), "reused index changed its answer for %q", q.text)
-		}
+		return mdlAnswer{ok: true, file: def.File, name: def.Name.Text, kind: def.Kind}
+	}
 
-		// A fresh index per question: the memoized answers are transparent.
-		for i, q := range qs {
-			fresh, err := mdlAsk(ctx, view, parsed(q.file), q)
-			require.NoError(t, err)
-			require.Equal(t, fresh, warm[i],
-				"reused index answered %q (resolver %d) from %s differently than a fresh index",
-				q.text, q.kind, q.file.Path())
-		}
+	warm := make([]mdlAnswer, len(qs))
+	for i, q := range qs {
+		warm[i] = ask(q)
+	}
+
+	// The same questions again on the same index: no drift.
+	for i, q := range qs {
+		require.Equal(t, warm[i], ask(q), "reused index changed its answer for %q", q.text)
+	}
+
+	// A fresh index per question: the memoized answers are transparent.
+	for i, q := range qs {
+		fresh, err := mdlAsk(ctx, view, parsed(q.file), q)
+		require.NoError(t, err)
+		require.Equal(t, fresh, warm[i],
+			"reused index answered %q (resolver %d) from %s differently than a fresh index",
+			q.text, q.kind, q.file.Path())
+	}
+
+	return cov
+}
+
+// FuzzIndexMemoTransparency checks that repeated questions answered through a
+// memoizing Index match fresh-Index answers, including unresolved results and
+// the same name resolved as different kinds.
+func FuzzIndexMemoTransparency(f *testing.F) {
+	for _, seed := range resolveSeeds {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		indexMemoTransparency(tb, seed)
 	})
+}
 
-	assert.Greater(t, crossKind, 0,
+// TestIndexMemoTransparencyCoversCrossKindNames pins the generator coverage
+// the transparency property leans on.
+func TestIndexMemoTransparencyCoversCrossKindNames(t *testing.T) {
+	var total memoCoverage
+
+	for _, seed := range resolveSeeds {
+		c := indexMemoTransparency(t, seed)
+		total.crossKind += c.crossKind
+	}
+
+	assert.Greater(t, total.crossKind, 0,
 		"the generator must produce names resolved as different kinds in one file; the memo-transparency property is vacuous without them")
 }
 
@@ -1683,88 +1774,129 @@ func TestIndexMemoDoesNotMixKinds(t *testing.T) {
 	}
 }
 
-// TestIndexReferencesToDifferential compares ReferencesTo for every definition
-// in the workspace (structs, unions, exceptions, enums, typedefs, consts,
-// enum members, services) under all-kinds and per-kind filters.
-func TestIndexReferencesToDifferential(t *testing.T) {
-	var hits, segmentHits int
-
-	rapid.Check(t, func(t *rapid.T) {
-		ctx := t.Context()
-		ws := mdlDrawWorkspace(t)
-		view := mdlNewView(ws.files, true)
-
-		for _, target := range ws.model.defTargets() {
-			def, err := mdlResolveDef(ctx, view, target)
-			require.NoError(t, err)
-			require.NotNil(t, def, "%s %q must resolve from %s", target.kind, target.name, target.file.Path())
-			require.Equal(t, target.kind.semaKind(), def.Kind)
-
-			var kinds []store.RefKind
-
-			switch rapid.IntRange(0, 2).Draw(t, "kindsMode") {
-			case 0:
-			case 1:
-				kinds = sema.RefKindsFor(target.kind.semaKind())
-			case 2:
-				all := []store.RefKind{
-					store.RefFieldType, store.RefSignatureType, store.RefConstValue,
-					store.RefServiceExtends, store.RefAnnotationType,
-				}
-				kinds = []store.RefKind{all[rapid.IntRange(0, len(all)-1).Draw(t, "oneKind")]}
-			}
-
-			got, err := sema.NewIndex(view).ReferencesTo(ctx, def, kinds...)
-			require.NoError(t, err)
-
-			want := ws.model.referencesTo(target, kinds)
-			require.Equal(t, want, mdlProductionHits(got),
-				"ReferencesTo(%s %q) kinds %v", target.kind, target.name, kinds)
-
-			for _, h := range want {
-				hits++
-
-				// An enum-qualified hit covers the enum segment of a longer
-				// value reference, not the whole reference.
-				if target.kind == mdlEnum && h.kind == store.RefConstValue && h.text == target.name {
-					segmentHits++
-				}
-			}
-
-			// Every hit must cover exactly the text it claims to cover, and
-			// every hit re-resolved through a second index must land on the
-			// same definition.
-			for _, h := range mdlProductionHits(got) {
-				content := ws.files[h.file]
-				require.GreaterOrEqual(t, h.end, h.start)
-				require.LessOrEqual(t, h.end, len(content))
-				require.Equal(t, h.text, string(content[h.start:h.end]),
-					"hit span must cover the hit text")
-
-				if target.kind == mdlEnum && h.kind == store.RefConstValue && h.text == target.name {
-					// An enum-qualified hit covers only the enum segment of a
-					// longer value reference; the model already checked that
-					// its qualifier resolves to the enum.
-					continue
-				}
-
-				again := mdlResolveHitAgain(ctx, view, h)
-				require.NotNil(t, again, "hit %q in %s matches no reference", h.text, h.file.Path())
-				require.Equal(t, def.File, again.File, "hit %q re-resolves into another file", h.text)
-				require.Equal(t, def.Name.Text, again.Name.Text, "hit %q re-resolves to another name", h.text)
-			}
-		}
-	})
-
-	assert.Greater(t, hits, 0, "no reference to any definition was ever found")
-	assert.Greater(t, segmentHits, 0, "no enum-qualified hit was ever produced")
+// refsToCoverage counts the hits the ReferencesTo differential found, and the
+// enum-qualified segment hits among them: both must occur for the property to
+// mean anything.
+type refsToCoverage struct {
+	hits        int
+	segmentHits int
 }
 
-// TestIndexReferencesNameMatchedDifferential compares the resolution-blind
+// referencesToDifferential runs the ReferencesTo differential over the stream
+// seed derives from. The counts say how many hits and enum-segment hits the
+// run covered.
+func referencesToDifferential(tb *testing.T, seed []byte) refsToCoverage {
+	t := fuzzgen.New(tb, seed)
+
+	var cov refsToCoverage
+
+	ctx := t.Context()
+	ws := mdlDrawWorkspace(t)
+	view := mdlNewView(ws.files, true)
+
+	for _, target := range ws.model.defTargets() {
+		def, err := mdlResolveDef(ctx, view, target)
+		require.NoError(t, err)
+		require.NotNil(t, def, "%s %q must resolve from %s", target.kind, target.name, target.file.Path())
+		require.Equal(t, target.kind.semaKind(), def.Kind)
+
+		var kinds []store.RefKind
+
+		switch fuzzgen.IntRange(0, 2).Draw(t) {
+		case 0:
+		case 1:
+			kinds = sema.RefKindsFor(target.kind.semaKind())
+		case 2:
+			all := []store.RefKind{
+				store.RefFieldType, store.RefSignatureType, store.RefConstValue,
+				store.RefServiceExtends, store.RefAnnotationType,
+			}
+			kinds = []store.RefKind{all[fuzzgen.IntRange(0, len(all)-1).Draw(t)]}
+		}
+
+		got, err := sema.NewIndex(view).ReferencesTo(ctx, def, kinds...)
+		require.NoError(t, err)
+
+		want := ws.model.referencesTo(target, kinds)
+		require.Equal(t, want, mdlProductionHits(got),
+			"ReferencesTo(%s %q) kinds %v", target.kind, target.name, kinds)
+
+		for _, h := range want {
+			cov.hits++
+
+			// An enum-qualified hit covers the enum segment of a longer
+			// value reference, not the whole reference.
+			if target.kind == mdlEnum && h.kind == store.RefConstValue && h.text == target.name {
+				cov.segmentHits++
+			}
+		}
+
+		// Every hit must cover exactly the text it claims to cover, and
+		// every hit re-resolved through a second index must land on the
+		// same definition.
+		for _, h := range mdlProductionHits(got) {
+			content := ws.files[h.file]
+			require.GreaterOrEqual(t, h.end, h.start)
+			require.LessOrEqual(t, h.end, len(content))
+			require.Equal(t, h.text, string(content[h.start:h.end]),
+				"hit span must cover the hit text")
+
+			if target.kind == mdlEnum && h.kind == store.RefConstValue && h.text == target.name {
+				// An enum-qualified hit covers only the enum segment of a
+				// longer value reference; the model already checked that
+				// its qualifier resolves to the enum.
+				continue
+			}
+
+			again := mdlResolveHitAgain(ctx, view, h)
+			require.NotNil(t, again, "hit %q in %s matches no reference", h.text, h.file.Path())
+			require.Equal(t, def.File, again.File, "hit %q re-resolves into another file", h.text)
+			require.Equal(t, def.Name.Text, again.Name.Text, "hit %q re-resolves to another name", h.text)
+		}
+	}
+
+	return cov
+}
+
+// FuzzIndexReferencesToDifferential compares ReferencesTo for every definition
+// in the workspace (structs, unions, exceptions, enums, typedefs, consts,
+// enum members, services) under all-kinds and per-kind filters.
+func FuzzIndexReferencesToDifferential(f *testing.F) {
+	for _, seed := range resolveSeeds {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		referencesToDifferential(tb, seed)
+	})
+}
+
+// TestIndexReferencesToDifferentialCoversEnumSegments pins the generator
+// coverage the ReferencesTo differential leans on.
+func TestIndexReferencesToDifferentialCoversEnumSegments(t *testing.T) {
+	var total refsToCoverage
+
+	for _, seed := range resolveSeeds {
+		c := referencesToDifferential(t, seed)
+		total.hits += c.hits
+		total.segmentHits += c.segmentHits
+	}
+
+	assert.Greater(t, total.hits, 0, "no reference to any definition was ever found")
+	assert.Greater(t, total.segmentHits, 0, "no enum-qualified hit was ever produced")
+}
+
+// FuzzIndexReferencesNameMatchedDifferential compares the resolution-blind
 // reference search: bare-name matching over the file and its transitive
 // dependents, filtered by grammar slot.
-func TestIndexReferencesNameMatchedDifferential(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
+func FuzzIndexReferencesNameMatchedDifferential(f *testing.F) {
+	for _, seed := range resolveSeeds {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		t := fuzzgen.New(tb, seed)
+
 		ctx := t.Context()
 		ws := mdlDrawWorkspace(t)
 		view := mdlNewView(ws.files, true)
@@ -1780,7 +1912,7 @@ func TestIndexReferencesNameMatchedDifferential(t *testing.T) {
 			for _, name := range names {
 				var kinds []store.RefKind
 
-				switch rapid.IntRange(0, 3).Draw(t, "refKinds") {
+				switch fuzzgen.IntRange(0, 3).Draw(t) {
 				case 0:
 				case 1:
 					kinds = []store.RefKind{store.RefFieldType}
@@ -1800,88 +1932,133 @@ func TestIndexReferencesNameMatchedDifferential(t *testing.T) {
 	})
 }
 
-// TestIndexUnderlyingTypeDifferential compares typedef-chain following with
-// the model: chains that cross files, stop at a container or a struct, hit an
-// unresolvable name, or cycle until the depth cap.
-func TestIndexUnderlyingTypeDifferential(t *testing.T) {
-	var baseChains, containerChains, nilChains, identChains int
-
-	rapid.Check(t, func(t *rapid.T) {
-		ctx := t.Context()
-		ws := mdlDrawWorkspace(t)
-		view := mdlNewView(ws.files, true)
-
-		for _, u := range ws.model.uris {
-			d := ws.model.docs[u]
-
-			pf, err := view.Parse(ctx, u)
-			require.NoError(t, err)
-
-			seen := map[string]bool{}
-
-			var texts []string
-
-			for _, r := range d.refs {
-				if r.kind == store.RefConstValue || r.kind == store.RefServiceExtends || seen[r.text] {
-					continue
-				}
-
-				seen[r.text] = true
-				texts = append(texts, r.text)
-			}
-
-			for _, def := range d.defs {
-				if def.kind == mdlTypedef && !seen[def.name] {
-					seen[def.name] = true
-					texts = append(texts, def.name)
-				}
-			}
-
-			ix := sema.NewIndex(view)
-
-			for _, text := range texts {
-				got, gotFile := ix.UnderlyingType(ctx, pf, mdlFieldType(text))
-				want, wantFile := ws.model.underlyingType(d, &mdlType{ident: text})
-
-				require.Equal(t, mdlModelDesc(want), mdlDescOf(got), "UnderlyingType(%q) from %s", text, u.Path())
-				require.Equal(t, wantFile.uri, gotFile.URI(), "scope file of UnderlyingType(%q)", text)
-
-				switch {
-				case want == nil:
-					nilChains++
-				case want.base != "":
-					baseChains++
-				case want.container != "":
-					containerChains++
-				default:
-					identChains++
-				}
-			}
-
-			// A container is not an identifier: it is its own underlying type.
-			container := &syntax.FieldType{Kind: syntax.TypeList, ValueType: mdlFieldType("T")}
-			got, gotFile := ix.UnderlyingType(ctx, pf, container)
-			require.Equal(t, "list", mdlDescOf(got))
-			require.Equal(t, u, gotFile.URI())
-
-			// A nil type has no classifiable kind.
-			got, gotFile = ix.UnderlyingType(ctx, pf, nil)
-			require.Equal(t, "<nil>", mdlDescOf(got))
-			require.Equal(t, u, gotFile.URI())
-		}
-	})
-
-	assert.Greater(t, baseChains, 0, "no generated typedef chain ever reached a base type")
-	assert.Greater(t, containerChains, 0, "no generated typedef chain ever reached a container")
-	assert.Greater(t, nilChains, 0, "no generated chain was ever unresolvable")
-	assert.Greater(t, identChains, 0, "no generated chain ever ended on a named non-typedef type")
+// underlyingCoverage counts how the generated typedef chains ended: at a base
+// type, at a container, at an unresolvable name, or on a named non-typedef
+// type. Every ending must occur for the differential to mean anything.
+type underlyingCoverage struct {
+	nilChains       int
+	baseChains      int
+	containerChains int
+	identChains     int
 }
 
-// TestIndexFindInWorkspaceDifferential compares the workspace-wide lookup with
+// underlyingTypeDifferential runs the UnderlyingType differential over the
+// stream seed derives from. The counts say how the generated typedef chains
+// ended.
+func underlyingTypeDifferential(tb *testing.T, seed []byte) underlyingCoverage {
+	t := fuzzgen.New(tb, seed)
+
+	var cov underlyingCoverage
+
+	ctx := t.Context()
+	ws := mdlDrawWorkspace(t)
+	view := mdlNewView(ws.files, true)
+
+	for _, u := range ws.model.uris {
+		d := ws.model.docs[u]
+
+		pf, err := view.Parse(ctx, u)
+		require.NoError(t, err)
+
+		seen := map[string]bool{}
+
+		var texts []string
+
+		for _, r := range d.refs {
+			if r.kind == store.RefConstValue || r.kind == store.RefServiceExtends || seen[r.text] {
+				continue
+			}
+
+			seen[r.text] = true
+			texts = append(texts, r.text)
+		}
+
+		for _, def := range d.defs {
+			if def.kind == mdlTypedef && !seen[def.name] {
+				seen[def.name] = true
+				texts = append(texts, def.name)
+			}
+		}
+
+		ix := sema.NewIndex(view)
+
+		for _, text := range texts {
+			got, gotFile := ix.UnderlyingType(ctx, pf, mdlFieldType(text))
+			want, wantFile := ws.model.underlyingType(d, &mdlType{ident: text})
+
+			require.Equal(t, mdlModelDesc(want), mdlDescOf(got), "UnderlyingType(%q) from %s", text, u.Path())
+			require.Equal(t, wantFile.uri, gotFile.URI(), "scope file of UnderlyingType(%q)", text)
+
+			switch {
+			case want == nil:
+				cov.nilChains++
+			case want.base != "":
+				cov.baseChains++
+			case want.container != "":
+				cov.containerChains++
+			default:
+				cov.identChains++
+			}
+		}
+
+		// A container is not an identifier: it is its own underlying type.
+		container := &syntax.FieldType{Kind: syntax.TypeList, ValueType: mdlFieldType("T")}
+		got, gotFile := ix.UnderlyingType(ctx, pf, container)
+		require.Equal(t, "list", mdlDescOf(got))
+		require.Equal(t, u, gotFile.URI())
+
+		// A nil type has no classifiable kind.
+		got, gotFile = ix.UnderlyingType(ctx, pf, nil)
+		require.Equal(t, "<nil>", mdlDescOf(got))
+		require.Equal(t, u, gotFile.URI())
+	}
+
+	return cov
+}
+
+// FuzzIndexUnderlyingTypeDifferential compares typedef-chain following with
+// the model: chains that cross files, stop at a container or a struct, hit an
+// unresolvable name, or cycle until the depth cap.
+func FuzzIndexUnderlyingTypeDifferential(f *testing.F) {
+	for _, seed := range resolveSeeds {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		underlyingTypeDifferential(tb, seed)
+	})
+}
+
+// TestIndexUnderlyingTypeDifferentialCoversChainEnds pins the generator
+// coverage the UnderlyingType differential leans on.
+func TestIndexUnderlyingTypeDifferentialCoversChainEnds(t *testing.T) {
+	var total underlyingCoverage
+
+	for _, seed := range resolveSeeds {
+		c := underlyingTypeDifferential(t, seed)
+		total.nilChains += c.nilChains
+		total.baseChains += c.baseChains
+		total.containerChains += c.containerChains
+		total.identChains += c.identChains
+	}
+
+	assert.Greater(t, total.baseChains, 0, "no generated typedef chain ever reached a base type")
+	assert.Greater(t, total.containerChains, 0, "no generated typedef chain ever reached a container")
+	assert.Greater(t, total.nilChains, 0, "no generated chain was ever unresolvable")
+	assert.Greater(t, total.identChains, 0, "no generated chain ever ended on a named non-typedef type")
+}
+
+// FuzzIndexFindInWorkspaceDifferential compares the workspace-wide lookup with
 // the model, both through the known-files table and through the directory-walk
 // fallback an unindexed workspace takes.
-func TestIndexFindInWorkspaceDifferential(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
+func FuzzIndexFindInWorkspaceDifferential(f *testing.F) {
+	for _, seed := range resolveSeeds {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		t := fuzzgen.New(tb, seed)
+
 		ctx := t.Context()
 		ws := mdlDrawWorkspace(t)
 		view := mdlNewView(ws.files, true)

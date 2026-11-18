@@ -14,9 +14,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
-	"pgregory.net/rapid"
 
 	"github.com/karitham/thrift-ls/formatter"
+	"github.com/karitham/thrift-ls/internal/fuzzgen"
 	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/store"
 )
@@ -96,14 +96,14 @@ func patchFields(p options.Patch) map[string]any {
 
 // drawPropertyPatch draws one partial options patch with every field
 // independently set or unset.
-func drawPropertyPatch(t *rapid.T, name string) options.Patch {
+func drawPropertyPatch(t *fuzzgen.T) options.Patch {
 	var patch options.Patch
 
-	patch.PrintWidth = rapid.Ptr(rapid.IntRange(20, 120), true).Draw(t, name+".printWidth")
-	patch.TabWidth = rapid.Ptr(rapid.IntRange(1, 8), true).Draw(t, name+".tabWidth")
-	patch.Align = rapid.Ptr(rapid.SampledFrom([]string{"field", "assign", "disable"}), true).Draw(t, name+".align")
-	patch.Indent = rapid.Ptr(rapid.Map(
-		rapid.SampledFrom([]string{"  ", "    ", "\t"}),
+	patch.PrintWidth = fuzzgen.Ptr(fuzzgen.IntRange(20, 120), true).Draw(t)
+	patch.TabWidth = fuzzgen.Ptr(fuzzgen.IntRange(1, 8), true).Draw(t)
+	patch.Align = fuzzgen.Ptr(fuzzgen.SampledFrom([]string{"field", "assign", "disable"}), true).Draw(t)
+	patch.Indent = fuzzgen.Ptr(fuzzgen.Map(
+		fuzzgen.SampledFrom([]string{"  ", "    ", "\t"}),
 		func(value string) formatter.Indent {
 			indent, err := formatter.ParseIndentValue(value)
 			if err != nil {
@@ -112,50 +112,50 @@ func drawPropertyPatch(t *rapid.T, name string) options.Patch {
 
 			return indent
 		},
-	), true).Draw(t, name+".indent")
+	), true).Draw(t)
 
-	if rapid.Bool().Draw(t, name+".separatorsSet") {
+	if fuzzgen.Bool().Draw(t) {
 		var separators formatter.Separators
 
 		for _, construct := range formatter.AllConstructs {
-			if !rapid.Bool().Draw(t, name+".separator."+construct.String()) {
+			if !fuzzgen.Bool().Draw(t) {
 				continue
 			}
 
-			separators.Set(construct, new(rapid.SampledFrom([]string{"comma", "semicolon", "none", "preserve"}).Draw(t, name+".separatorValue")))
+			separators.Set(construct, new(fuzzgen.SampledFrom([]string{"comma", "semicolon", "none", "preserve"}).Draw(t)))
 		}
 
 		patch.Separators = &separators
 	}
 
-	if rapid.Bool().Draw(t, name+".breakSet") {
+	if fuzzgen.Bool().Draw(t) {
 		var breaks formatter.Break
 
 		for _, construct := range formatter.AllConstructs {
-			if rapid.Bool().Draw(t, name+".break."+construct.String()) {
-				breaks.Set(construct, new(rapid.Bool().Draw(t, name+".breakValue")))
+			if fuzzgen.Bool().Draw(t) {
+				breaks.Set(construct, new(fuzzgen.Bool().Draw(t)))
 			}
 		}
 
 		patch.Break = &breaks
 	}
 
-	if rapid.Bool().Draw(t, name+".includePathsSet") {
-		patch.IncludePaths = rapid.Ptr(rapid.SliceOfN(
-			rapid.SampledFrom([]string{"inc", "../shared", "gen", "/abs/inc"}), 0, 3,
-		), false).Draw(t, name+".includePaths")
+	if fuzzgen.Bool().Draw(t) {
+		patch.IncludePaths = fuzzgen.Ptr(fuzzgen.SliceOfN(
+			fuzzgen.SampledFrom([]string{"inc", "../shared", "gen", "/abs/inc"}), 0, 3,
+		), false).Draw(t)
 	}
 
-	patch.LogLevel = rapid.Ptr(rapid.IntRange(-4, 8), true).Draw(t, name+".logLevel")
+	patch.LogLevel = fuzzgen.Ptr(fuzzgen.IntRange(-4, 8), true).Draw(t)
 
-	if rapid.Bool().Draw(t, name+".lintSet") {
+	if fuzzgen.Bool().Draw(t) {
 		lint := options.LintConfig{}
-		lint.Disabled = rapid.Ptr(rapid.SliceOfN(
-			rapid.SampledFrom([]string{"duplicate", "field-id", "unused-include"}), 0, 2,
-		), true).Draw(t, name+".lint.disabled")
-		lint.Severity = rapid.Ptr(rapid.MapOfN(
-			rapid.SampledFrom([]string{"duplicate", "field-id"}), rapid.SampledFrom([]string{"error", "warning", "info", "hint"}), 0, 2,
-		), true).Draw(t, name+".lint.severity")
+		lint.Disabled = fuzzgen.Ptr(fuzzgen.SliceOfN(
+			fuzzgen.SampledFrom([]string{"duplicate", "field-id", "unused-include"}), 0, 2,
+		), true).Draw(t)
+		lint.Severity = fuzzgen.Ptr(fuzzgen.MapOfN(
+			fuzzgen.SampledFrom([]string{"duplicate", "field-id"}), fuzzgen.SampledFrom([]string{"error", "warning", "info", "hint"}), 0, 2,
+		), true).Draw(t)
 		patch.Lint = &lint
 	}
 
@@ -324,16 +324,28 @@ func initPropertyWorkspace(tb require.TestingT, srv *Server, folders []uri.URI) 
 	srv.workspace.loadSync(context.Background(), folders)
 }
 
-// TestFileConfigSourceDiscovery checks nearest-config lookup, include-path
+// FuzzFileConfigSourceDiscovery checks nearest-config lookup, include-path
 // anchoring, the THRIFT_LS_CONFIG override, and malformed-document errors.
-func TestFileConfigSourceDiscovery(t *testing.T) {
-	t.Setenv("THRIFT_LS_CONFIG", "")
+func FuzzFileConfigSourceDiscovery(f *testing.F) {
+	for _, seed := range [][]byte{
+		[]byte(""),
+		[]byte("root only"),
+		[]byte("nested config"),
+		[]byte("four depths"),
+		[]byte("malformed config"),
+		[]byte("override"),
+	} {
+		f.Add(seed)
+	}
+
+	f.Setenv("THRIFT_LS_CONFIG", "")
 
 	segments := []string{"alpha", "beta", "gamma"}
 
-	outer := t
-	rapid.Check(t, func(t *rapid.T) {
-		depth := rapid.IntRange(0, 3).Draw(t, "depth")
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		t := fuzzgen.New(tb, seed)
+
+		depth := fuzzgen.IntRange(0, 3).Draw(t)
 
 		path := "/cfg-root"
 		for i := 0; i < depth; i++ {
@@ -351,18 +363,18 @@ func TestFileConfigSourceDiscovery(t *testing.T) {
 		}
 
 		docDirs := map[string]int{}
-		for i, dir := range ancestors {
-			if !rapid.Bool().Draw(t, fmt.Sprintf("doc%d", i)) {
+		for _, dir := range ancestors {
+			if !fuzzgen.Bool().Draw(t) {
 				continue
 			}
 
-			docDirs[dir] = rapid.IntRange(20, 60).Draw(t, fmt.Sprintf("width%d", i))
+			docDirs[dir] = fuzzgen.IntRange(20, 60).Draw(t)
 		}
 
 		seeded := map[uri.URI][]byte{}
 		malformed := map[string]int{}
 		for dir, width := range docDirs {
-			kind := rapid.IntRange(0, 5).Draw(t, "malformed")
+			kind := fuzzgen.IntRange(0, 5).Draw(t)
 			malformed[dir] = kind
 
 			switch kind {
@@ -377,7 +389,7 @@ func TestFileConfigSourceDiscovery(t *testing.T) {
 
 		// THRIFT_LS_CONFIG, when set, replaces discovery: it may name a
 		// seeded document, a malformed one, or nothing at all.
-		override := rapid.IntRange(0, 4).Draw(t, "override")
+		override := fuzzgen.IntRange(0, 4).Draw(t)
 		overridePath := "/env/explicit.json"
 
 		switch override {
@@ -388,9 +400,9 @@ func TestFileConfigSourceDiscovery(t *testing.T) {
 		}
 
 		if override > 0 {
-			outer.Setenv("THRIFT_LS_CONFIG", overridePath)
+			tb.Setenv("THRIFT_LS_CONFIG", overridePath)
 		} else {
-			outer.Setenv("THRIFT_LS_CONFIG", "")
+			tb.Setenv("THRIFT_LS_CONFIG", "")
 		}
 
 		source := FileConfigSource(store.NewMemFS(seeded))
@@ -461,29 +473,42 @@ func TestFileConfigSourceDiscovery(t *testing.T) {
 	})
 }
 
-// TestProjectViewConfigLayering is the layering model at the server seam:
+// FuzzProjectViewConfigLayering is the layering model at the server seam:
 // defaults, then Frontend.Defaults, then the discovered document, then CLI,
 // and a loader's non-empty include paths override both later layers.
-func TestProjectViewConfigLayering(t *testing.T) {
-	t.Setenv("THRIFT_LS_CONFIG", "")
+func FuzzProjectViewConfigLayering(f *testing.F) {
+	for _, seed := range [][]byte{
+		[]byte(""),
+		[]byte("defaults only"),
+		[]byte("document at root"),
+		[]byte("document above root"),
+		[]byte("malformed document"),
+		[]byte("loader include paths"),
+	} {
+		f.Add(seed)
+	}
 
-	rapid.Check(t, func(t *rapid.T) {
-		rootPath := rapid.SampledFrom([]string{"/proj", "/proj/sub", "/proj/sub/deeper"}).Draw(t, "root")
+	f.Setenv("THRIFT_LS_CONFIG", "")
 
-		frontend := drawPropertyPatch(t, "frontend")
-		document := drawPropertyPatch(t, "document")
-		cli := drawPropertyPatch(t, "cli")
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		t := fuzzgen.New(tb, seed)
+
+		rootPath := fuzzgen.SampledFrom([]string{"/proj", "/proj/sub", "/proj/sub/deeper"}).Draw(t)
+
+		frontend := drawPropertyPatch(t)
+		document := drawPropertyPatch(t)
+		cli := drawPropertyPatch(t)
 
 		// The document may sit at the root or one level up, and may be
 		// malformed: then it is skipped and an issue diagnostic appears.
-		docDepth := rapid.IntRange(0, 2).Draw(t, "docDepth")
+		docDepth := fuzzgen.IntRange(0, 2).Draw(t)
 		docPath := rootPath
 		for i := 0; i < docDepth; i++ {
 			docPath = filepath.Dir(docPath)
 		}
 
 		docURI := uri.File(filepath.Join(docPath, options.ConfigFileName))
-		broken := rapid.IntRange(0, 5).Draw(t, "broken") == 0
+		broken := fuzzgen.IntRange(0, 5).Draw(t) == 0
 
 		files := map[uri.URI][]byte{}
 		if broken {
@@ -534,7 +559,7 @@ func TestProjectViewConfigLayering(t *testing.T) {
 
 		// A loader's include paths are authoritative over the document and
 		// CLI, and empty ones fall back to them.
-		loaderIncludes := rapid.SampledFrom([][]string{nil, {"/from-build-system"}, {"/one", "/two"}}).Draw(t, "loaderIncludes")
+		loaderIncludes := fuzzgen.SampledFrom([][]string{nil, {"/from-build-system"}, {"/one", "/two"}}).Draw(t)
 
 		project := Project{
 			ConfigURI:    uri.File(filepath.Join(rootPath, "build.json")),
@@ -584,14 +609,26 @@ func stripIncludePaths(p options.Patch) options.Patch {
 	return p
 }
 
-// TestLSPSettingsContract checks that lspSettings drops the path extension,
+// FuzzLSPSettingsContract checks that lspSettings drops the path extension,
 // rejects unknown keys, and keeps the previous settings after a rejection.
-func TestLSPSettingsContract(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
-		patch := drawPropertyPatch(t, "settings")
+func FuzzLSPSettingsContract(f *testing.F) {
+	for _, seed := range [][]byte{
+		[]byte(""),
+		[]byte("path only"),
+		[]byte("every field"),
+		[]byte("unknown key"),
+		[]byte("severity map"),
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		t := fuzzgen.New(tb, seed)
+
+		patch := drawPropertyPatch(t)
 
 		doc := patchDocument(patch)
-		doc["path"] = rapid.SampledFrom([]string{"/usr/bin/thrift-ls", "", "/tmp/bin"}).Draw(t, "path")
+		doc["path"] = fuzzgen.SampledFrom([]string{"/usr/bin/thrift-ls", "", "/tmp/bin"}).Draw(t)
 
 		got, err := lspSettings(mustJSON(t, doc))
 		require.NoError(t, err)
@@ -599,10 +636,10 @@ func TestLSPSettingsContract(t *testing.T) {
 
 		// Unknown keys are rejected, never silently ignored: a typo must not
 		// format with stale options.
-		unknown := rapid.SampledFrom([]string{"printWhidt", "includePath", "lintt", "algin", "tabwidht"}).Draw(t, "unknown")
+		unknown := fuzzgen.SampledFrom([]string{"printWhidt", "includePath", "lintt", "algin", "tabwidht"}).Draw(t)
 		bad := patchDocument(patch)
 		bad["path"] = "/bin/x"
-		bad[unknown] = rapid.SampledFrom([]any{100, "field", true, []any{"x"}}).Draw(t, "unknownValue")
+		bad[unknown] = fuzzgen.SampledFrom([]any{100, "field", true, []any{"x"}}).Draw(t)
 
 		_, err = lspSettings(mustJSON(t, bad))
 		require.Error(t, err, "unknown key %q must be rejected", unknown)

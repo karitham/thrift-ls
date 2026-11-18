@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
-	"pgregory.net/rapid"
 
+	"github.com/karitham/thrift-ls/internal/fuzzgen"
 	"github.com/karitham/thrift-ls/mapper"
 )
 
@@ -18,16 +18,16 @@ var propertyFieldTypes = []string{"i32", "string", "bool", "double"}
 
 // drawUnformattedDocument draws a small IDL document the formatter always
 // rewrites: one field per line, which the default width collapses.
-func drawUnformattedDocument(t *rapid.T) string {
-	name := rapid.SampledFrom([]string{"Alpha", "Beta", "Gamma"}).Draw(t, "name")
-	fields := rapid.IntRange(1, 2).Draw(t, "fields")
+func drawUnformattedDocument(t *fuzzgen.T) string {
+	name := fuzzgen.SampledFrom([]string{"Alpha", "Beta", "Gamma"}).Draw(t)
+	fields := fuzzgen.IntRange(1, 2).Draw(t)
 
 	var doc strings.Builder
 
 	fmt.Fprintf(&doc, "struct %s {\n", name)
 
 	for i := 1; i <= fields; i++ {
-		fmt.Fprintf(&doc, "%d: %s f%d\n", i, rapid.SampledFrom(propertyFieldTypes).Draw(t, "type"), i)
+		fmt.Fprintf(&doc, "%d: %s f%d\n", i, fuzzgen.SampledFrom(propertyFieldTypes).Draw(t), i)
 	}
 
 	doc.WriteString("}\n")
@@ -35,15 +35,27 @@ func drawUnformattedDocument(t *rapid.T) string {
 	return doc.String()
 }
 
-// TestFormattingEditsSameStartInsertionProperty drives the formatting seam
-// with a generated document: the formatter's block replacement plus a
-// same-offset insertion must produce the insertion's text immediately before
-// the replacement, in either argument order.
-func TestFormattingEditsSameStartInsertionProperty(t *testing.T) {
+// FuzzFormattingEditsSameStartInsertion drives the formatting seam with a
+// generated document: the formatter's block replacement plus a same-offset
+// insertion must produce the insertion's text immediately before the
+// replacement, in either argument order.
+func FuzzFormattingEditsSameStartInsertion(f *testing.F) {
+	for _, seed := range [][]byte{
+		[]byte(""),
+		[]byte("alpha"),
+		[]byte("one field"),
+		[]byte("two fields"),
+		[]byte("gamma"),
+	} {
+		f.Add(seed)
+	}
+
 	fileURI := uri.File("/property/format.thrift")
 	insertionText := "// generated\n"
 
-	rapid.Check(t, func(t *rapid.T) {
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		t := fuzzgen.New(tb, seed)
+
 		doc := drawUnformattedDocument(t)
 
 		srv := newMemServer(nil)

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/karitham/thrift-ls/internal/fuzzgen"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
-	"pgregory.net/rapid"
 )
 
 // editSpec is one edit in byte offsets: [start, end) replaced by text. The
@@ -67,12 +67,12 @@ func runeBoundaries(content string) []int {
 	return offsets
 }
 
-func drawSpecs(t *rapid.T, boundaries []int) []editSpec {
-	anchor := rapid.SampledFrom(boundaries).Draw(t, "anchor")
+func drawSpecs(t *fuzzgen.T, boundaries []int) []editSpec {
+	anchor := fuzzgen.SampledFrom(boundaries).Draw(t)
 
 	// The anchor is either an insertion or a replacement starting at anchor.
 	anchorEnd := anchor
-	if rapid.Bool().Draw(t, "replace") {
+	if fuzzgen.Bool().Draw(t) {
 		var ends []int
 		for _, boundary := range boundaries {
 			if boundary > anchor {
@@ -81,21 +81,21 @@ func drawSpecs(t *rapid.T, boundaries []int) []editSpec {
 		}
 
 		if len(ends) > 0 {
-			anchorEnd = rapid.SampledFrom(ends).Draw(t, "anchorEnd")
+			anchorEnd = fuzzgen.SampledFrom(ends).Draw(t)
 		}
 	}
 
-	specs := []editSpec{{start: anchor, end: anchorEnd, text: rapid.SampledFrom([]string{"R", "", "replacement"}).Draw(t, "replacementText")}}
+	specs := []editSpec{{start: anchor, end: anchorEnd, text: fuzzgen.SampledFrom([]string{"R", "", "replacement"}).Draw(t)}}
 
 	// Insertions at the same offset as the anchor: the tie class under test.
-	insertions := rapid.IntRange(0, 3).Draw(t, "sameStartInsertions")
+	insertions := fuzzgen.IntRange(0, 3).Draw(t)
 	for i := 0; i < insertions; i++ {
-		specs = append(specs, editSpec{start: anchor, end: anchor, text: rapid.SampledFrom([]string{"1", "2", "", "×"}).Draw(t, "insertionText")})
+		specs = append(specs, editSpec{start: anchor, end: anchor, text: fuzzgen.SampledFrom([]string{"1", "2", "", "×"}).Draw(t)})
 	}
 
 	// Optionally one insertion elsewhere, outside the anchor's range: it
 	// must not disturb the tie group.
-	if rapid.Bool().Draw(t, "disjoint") {
+	if fuzzgen.Bool().Draw(t) {
 		var outside []int
 		for _, boundary := range boundaries {
 			if boundary < anchor || boundary > anchorEnd {
@@ -104,11 +104,11 @@ func drawSpecs(t *rapid.T, boundaries []int) []editSpec {
 		}
 
 		if len(outside) > 0 {
-			outsideAt := rapid.SampledFrom(outside).Draw(t, "outside")
+			outsideAt := fuzzgen.SampledFrom(outside).Draw(t)
 			specs = append(specs, editSpec{
 				start: outsideAt,
 				end:   outsideAt,
-				text:  rapid.SampledFrom([]string{"x", "yy"}).Draw(t, "outsideText"),
+				text:  fuzzgen.SampledFrom([]string{"x", "yy"}).Draw(t),
 			})
 		}
 	}
@@ -116,16 +116,16 @@ func drawSpecs(t *rapid.T, boundaries []int) []editSpec {
 	return specs
 }
 
-func toTextEdits(t *rapid.T, content []byte, specs []editSpec) []protocol.TextEdit {
+func toTextEdits(tb require.TestingT, content []byte, specs []editSpec) []protocol.TextEdit {
 	mapper := NewMapper(content)
 
 	edits := make([]protocol.TextEdit, 0, len(specs))
 	for _, spec := range specs {
 		start, err := mapper.OffsetToLSPPosition(spec.start)
-		require.NoError(t, err)
+		require.NoError(tb, err)
 
 		end, err := mapper.OffsetToLSPPosition(spec.end)
-		require.NoError(t, err)
+		require.NoError(tb, err)
 
 		edits = append(edits, protocol.TextEdit{
 			Range:   protocol.Range{Start: start, End: end},
@@ -136,19 +136,27 @@ func toTextEdits(t *rapid.T, content []byte, specs []editSpec) []protocol.TextEd
 	return edits
 }
 
-// TestApplyEditsSameStartTieProperty checks ApplyEdits' tie rule over generated
-// content and edit orders.
-func TestApplyEditsSameStartTieProperty(t *testing.T) {
-	alphabet := []string{"a", "b", "c", "é", "😀", "日", "\n", " "}
+func FuzzApplyEditsSameStartTie(f *testing.F) {
+	for _, seed := range [][]byte{
+		[]byte("abc"),
+		[]byte("aé😀 b\n"),
+		[]byte("insertion and replacement"),
+	} {
+		f.Add(seed)
+	}
 
-	rapid.Check(t, func(t *rapid.T) {
-		content := strings.Join(rapid.SliceOfN(rapid.SampledFrom(alphabet), 0, 12).Draw(t, "content"), "")
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		t := fuzzgen.New(tb, seed)
+
+		alphabet := []string{"a", "b", "c", "é", "😀", "日", "\n", " "}
+
+		content := strings.Join(fuzzgen.SliceOfN(fuzzgen.SampledFrom(alphabet), 0, 12).Draw(t), "")
 		boundaries := runeBoundaries(content)
 		specs := drawSpecs(t, boundaries)
 
 		orders := [][]editSpec{
-			slices.Clone(specs),
-			rapid.Permutation(specs).Draw(t, "argumentOrder"),
+			specs,
+			fuzzgen.Permutation(specs).Draw(t),
 		}
 
 		var bySecondOrder string

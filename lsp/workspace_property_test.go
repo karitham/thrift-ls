@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
-	"pgregory.net/rapid"
 
+	"github.com/karitham/thrift-ls/internal/fuzzgen"
 	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/store"
 )
@@ -160,7 +160,7 @@ func (c *workspaceRecordingClient) RegisterCapability(context.Context, *protocol
 	return nil
 }
 
-// installPropertySnapshots is the test-side installSnapshots for rapid.T: one
+// installPropertySnapshots is the test-side installSnapshots for a fuzz stream: one
 // reconcile over the folder snapshots, validated as the commit path validates
 // them. It is separate from the *testing.T helper.
 func installPropertySnapshots(tb require.TestingT, srv *Server, snaps map[uri.URI]WorkspaceSnapshot) {
@@ -411,25 +411,25 @@ type workspacePropertyOp struct {
 	revision int
 }
 
-func drawWorkspacePropertyProject(t *rapid.T, name string) Project {
+func drawWorkspacePropertyProject(t *fuzzgen.T, name string) Project {
 	project := Project{
 		ConfigURI: uri.File("/cfg/" + name + ".json"),
-		RootURI:   rapid.SampledFrom(workspacePropertyRoots).Draw(t, name+".root"),
-		TargetFiles: rapid.SliceOfNDistinct(
-			rapid.SampledFrom(workspacePropertyFiles), 0, 3, func(u uri.URI) uri.URI { return u },
-		).Draw(t, name+".targets"),
+		RootURI:   fuzzgen.SampledFrom(workspacePropertyRoots).Draw(t),
+		TargetFiles: fuzzgen.SliceOfNDistinct(
+			fuzzgen.SampledFrom(workspacePropertyFiles), 0, 3, func(u uri.URI) uri.URI { return u },
+		).Draw(t),
 	}
 
-	if rapid.Bool().Draw(t, name+".includePaths") {
-		project.IncludePaths = rapid.SampledFrom([][]string{
+	if fuzzgen.Bool().Draw(t) {
+		project.IncludePaths = fuzzgen.SampledFrom([][]string{
 			{"/inc"},
 			{"/inc", "/inc2"},
-		}).Draw(t, name+".includes")
+		}).Draw(t)
 	}
 
 	// One in six projects is deliberately invalid: validation must reject it
 	// into an issue while every valid project in the same snapshot survives.
-	switch rapid.IntRange(0, 5).Draw(t, name+".break") {
+	switch fuzzgen.IntRange(0, 5).Draw(t) {
 	case 0:
 		project.RootURI = uri.URI("not a uri")
 	case 1:
@@ -445,15 +445,15 @@ func drawWorkspacePropertyProject(t *rapid.T, name string) Project {
 	return project
 }
 
-func drawWorkspacePropertySnapshot(t *rapid.T, name string) WorkspaceSnapshot {
+func drawWorkspacePropertySnapshot(t *fuzzgen.T, name string) WorkspaceSnapshot {
 	var snapshot WorkspaceSnapshot
 
-	count := rapid.IntRange(0, 3).Draw(t, name+".projects")
+	count := fuzzgen.IntRange(0, 3).Draw(t)
 	for i := 0; i < count; i++ {
 		snapshot.Projects = append(snapshot.Projects, drawWorkspacePropertyProject(t, fmt.Sprintf("%s.p%d", name, i)))
 	}
 
-	if rapid.Bool().Draw(t, name+".issues") {
+	if fuzzgen.Bool().Draw(t) {
 		snapshot.Issues = []WorkspaceIssue{{
 			URI:     uri.File("/issue/" + name + ".json"),
 			Message: "discovery failed",
@@ -463,46 +463,46 @@ func drawWorkspacePropertySnapshot(t *rapid.T, name string) WorkspaceSnapshot {
 	return snapshot
 }
 
-func drawWorkspacePropertyOp(t *rapid.T, name string) workspacePropertyOp {
-	switch rapid.IntRange(0, 9).Draw(t, name+".kind") {
+func drawWorkspacePropertyOp(t *fuzzgen.T, name string) workspacePropertyOp {
+	switch fuzzgen.IntRange(0, 9).Draw(t) {
 	case 0, 1, 2, 3:
 		op := workspacePropertyOp{
 			kind:     opInstallSnapshot,
-			folder:   rapid.IntRange(0, len(workspacePropertyFolders)-1).Draw(t, name+".folder"),
+			folder:   fuzzgen.IntRange(0, len(workspacePropertyFolders)-1).Draw(t),
 			snapshot: drawWorkspacePropertySnapshot(t, name+".snapshot"),
-			loadFail: rapid.IntRange(0, 5).Draw(t, name+".loadFail") == 0,
+			loadFail: fuzzgen.IntRange(0, 5).Draw(t) == 0,
 		}
 
 		return op
 	case 4, 5:
 		op := workspacePropertyOp{
 			kind:    opChangeFolders,
-			added:   rapid.SliceOfNDistinct(rapid.IntRange(0, len(workspacePropertyFolders)-1), 0, 2, func(i int) int { return i }).Draw(t, name+".added"),
-			removed: rapid.SliceOfNDistinct(rapid.IntRange(0, len(workspacePropertyFolders)-1), 0, 2, func(i int) int { return i }).Draw(t, name+".removed"),
+			added:   fuzzgen.SliceOfNDistinct(fuzzgen.IntRange(0, len(workspacePropertyFolders)-1), 0, 2, func(i int) int { return i }).Draw(t),
+			removed: fuzzgen.SliceOfNDistinct(fuzzgen.IntRange(0, len(workspacePropertyFolders)-1), 0, 2, func(i int) int { return i }).Draw(t),
 		}
 
 		return op
 	case 6, 7:
 		return workspacePropertyOp{
 			kind:     opOpenDocument,
-			file:     rapid.IntRange(0, len(workspacePropertyFiles)-1).Draw(t, name+".file"),
-			revision: rapid.IntRange(0, 3).Draw(t, name+".rev"),
+			file:     fuzzgen.IntRange(0, len(workspacePropertyFiles)-1).Draw(t),
+			revision: fuzzgen.IntRange(0, 3).Draw(t),
 		}
 	case 8:
-		switch rapid.IntRange(0, 2).Draw(t, name+".lifecycle") {
+		switch fuzzgen.IntRange(0, 2).Draw(t) {
 		case 0:
-			return workspacePropertyOp{kind: opLifecycle, file: rapid.IntRange(0, len(workspacePropertyFiles)-1).Draw(t, name+".file")}
+			return workspacePropertyOp{kind: opLifecycle, file: fuzzgen.IntRange(0, len(workspacePropertyFiles)-1).Draw(t)}
 		default:
 			return workspacePropertyOp{
 				kind:     opChangeDocument,
-				file:     rapid.IntRange(0, len(workspacePropertyFiles)-1).Draw(t, name+".file"),
-				revision: rapid.IntRange(0, 3).Draw(t, name+".rev"),
+				file:     fuzzgen.IntRange(0, len(workspacePropertyFiles)-1).Draw(t),
+				revision: fuzzgen.IntRange(0, 3).Draw(t),
 			}
 		}
 	default:
 		return workspacePropertyOp{
 			kind: opCloseDocument,
-			file: rapid.IntRange(0, len(workspacePropertyFiles)-1).Draw(t, name+".file"),
+			file: fuzzgen.IntRange(0, len(workspacePropertyFiles)-1).Draw(t),
 		}
 	}
 }
@@ -980,59 +980,103 @@ func runWorkspacePropertyTrace(tb require.TestingT, folders []uri.URI, initial m
 	return driver
 }
 
-// TestWorkspaceRoutingModelProperty is the routing suite: generated folder
+// workspaceRoutingCase runs one generated routing history: it checks the
+// server against the model after every event and replays the sequence on a
+// fresh server, accumulating the classes the corpus reached in coverage.
+func workspaceRoutingCase(t *fuzzgen.T, coverage *workspacePropertyCoverage) {
+	coverage.cases++
+
+	folderCount := fuzzgen.IntRange(1, len(workspacePropertyFolders)).Draw(t)
+	folders := workspacePropertyFolders[:folderCount]
+
+	initial := make(map[uri.URI]WorkspaceSnapshot, len(folders))
+	for i, folder := range folders {
+		initial[folder] = drawWorkspacePropertySnapshot(t, fmt.Sprintf("initial%d", i))
+	}
+
+	opCount := fuzzgen.IntRange(1, 8).Draw(t)
+	ops := make([]workspacePropertyOp, 0, opCount+1)
+	for i := 0; i < opCount; i++ {
+		ops = append(ops, drawWorkspacePropertyOp(t, fmt.Sprintf("op%d", i)))
+	}
+
+	// Every history ends by closing an overlay-only file, so the
+	// eviction path runs whatever the drawn operations did.
+	ops = append(ops, workspacePropertyOp{kind: opLifecycle})
+
+	first := runWorkspacePropertyTrace(t, folders, initial, ops, coverage)
+	second := runWorkspacePropertyTrace(t, folders, initial, ops, coverage)
+
+	// Determinism: the same history on a fresh server routes the same
+	// files and publishes the same diagnostics, with no map-order leak.
+	require.Equal(t, first.model.roots, second.model.roots, "replayed routing roots")
+	require.Equal(t, first.model.targets, second.model.targets, "replayed target routing")
+	require.Equal(t, first.client.log(), second.client.log(), "replayed publish log")
+
+	coverage.conflictIssues += first.model.conflicts
+	coverage.rejectedProjects += first.model.rejected
+}
+
+// workspaceRoutingSeeds is the routing fuzz target's seed corpus; the
+// deterministic coverage run derives a larger corpus from the same shape.
+var workspaceRoutingSeeds = [][]byte{
+	[]byte(""),
+	[]byte("one folder"),
+	[]byte("two folders"),
+	[]byte("installs and closes"),
+	[]byte("open documents"),
+	[]byte("folder changes"),
+}
+
+// FuzzWorkspaceRoutingModelProperty is the routing suite: generated folder
 // snapshots and document histories, checked against the reference model after
 // every event, then replayed on a fresh server to prove the sequence is
 // deterministic (same routing, same publish log).
-func TestWorkspaceRoutingModelProperty(t *testing.T) {
+func FuzzWorkspaceRoutingModelProperty(f *testing.F) {
+	for _, seed := range workspaceRoutingSeeds {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		workspaceRoutingCase(fuzzgen.New(tb, seed), &workspacePropertyCoverage{})
+	})
+}
+
+// workspaceCoverageCases is how many derived seeds the deterministic coverage
+// runs replay: enough that every class the routing assertions name occurs.
+const workspaceCoverageCases = 60
+
+// runSeedCorpus runs one case per derived seed, so a coverage assertion holds
+// on the seed run of `go test` without depending on how far fuzzing got.
+func runSeedCorpus(t *testing.T, count int, run func(*fuzzgen.T)) {
+	t.Helper()
+
+	for i := range count {
+		t.Run(fmt.Sprintf("case%d", i), func(t *testing.T) {
+			run(fuzzgen.New(t, []byte(fmt.Sprintf("coverage case %d", i))))
+		})
+	}
+}
+
+// TestWorkspaceRoutingCoverage replays a fixed corpus through the routing case
+// and asserts the classes the suite depends on: a generator rewrite that stops
+// producing them fails here instead of silently weakening the routing checks.
+func TestWorkspaceRoutingCoverage(t *testing.T) {
 	coverage := &workspacePropertyCoverage{}
 
-	rapid.Check(t, func(t *rapid.T) {
-		coverage.cases++
-
-		folderCount := rapid.IntRange(1, len(workspacePropertyFolders)).Draw(t, "folderCount")
-		folders := workspacePropertyFolders[:folderCount]
-
-		initial := make(map[uri.URI]WorkspaceSnapshot, len(folders))
-		for i, folder := range folders {
-			initial[folder] = drawWorkspacePropertySnapshot(t, fmt.Sprintf("initial%d", i))
-		}
-
-		opCount := rapid.IntRange(1, 8).Draw(t, "opCount")
-		ops := make([]workspacePropertyOp, 0, opCount+1)
-		for i := 0; i < opCount; i++ {
-			ops = append(ops, drawWorkspacePropertyOp(t, fmt.Sprintf("op%d", i)))
-		}
-
-		// Every history ends by closing an overlay-only file, so the
-		// eviction path runs whatever the drawn operations did.
-		ops = append(ops, workspacePropertyOp{kind: opLifecycle})
-
-		first := runWorkspacePropertyTrace(t, folders, initial, ops, coverage)
-		second := runWorkspacePropertyTrace(t, folders, initial, ops, coverage)
-
-		// Determinism: the same history on a fresh server routes the same
-		// files and publishes the same diagnostics, with no map-order leak.
-		require.Equal(t, first.model.roots, second.model.roots, "replayed routing roots")
-		require.Equal(t, first.model.targets, second.model.targets, "replayed target routing")
-		require.Equal(t, first.client.log(), second.client.log(), "replayed publish log")
-
-		coverage.conflictIssues += first.model.conflicts
-		coverage.rejectedProjects += first.model.rejected
+	runSeedCorpus(t, workspaceCoverageCases, func(t *fuzzgen.T) {
+		workspaceRoutingCase(t, coverage)
 	})
 
 	t.Logf("workspace routing coverage: %+v", *coverage)
 
-	// Assert coverage only when the run had enough checks to reach these classes.
-	if coverage.cases >= 20 {
-		require.Positive(t, coverage.reusedViews, "generated history must reuse a view across reconciles")
-		require.Positive(t, coverage.evictedFiles, "generated history must evict a file from a view")
-		require.Positive(t, coverage.rejectedProjects, "generated history must produce a rejected project")
-		require.Positive(t, coverage.ownedDocuments, "generated history must own some open documents")
-		require.Positive(t, coverage.closedOverlays, "generated history must close an owned overlay-only document")
-		require.Positive(t, coverage.unownedDocuments, "generated history must leave some open documents unowned")
-		require.Positive(t, coverage.loadFailures, "generated history must include a failed folder load")
-	}
+	require.Positive(t, coverage.reusedViews, "generated history must reuse a view across reconciles")
+	require.Positive(t, coverage.evictedFiles, "generated history must evict a file from a view")
+	require.Positive(t, coverage.rejectedProjects, "generated history must produce a rejected project")
+	require.Positive(t, coverage.ownedDocuments, "generated history must own some open documents")
+	require.Positive(t, coverage.closedOverlays, "generated history must close an owned overlay-only document")
+	require.Positive(t, coverage.unownedDocuments, "generated history must leave some open documents unowned")
+	require.Positive(t, coverage.loadFailures, "generated history must include a failed folder load")
 }
 
 // Implicit-folder routing: with the default loader, opening a file no
@@ -1063,60 +1107,88 @@ func implicitFolderDiskContents() (map[uri.URI]string, map[uri.URI]bool) {
 	return seeded, diagnostics
 }
 
-func drawImplicitFolderOp(t *rapid.T, name string) workspacePropertyOp {
-	if rapid.Bool().Draw(t, name+".close") {
+func drawImplicitFolderOp(t *fuzzgen.T) workspacePropertyOp {
+	if fuzzgen.Bool().Draw(t) {
 		return workspacePropertyOp{
 			kind: opCloseDocument,
-			file: rapid.IntRange(0, len(implicitFolderUniverse)-1).Draw(t, name+".file"),
+			file: fuzzgen.IntRange(0, len(implicitFolderUniverse)-1).Draw(t),
 		}
 	}
 
 	return workspacePropertyOp{
 		kind:     opOpenDocument,
-		file:     rapid.IntRange(0, len(implicitFolderUniverse)-1).Draw(t, name+".file"),
-		revision: rapid.IntRange(0, 2).Draw(t, name+".rev"),
+		file:     fuzzgen.IntRange(0, len(implicitFolderUniverse)-1).Draw(t),
+		revision: fuzzgen.IntRange(0, 2).Draw(t),
 	}
 }
 
-// TestImplicitFolderRoutingProperty drives the default loader through
-// generated open/close histories: every first open of a directory loads that
+// implicitFolderRoutingCase opens and closes one generated history against
+// the server's real loader.
+func implicitFolderRoutingCase(t *fuzzgen.T, coverage *workspacePropertyCoverage, seeded map[uri.URI]string, diagnostics map[uri.URI]bool) {
+	coverage.cases++
+
+	driver := newWorkspacePropertyDriverWith(t, nil, implicitFolderUniverse, seeded, diagnostics, false)
+	driver.coverage = coverage
+	driver.observe(false)
+
+	opCount := fuzzgen.IntRange(1, 6).Draw(t)
+	for i := 0; i < opCount; i++ {
+		op := drawImplicitFolderOp(t)
+
+		switch op.kind {
+		case opOpenDocument:
+			driver.open(op.file)
+
+			require.NotEmpty(t, driver.model.roots,
+				"opening %s must load a directory as a folder", implicitFolderUniverse[op.file])
+		case opCloseDocument:
+			driver.close(op.file)
+		default:
+			t.Fatalf("unexpected op %v", op.kind)
+		}
+	}
+}
+
+// implicitFolderSeeds is the implicit-folder fuzz target's seed corpus.
+var implicitFolderSeeds = [][]byte{
+	[]byte(""),
+	[]byte("alpha only"),
+	[]byte("nested directory"),
+	[]byte("two directories"),
+	[]byte("overlay only"),
+	[]byte("reopen after close"),
+}
+
+// FuzzImplicitFolderRouting drives the default loader through generated
+// open/close histories: every first open of a directory loads that
 // directory as a folder (one reconcile), every later open joins it, and
 // closing an overlay-only file evicts it from the view it joined.
-func TestImplicitFolderRoutingProperty(t *testing.T) {
+func FuzzImplicitFolderRouting(f *testing.F) {
+	for _, seed := range implicitFolderSeeds {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		seeded, diagnostics := implicitFolderDiskContents()
+
+		implicitFolderRoutingCase(fuzzgen.New(tb, seed), &workspacePropertyCoverage{}, seeded, diagnostics)
+	})
+}
+
+// TestImplicitFolderCoverage replays a fixed corpus through the implicit-
+// folder case and asserts the two classes it must reach.
+func TestImplicitFolderCoverage(t *testing.T) {
 	coverage := &workspacePropertyCoverage{}
 	seeded, diagnostics := implicitFolderDiskContents()
 
-	rapid.Check(t, func(t *rapid.T) {
-		coverage.cases++
-
-		driver := newWorkspacePropertyDriverWith(t, nil, implicitFolderUniverse, seeded, diagnostics, false)
-		driver.coverage = coverage
-		driver.observe(false)
-
-		opCount := rapid.IntRange(1, 6).Draw(t, "opCount")
-		for i := 0; i < opCount; i++ {
-			op := drawImplicitFolderOp(t, fmt.Sprintf("op%d", i))
-
-			switch op.kind {
-			case opOpenDocument:
-				driver.open(op.file)
-
-				require.NotEmpty(t, driver.model.roots,
-					"opening %s must load a directory as a folder", implicitFolderUniverse[op.file])
-			case opCloseDocument:
-				driver.close(op.file)
-			default:
-				t.Fatalf("unexpected op %v", op.kind)
-			}
-		}
+	runSeedCorpus(t, workspaceCoverageCases, func(t *fuzzgen.T) {
+		implicitFolderRoutingCase(t, coverage, seeded, diagnostics)
 	})
 
 	t.Logf("implicit folder coverage: %+v", *coverage)
 
-	if coverage.cases >= 20 {
-		require.Positive(t, coverage.reusedViews, "a second open in a loaded directory must reuse its view")
-		require.Positive(t, coverage.evictedFiles, "closing an overlay-only file must evict it from its view")
-	}
+	require.Positive(t, coverage.reusedViews, "a second open in a loaded directory must reuse its view")
+	require.Positive(t, coverage.evictedFiles, "closing an overlay-only file must evict it from its view")
 }
 
 // TestViewRecreationAndConflictIssues pins the two reconcile decisions the

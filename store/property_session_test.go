@@ -12,7 +12,8 @@ import (
 	"testing"
 
 	"go.lsp.dev/uri"
-	"pgregory.net/rapid"
+
+	"github.com/karitham/thrift-ls/internal/fuzzgen"
 )
 
 // ppContainsFolder is the documented containment test: the file lives strictly
@@ -180,15 +181,15 @@ type ppSessionHarness struct {
 // which may be spelled with a trailing slash, covering the same files), and
 // files placed inside folders, in deeper directories under them, and outside
 // every folder.
-func ppNewSessionHarness(t *rapid.T) *ppSessionHarness {
+func ppNewSessionHarness(t *fuzzgen.T) *ppSessionHarness {
 	t.Helper()
 
 	root := "/proptest/ws"
 	folders := []uri.URI{uri.File(root)}
 
-	for range rapid.IntRange(0, 3).Draw(t, "nestedFolders") {
-		parent := folders[rapid.IntRange(0, len(folders)-1).Draw(t, "parent")]
-		segment := rapid.SampledFrom([]string{"a", "b", "c"}).Draw(t, "segment")
+	for range fuzzgen.IntRange(0, 3).Draw(t) {
+		parent := folders[fuzzgen.IntRange(0, len(folders)-1).Draw(t)]
+		segment := fuzzgen.SampledFrom([]string{"a", "b", "c"}).Draw(t)
 		candidate := uri.File(parent.Path() + "/" + segment)
 
 		if slices.Contains(folders, candidate) {
@@ -198,8 +199,8 @@ func ppNewSessionHarness(t *rapid.T) *ppSessionHarness {
 		folders = append(folders, candidate)
 	}
 
-	if rapid.Bool().Draw(t, "trailingSlash") {
-		variant := uri.URI(string(folders[rapid.IntRange(0, len(folders)-1).Draw(t, "slashFolder")]) + "/")
+	if fuzzgen.Bool().Draw(t) {
+		variant := uri.URI(string(folders[fuzzgen.IntRange(0, len(folders)-1).Draw(t)]) + "/")
 		if !slices.Contains(folders, variant) {
 			folders = append(folders, variant)
 		}
@@ -209,13 +210,13 @@ func ppNewSessionHarness(t *rapid.T) *ppSessionHarness {
 
 	var files []uri.URI
 
-	for i := range rapid.IntRange(1, 5).Draw(t, "fileCount") {
+	for i := range fuzzgen.IntRange(1, 5).Draw(t) {
 		name := fmt.Sprintf("f%d.thrift", i)
-		folder := folders[rapid.IntRange(0, len(folders)-1).Draw(t, "fileFolder")]
+		folder := folders[fuzzgen.IntRange(0, len(folders)-1).Draw(t)]
 
 		var path string
 
-		switch rapid.IntRange(0, 2).Draw(t, "placement") {
+		switch fuzzgen.IntRange(0, 2).Draw(t) {
 		case 0: // directly inside the folder
 			path = folder.Path() + "/" + name
 		case 1: // in a directory under the folder: still inside it
@@ -242,27 +243,27 @@ func ppNewSessionHarness(t *rapid.T) *ppSessionHarness {
 	}
 }
 
-func ppSessionOpGen(folders, files int) *rapid.Generator[ppSessionOp] {
-	return rapid.Custom(func(t *rapid.T) ppSessionOp {
+func ppSessionOpGen(folders, files int) fuzzgen.Gen[ppSessionOp] {
+	return fuzzgen.Custom(func(t *fuzzgen.T) ppSessionOp {
 		op := ppSessionOp{
-			kind: rapid.SampledFrom([]ppSessionOpKind{
+			kind: fuzzgen.SampledFrom([]ppSessionOpKind{
 				ppSessionAddView, ppSessionAddView, ppSessionAddView,
 				ppSessionRemoveView, ppSessionRemoveView,
 				ppSessionPlace, ppSessionPlace, ppSessionPlace,
 				ppSessionRoute, ppSessionRoute,
 				ppSessionWalk,
 				ppSessionObserve,
-			}).Draw(t, "kind"),
-			folder: rapid.IntRange(0, folders-1).Draw(t, "folder"),
-			file:   rapid.IntRange(0, files-1).Draw(t, "file"),
-			view:   rapid.IntRange(0, folders-1).Draw(t, "view"),
+			}).Draw(t),
+			folder: fuzzgen.IntRange(0, folders-1).Draw(t),
+			file:   fuzzgen.IntRange(0, files-1).Draw(t),
+			view:   fuzzgen.IntRange(0, folders-1).Draw(t),
 		}
 
 		return op
 	})
 }
 
-func (h *ppSessionHarness) apply(ctx context.Context, t *rapid.T, op ppSessionOp) {
+func (h *ppSessionHarness) apply(ctx context.Context, t *fuzzgen.T, op ppSessionOp) {
 	t.Helper()
 
 	switch op.kind {
@@ -347,7 +348,7 @@ func (h *ppSessionHarness) apply(ctx context.Context, t *rapid.T, op ppSessionOp
 
 // check compares the session's routing model and view registration against the
 // model after one operation.
-func (h *ppSessionHarness) check(ctx context.Context, t *rapid.T) {
+func (h *ppSessionHarness) check(ctx context.Context, t *fuzzgen.T) {
 	t.Helper()
 
 	h.step++
@@ -429,16 +430,27 @@ func (h *ppSessionHarness) check(ctx context.Context, t *rapid.T) {
 	}
 }
 
-// TestPropertySessionRouting drives add/remove/place/route/walk sequences and
+// FuzzPropertySessionRouting drives add/remove/place/route/walk sequences and
 // compares every routing decision with the model.
-func TestPropertySessionRouting(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
+func FuzzPropertySessionRouting(f *testing.F) {
+	for _, seed := range [][]byte{
+		[]byte("route"),
+		[]byte("s1"),
+		[]byte("sessions"),
+		[]byte(""),
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		t := fuzzgen.New(tb, seed)
+
 		h := ppNewSessionHarness(t)
 		ctx := t.Context()
 
-		trace := rapid.SliceOfN(
+		trace := fuzzgen.SliceOfN(
 			ppSessionOpGen(len(h.folders), len(h.files)), 1, 24,
-		).Draw(t, "trace")
+		).Draw(t)
 
 		// The first step registers a view about half the time: routing with no
 		// views registered must be an error, never a panic.
@@ -451,12 +463,23 @@ func TestPropertySessionRouting(t *testing.T) {
 	})
 }
 
-// TestPropertySessionNestedPrecedence checks the longest-prefix rule on a
+// FuzzPropertySessionNestedPrecedence checks the longest-prefix rule on a
 // nested folder tree, including a trailing-slash spelling of one folder.
-func TestPropertySessionNestedPrecedence(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
+func FuzzPropertySessionNestedPrecedence(f *testing.F) {
+	for _, seed := range [][]byte{
+		[]byte("nested"),
+		[]byte("p1"),
+		[]byte("slash"),
+		[]byte(""),
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(tb *testing.T, seed []byte) {
+		t := fuzzgen.New(tb, seed)
+
 		root := "/proptest/nested"
-		depth := rapid.IntRange(1, 3).Draw(t, "depth")
+		depth := fuzzgen.IntRange(1, 3).Draw(t)
 
 		folders := make([]uri.URI, 0, depth+1)
 		folders = append(folders, uri.File(root))
@@ -468,7 +491,7 @@ func TestPropertySessionNestedPrecedence(t *testing.T) {
 		}
 
 		// A trailing-slash twin of one folder covers the same files.
-		slashFolder := folders[rapid.IntRange(0, len(folders)-1).Draw(t, "slashIndex")]
+		slashFolder := folders[fuzzgen.IntRange(0, len(folders)-1).Draw(t)]
 		folders = append(folders, uri.URI(string(slashFolder)+"/"))
 
 		disk := map[uri.URI][]byte{}
@@ -489,7 +512,7 @@ func TestPropertySessionNestedPrecedence(t *testing.T) {
 
 		// Register in a shuffled order: registration order must only matter
 		// for ties.
-		perm := rapid.Permutation(slices.Clone(folders)).Draw(t, "order")
+		perm := fuzzgen.Permutation(slices.Clone(folders)).Draw(t)
 
 		model := newPPSessionModel()
 		for _, folder := range perm {
