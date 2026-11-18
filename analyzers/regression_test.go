@@ -7,6 +7,26 @@ import (
 	"github.com/karitham/thrift-ls/sema"
 )
 
+func TestDoubleConstAcceptsIntegerLiteral(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		source string
+	}{
+		{"constant", "const double Timeout = 10000"},
+		{"field default", "struct Config {\n  1: double ratio = 3,\n}"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p := newProgram()
+			p.add("main.thrift", tt.source)
+
+			got := p.collect(t, p.full(t))
+			if len(got["main.thrift"]) != 0 {
+				t.Errorf("double values take integer literals; findings: %v", got["main.thrift"])
+			}
+		})
+	}
+}
+
 func TestBinaryConstAcceptsStringLiteral(t *testing.T) {
 	for _, tt := range []struct {
 		name   string

@@ -330,8 +330,10 @@ func intValueMatches(ctx context.Context, ix *sema.Index, ut *syntax.FieldType, 
 
 	switch ut.Kind {
 	case syntax.TypeBase:
+		// Integer literals are valid in double positions.
 		switch ut.Base {
-		case syntax.TokenByte, syntax.TokenI8, syntax.TokenI16, syntax.TokenI32, syntax.TokenI64:
+		case syntax.TokenByte, syntax.TokenI8, syntax.TokenI16, syntax.TokenI32,
+			syntax.TokenI64, syntax.TokenDouble:
 			return true
 		}
 	case syntax.TypeIdent:

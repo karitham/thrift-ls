@@ -1512,7 +1512,7 @@ var corpusExpectations = []struct {
 	{"tests/galaxy-thrift-api/io/RSFile.thrift", nil},
 	{"tests/galaxy-thrift-api/sds/Admin.thrift", map[string]int{sema.CodeUnusedInclude: 1}},
 	{"tests/galaxy-thrift-api/sds/Authentication.thrift", nil},
-	{"tests/galaxy-thrift-api/sds/Common.thrift", map[string]int{sema.CodeValueTypeMismatch: 4}},
+	{"tests/galaxy-thrift-api/sds/Common.thrift", nil},
 	{"tests/galaxy-thrift-api/sds/Errors.thrift", nil},
 	{"tests/galaxy-thrift-api/sds/SLFile.thrift", nil},
 	{"tests/galaxy-thrift-api/sds/Table.thrift", map[string]int{
