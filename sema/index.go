@@ -137,9 +137,9 @@ func (x *Index) ResolveType(ctx context.Context, from *store.ParsedFile, ft *syn
 // instead of comparing surface names, so "typedef map<string,string> M"
 // classifies as a map everywhere.
 //
-// An identifier that resolves to no definition returns nil — the type has
-// no classifiable kind, and existence is another check's job. A cyclic or
-// pathological chain stops at maxTypedefDepth steps.
+// An identifier that resolves to no definition returns nil: existence is
+// another check's job. A chain that does not end within maxTypedefDepth
+// steps, including a cycle, has no classifiable kind and returns nil too.
 func (x *Index) UnderlyingType(ctx context.Context, from *store.ParsedFile, ft *syntax.FieldType) (*syntax.FieldType, *store.ParsedFile) {
 	pf, cur := from, ft
 
@@ -161,7 +161,7 @@ func (x *Index) UnderlyingType(ctx context.Context, from *store.ParsedFile, ft *
 		pf, cur = def.Parsed, td.Type
 	}
 
-	return cur, pf
+	return nil, pf
 }
 
 // maxTypedefDepth bounds typedef-chain following.
