@@ -18,15 +18,14 @@ import (
 
 	"github.com/karitham/thrift-ls/analyzers"
 	"github.com/karitham/thrift-ls/analyzertest"
-	"github.com/karitham/thrift-ls/internal/fuzzgen"
 	"github.com/karitham/thrift-ls/internal/proptest"
 	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
 )
 
-// testTB is the slice of *testing.T and *fuzzgen.T the helpers need. Taking
+// testTB is the slice of *testing.T and *proptest.T the helpers need. Taking
 // the interface keeps one helper usable from a plain test and from a fuzz
-// target, whose fuzzgen.T embeds its own *testing.T.
+// target, whose proptest.T embeds its own *testing.T.
 type testTB interface {
 	Logf(format string, args ...any)
 	Fatalf(format string, args ...any)
@@ -373,80 +372,60 @@ func defaultFor(typ string) (string, bool) {
 
 // fieldIDs draws n distinct field ids in [1, 32767], weighted toward the
 // boundaries so both ends of the accepted range appear.
-func fieldIDs(t *fuzzgen.T, n int) []int {
+func fieldIDs(t *proptest.T, n int) []int {
 	pool := []int{1, 2, 3, 5, 8, 13, 42, 100, 999, 32766, 32767}
 
-	return distinctInts(t, n, fuzzgen.SampledFrom(pool))
-}
-
-// distinctInts draws n distinct values from gen. Callers index the result by
-// position, so the length is exact; both pools are larger than any n asked
-// for, so the loop terminates.
-func distinctInts(t *fuzzgen.T, n int, gen fuzzgen.Gen[int]) []int {
-	seen := make(map[int]struct{}, n)
-	out := make([]int, 0, n)
-
-	for len(out) < n {
-		v := gen.Draw(t)
-		if _, ok := seen[v]; ok {
-			continue
-		}
-
-		seen[v] = struct{}{}
-		out = append(out, v)
-	}
-
-	return out
+	return proptest.SliceOfNDistinct(proptest.SampledFrom(pool), n, n, func(v int) int { return v }).Draw(t)
 }
 
 // enumValues draws n distinct explicit enum constants.
-func enumValues(t *fuzzgen.T, n int) []int {
+func enumValues(t *proptest.T, n int) []int {
 	pool := []int{0, 1, 2, 3, 5, 10, 100, 1000, 1 << 20, 1<<31 - 1}
 
-	return distinctInts(t, n, fuzzgen.SampledFrom(pool))
+	return proptest.SliceOfNDistinct(proptest.SampledFrom(pool), n, n, func(v int) int { return v }).Draw(t)
 }
 
 // drawType draws a field type that resolves: a scalar, one of the named types
 // defined so far, or a container over those. Map keys stay scalar, because a
 // struct or container key is exactly the defect NonScalarMapKeyCheck reports.
-func drawType(t *fuzzgen.T, named []string) string {
+func drawType(t *proptest.T, named []string) string {
 	base := append(slices.Clone(scalarTypes), named...)
 
-	switch fuzzgen.IntRange(0, 3).Draw(t) {
+	switch proptest.IntRange(0, 3).Draw(t) {
 	case 0:
-		return fuzzgen.SampledFrom(base).Draw(t)
+		return proptest.SampledFrom(base).Draw(t)
 	case 1:
-		return "list<" + fuzzgen.SampledFrom(base).Draw(t) + ">"
+		return "list<" + proptest.SampledFrom(base).Draw(t) + ">"
 	case 2:
-		return "set<" + fuzzgen.SampledFrom(base).Draw(t) + ">"
+		return "set<" + proptest.SampledFrom(base).Draw(t) + ">"
 	default:
-		key := fuzzgen.SampledFrom(scalarTypes).Draw(t)
+		key := proptest.SampledFrom(scalarTypes).Draw(t)
 
-		return "map<" + key + ", " + fuzzgen.SampledFrom(base).Draw(t) + ">"
+		return "map<" + key + ", " + proptest.SampledFrom(base).Draw(t) + ">"
 	}
 }
 
 // renderFunction renders one service function: a possibly-void return type,
 // uniquely named arguments with distinct ids, and an optional throws list over
 // a declared exception.
-func renderFunction(t *fuzzgen.T, nm *namer, named, exceptions []string) string {
+func renderFunction(t *proptest.T, nm *namer, named, exceptions []string) string {
 	ret := "void"
-	if fuzzgen.Bool().Draw(t) {
+	if proptest.Bool().Draw(t) {
 		ret = drawType(t, named)
 	}
 
-	argCount := fuzzgen.IntRange(0, 2).Draw(t)
+	argCount := proptest.IntRange(0, 2).Draw(t)
 	ids := fieldIDs(t, argCount)
 
 	args := make([]string, 0, argCount)
 	for i := range argCount {
-		args = append(args, fmt.Sprintf("%d: %s %s", ids[i], fuzzgen.SampledFrom(scalarTypes).Draw(t), nm.next("a")))
+		args = append(args, fmt.Sprintf("%d: %s %s", ids[i], proptest.SampledFrom(scalarTypes).Draw(t), nm.next("a")))
 	}
 
 	line := fmt.Sprintf("  %s %s(%s)", ret, nm.next("fn"), strings.Join(args, ", "))
 
-	if len(exceptions) > 0 && fuzzgen.Bool().Draw(t) {
-		line += fmt.Sprintf(" throws (1: %s %s)", fuzzgen.SampledFrom(exceptions).Draw(t), nm.next("e"))
+	if len(exceptions) > 0 && proptest.Bool().Draw(t) {
+		line += fmt.Sprintf(" throws (1: %s %s)", proptest.SampledFrom(exceptions).Draw(t), nm.next("e"))
 	}
 
 	return line
@@ -456,12 +435,12 @@ func renderFunction(t *fuzzgen.T, nm *namer, named, exceptions []string) string 
 // reference resolves, every scope holds distinct names and field ids, every
 // include is used by a field, and every literal matches its declared type. Any
 // diagnostic the checks report on it is therefore a false positive.
-func renderValid(t *fuzzgen.T) *program {
+func renderValid(t *proptest.T) *program {
 	p := newProgram()
 	nm := &namer{}
 
 	// Include targets: self-contained files, no includes of their own.
-	nInc := fuzzgen.IntRange(0, 2).Draw(t)
+	nInc := proptest.IntRange(0, 2).Draw(t)
 	incFiles := make([]string, nInc)
 	incTypes := make([]string, nInc)
 
@@ -473,7 +452,7 @@ func renderValid(t *fuzzgen.T) *program {
 		p.add(incFiles[i], "struct "+incTypes[i]+" {")
 		p.add(incFiles[i], "  1: i32 v,")
 
-		if fuzzgen.Bool().Draw(t) {
+		if proptest.Bool().Draw(t) {
 			p.add(incFiles[i], "  2: optional string label,")
 		}
 
@@ -486,7 +465,7 @@ func renderValid(t *fuzzgen.T) *program {
 	var included []int
 
 	for i := range nInc {
-		if fuzzgen.Bool().Draw(t) {
+		if proptest.Bool().Draw(t) {
 			included = append(included, i)
 			p.add(main, fmt.Sprintf("include %q", incFiles[i]))
 		}
@@ -499,12 +478,12 @@ func renderValid(t *fuzzgen.T) *program {
 	// Named types in definition order, so every use follows its definition.
 	var named []string
 
-	for range fuzzgen.IntRange(0, 2).Draw(t) {
+	for range proptest.IntRange(0, 2).Draw(t) {
 		name := nm.next("E")
 
 		p.add(main, "enum "+name+" {")
 
-		for _, v := range enumValues(t, fuzzgen.IntRange(1, 4).Draw(t)) {
+		for _, v := range enumValues(t, proptest.IntRange(1, 4).Draw(t)) {
 			p.add(main, fmt.Sprintf("  %s = %d,", nm.next("v"), v))
 		}
 
@@ -513,10 +492,10 @@ func renderValid(t *fuzzgen.T) *program {
 		named = append(named, name)
 	}
 
-	for range fuzzgen.IntRange(0, 1).Draw(t) {
+	for range proptest.IntRange(0, 1).Draw(t) {
 		name := nm.next("T")
 
-		switch fuzzgen.IntRange(0, 2).Draw(t) {
+		switch proptest.IntRange(0, 2).Draw(t) {
 		case 0:
 			p.add(main, "typedef i32 "+name)
 		case 1:
@@ -528,7 +507,7 @@ func renderValid(t *fuzzgen.T) *program {
 		named = append(named, name)
 	}
 
-	structs := fuzzgen.IntRange(0, 3).Draw(t)
+	structs := proptest.IntRange(0, 3).Draw(t)
 	if len(included) > 0 && structs == 0 {
 		structs = 1
 	}
@@ -536,10 +515,10 @@ func renderValid(t *fuzzgen.T) *program {
 	var exceptions []string
 
 	for i := range structs {
-		kind := fuzzgen.SampledFrom([]string{"struct", "struct", "union", "exception"}).Draw(t)
+		kind := proptest.SampledFrom([]string{"struct", "struct", "union", "exception"}).Draw(t)
 		name := nm.next("S")
 
-		fields := fuzzgen.IntRange(0, 3).Draw(t)
+		fields := proptest.IntRange(0, 3).Draw(t)
 		if kind != "struct" && fields == 0 {
 			// union and exception need at least one member.
 			fields = 1
@@ -565,12 +544,12 @@ func renderValid(t *fuzzgen.T) *program {
 
 			line := fmt.Sprintf("  %d: %s%s %s",
 				ids[j],
-				fuzzgen.SampledFrom([]string{"", "required ", "optional "}).Draw(t),
+				proptest.SampledFrom([]string{"", "required ", "optional "}).Draw(t),
 				typ,
 				nm.next("f"),
 			)
 
-			if def, ok := defaultFor(typ); ok && fuzzgen.Bool().Draw(t) {
+			if def, ok := defaultFor(typ); ok && proptest.Bool().Draw(t) {
 				line += " = " + def
 			}
 
@@ -586,15 +565,15 @@ func renderValid(t *fuzzgen.T) *program {
 		named = append(named, name)
 	}
 
-	for range fuzzgen.IntRange(0, 2).Draw(t) {
-		shape := constShapes[fuzzgen.IntRange(0, len(constShapes)-1).Draw(t)]
+	for range proptest.IntRange(0, 2).Draw(t) {
+		shape := constShapes[proptest.IntRange(0, len(constShapes)-1).Draw(t)]
 		p.add(main, "const "+shape.typ+" "+nm.next("K")+" = "+shape.val)
 	}
 
-	for range fuzzgen.IntRange(0, 1).Draw(t) {
+	for range proptest.IntRange(0, 1).Draw(t) {
 		p.add(main, "service "+nm.next("Svc")+" {")
 
-		for range fuzzgen.IntRange(0, 3).Draw(t) {
+		for range proptest.IntRange(0, 3).Draw(t) {
 			p.add(main, renderFunction(t, nm, named, exceptions)+",")
 		}
 
@@ -603,7 +582,7 @@ func renderValid(t *fuzzgen.T) *program {
 
 	// Case near-misses: the duplicate check is case-sensitive, so names that
 	// differ only in case are legal in one scope and must stay silent.
-	if fuzzgen.Bool().Draw(t) {
+	if proptest.Bool().Draw(t) {
 		name := nm.next("S")
 		field := nm.next("f")
 
@@ -793,11 +772,11 @@ func (d defect) String() string {
 // renderDefect renders the document graph for one defect class: exactly one
 // thing in it is wrong, and the expectations say what the checks must report
 // about it.
-func renderDefect(t *fuzzgen.T, p *program, d defect) {
+func renderDefect(t *proptest.T, p *program, d defect) {
 	switch d {
 	case defDupStructName:
 		main := baseDoc(p)
-		name := "Dup" + strconv.Itoa(fuzzgen.IntRange(1, 3).Draw(t))
+		name := "Dup" + strconv.Itoa(proptest.IntRange(1, 3).Draw(t))
 
 		p.add(main, "struct "+name+" {")
 		p.add(main, "  1: i32 first,")
@@ -811,7 +790,7 @@ func renderDefect(t *fuzzgen.T, p *program, d defect) {
 
 	case defDupCrossKind:
 		main := baseDoc(p)
-		name := "Ambig" + strconv.Itoa(fuzzgen.IntRange(1, 3).Draw(t))
+		name := "Ambig" + strconv.Itoa(proptest.IntRange(1, 3).Draw(t))
 
 		p.add(main, "struct "+name+" {")
 		p.add(main, "  1: i32 only,")
@@ -882,7 +861,7 @@ func renderDefect(t *fuzzgen.T, p *program, d defect) {
 
 	case defDupEnumValue:
 		main := baseDoc(p)
-		value := fuzzgen.SampledFrom([]int{1, 2, 5}).Draw(t)
+		value := proptest.SampledFrom([]int{1, 2, 5}).Draw(t)
 
 		p.add(main, "enum Values {")
 		p.add(main, fmt.Sprintf("  First = %d,", value))
@@ -893,7 +872,7 @@ func renderDefect(t *fuzzgen.T, p *program, d defect) {
 
 	case defEnumChainCollision:
 		main := baseDoc(p)
-		first := fuzzgen.IntRange(0, 5).Draw(t)
+		first := proptest.IntRange(0, 5).Draw(t)
 
 		p.add(main, "enum Chain {")
 		p.add(main, fmt.Sprintf("  A = %d,", first))
@@ -922,7 +901,7 @@ func renderDefect(t *fuzzgen.T, p *program, d defect) {
 
 	case defFieldIDDuplicate:
 		main := baseDoc(p)
-		id := fuzzgen.SampledFrom([]string{"1", "2", "42", "32767"}).Draw(t)
+		id := proptest.SampledFrom([]string{"1", "2", "42", "32767"}).Draw(t)
 
 		p.add(main, "struct Clash {")
 		line1 := p.add(main, "  "+id+": i32 a,")
@@ -934,7 +913,7 @@ func renderDefect(t *fuzzgen.T, p *program, d defect) {
 
 	case defFieldIDOutOfRange:
 		main := baseDoc(p)
-		lit := fuzzgen.SampledFrom([]string{"0", "-1", "32768", "0x8000", "2147483648"}).Draw(t)
+		lit := proptest.SampledFrom([]string{"0", "-1", "32768", "0x8000", "2147483648"}).Draw(t)
 
 		p.add(main, "struct Bad {")
 		line := p.add(main, "  "+lit+": i32 value,")
@@ -944,7 +923,7 @@ func renderDefect(t *fuzzgen.T, p *program, d defect) {
 
 	case defMapKeyDuplicate:
 		main := baseDoc(p)
-		c := fuzzgen.SampledFrom(mapKeyCases).Draw(t)
+		c := proptest.SampledFrom(mapKeyCases).Draw(t)
 
 		entries := make([]string, 0, len(c.keys))
 		for i, key := range c.keys {
@@ -969,7 +948,7 @@ func renderDefect(t *fuzzgen.T, p *program, d defect) {
 
 	case defSetValueDuplicate:
 		main := baseDoc(p)
-		c := fuzzgen.SampledFrom(setValueCases).Draw(t)
+		c := proptest.SampledFrom(setValueCases).Draw(t)
 
 		line := p.add(main, "const "+c.typ+" S = [ "+strings.Join(c.vals, ", ")+" ]")
 
@@ -1123,7 +1102,7 @@ func renderDefect(t *fuzzgen.T, p *program, d defect) {
 
 	case defUndefinedType:
 		main := baseDoc(p)
-		name := fuzzgen.SampledFrom([]string{"Missing", "Nope", "Absent"}).Draw(t)
+		name := proptest.SampledFrom([]string{"Missing", "Nope", "Absent"}).Draw(t)
 
 		p.add(main, "struct Bad {")
 		line := p.add(main, "  1: "+name+" value,")
@@ -1133,7 +1112,7 @@ func renderDefect(t *fuzzgen.T, p *program, d defect) {
 
 	case defUndefinedValueDefault:
 		main := baseDoc(p)
-		name := fuzzgen.SampledFrom([]string{"Missing", "Nope", "Absent"}).Draw(t)
+		name := proptest.SampledFrom([]string{"Missing", "Nope", "Absent"}).Draw(t)
 
 		p.add(main, "struct Bad {")
 		line := p.add(main, "  1: i32 value = "+name+",")
@@ -1143,7 +1122,7 @@ func renderDefect(t *fuzzgen.T, p *program, d defect) {
 
 	case defUndefinedValueConst:
 		main := baseDoc(p)
-		name := fuzzgen.SampledFrom([]string{"Missing", "Nope", "Absent"}).Draw(t)
+		name := proptest.SampledFrom([]string{"Missing", "Nope", "Absent"}).Draw(t)
 
 		line := p.add(main, "const i32 K = "+name)
 
@@ -1214,10 +1193,10 @@ var setValueCases = []struct {
 
 // renderCase renders either a valid document or one carrying a single defect,
 // so the lint-config properties see both shapes.
-func renderCase(t *fuzzgen.T) *program {
-	if fuzzgen.Bool().Draw(t) {
+func renderCase(t *proptest.T) *program {
+	if proptest.Bool().Draw(t) {
 		p := newProgram()
-		renderDefect(t, p, fuzzgen.SampledFrom(allDefects).Draw(t))
+		renderDefect(t, p, proptest.SampledFrom(allDefects).Draw(t))
 
 		return p
 	}
@@ -1309,7 +1288,7 @@ var propertySeeds = proptest.Corpus{
 // generator only emits valid Thrift, so any diagnostic is a false positive.
 func FuzzValidDocumentsProduceNoFindings(f *testing.F) {
 	proptest.Fuzz(f, propertySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		p := renderValid(t)
 		p.verify(t, p.collect(t, p.full(t)))
@@ -1373,10 +1352,10 @@ func Test_ValidNearMissesProduceNoFindings(t *testing.T) {
 // span, once, and nothing else.
 func FuzzSingleDefectIsDetected(f *testing.F) {
 	proptest.Fuzz(f, propertySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		p := newProgram()
-		renderDefect(t, p, fuzzgen.SampledFrom(allDefects).Draw(t))
+		renderDefect(t, p, proptest.SampledFrom(allDefects).Draw(t))
 		p.verify(t, p.collect(t, p.full(t)))
 	})
 }
@@ -1387,7 +1366,7 @@ func FuzzSingleDefectIsDetected(f *testing.F) {
 func Test_SingleDefectIsDetected(t *testing.T) {
 	for _, d := range allDefects {
 		t.Run(d.String(), func(t *testing.T) {
-			propertySeeds.Run(t, func(ft *fuzzgen.T) {
+			propertySeeds.Run(t, func(ft *proptest.T) {
 				p := newProgram()
 				renderDefect(ft, p, d)
 				p.verify(ft, p.collect(ft, p.full(ft)))
@@ -1401,7 +1380,7 @@ func Test_SingleDefectIsDetected(t *testing.T) {
 // and Disabled removes exactly the named check's findings.
 func FuzzDisabledAnalyzersRemoveExactlyTheirFindings(f *testing.F) {
 	proptest.Fuzz(f, propertySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		p := renderCase(t)
 		v := p.view(t)
@@ -1440,7 +1419,7 @@ func FuzzDisabledAnalyzersRemoveExactlyTheirFindings(f *testing.F) {
 			t.Fatalf("per-analyzer runs report files the combined run does not: %v vs %v\n%s", union, want, p.dump())
 		}
 
-		disabled := fuzzgen.SampledFrom(names).Draw(t)
+		disabled := proptest.SampledFrom(names).Draw(t)
 		got := p.collect(t, p.analyze(t, v, sema.Config{Disabled: []string{disabled}}))
 
 		gotSigs := make(map[string][]string, len(got))
@@ -1474,7 +1453,7 @@ func FuzzDisabledAnalyzersRemoveExactlyTheirFindings(f *testing.F) {
 // messages, same order.
 func FuzzSeverityOverridesChangeOnlySeverity(f *testing.F) {
 	proptest.Fuzz(f, propertySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		p := renderCase(t)
 		v := p.view(t)
@@ -1495,8 +1474,8 @@ func FuzzSeverityOverridesChangeOnlySeverity(f *testing.F) {
 			return
 		}
 
-		code := fuzzgen.SampledFrom(codes).Draw(t)
-		sev := fuzzgen.SampledFrom([]sema.Severity{
+		code := proptest.SampledFrom(codes).Draw(t)
+		sev := proptest.SampledFrom([]sema.Severity{
 			sema.SeverityError, sema.SeverityWarning, sema.SeverityInfo, sema.SeverityHint,
 		}).Draw(t)
 
@@ -1532,7 +1511,7 @@ func FuzzSeverityOverridesChangeOnlySeverity(f *testing.F) {
 // the same order.
 func FuzzReportIsDeterministic(f *testing.F) {
 	proptest.Fuzz(f, propertySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		p := renderCase(t)
 

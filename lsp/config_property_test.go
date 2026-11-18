@@ -16,7 +16,6 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/karitham/thrift-ls/formatter"
-	"github.com/karitham/thrift-ls/internal/fuzzgen"
 	"github.com/karitham/thrift-ls/internal/proptest"
 	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/store"
@@ -97,14 +96,14 @@ func patchFields(p options.Patch) map[string]any {
 
 // drawPropertyPatch draws one partial options patch with every field
 // independently set or unset.
-func drawPropertyPatch(t *fuzzgen.T) options.Patch {
+func drawPropertyPatch(t *proptest.T) options.Patch {
 	var patch options.Patch
 
-	patch.PrintWidth = fuzzgen.Ptr(fuzzgen.IntRange(20, 120), true).Draw(t)
-	patch.TabWidth = fuzzgen.Ptr(fuzzgen.IntRange(1, 8), true).Draw(t)
-	patch.Align = fuzzgen.Ptr(fuzzgen.SampledFrom([]string{"field", "assign", "disable"}), true).Draw(t)
-	patch.Indent = fuzzgen.Ptr(fuzzgen.Map(
-		fuzzgen.SampledFrom([]string{"  ", "    ", "\t"}),
+	patch.PrintWidth = proptest.Ptr(proptest.IntRange(20, 120), true).Draw(t)
+	patch.TabWidth = proptest.Ptr(proptest.IntRange(1, 8), true).Draw(t)
+	patch.Align = proptest.Ptr(proptest.SampledFrom([]string{"field", "assign", "disable"}), true).Draw(t)
+	patch.Indent = proptest.Ptr(proptest.Map(
+		proptest.SampledFrom([]string{"  ", "    ", "\t"}),
 		func(value string) formatter.Indent {
 			indent, err := formatter.ParseIndentValue(value)
 			if err != nil {
@@ -115,47 +114,47 @@ func drawPropertyPatch(t *fuzzgen.T) options.Patch {
 		},
 	), true).Draw(t)
 
-	if fuzzgen.Bool().Draw(t) {
+	if proptest.Bool().Draw(t) {
 		var separators formatter.Separators
 
 		for _, construct := range formatter.AllConstructs {
-			if !fuzzgen.Bool().Draw(t) {
+			if !proptest.Bool().Draw(t) {
 				continue
 			}
 
-			separators.Set(construct, new(fuzzgen.SampledFrom([]string{"comma", "semicolon", "none", "preserve"}).Draw(t)))
+			separators.Set(construct, new(proptest.SampledFrom([]string{"comma", "semicolon", "none", "preserve"}).Draw(t)))
 		}
 
 		patch.Separators = &separators
 	}
 
-	if fuzzgen.Bool().Draw(t) {
+	if proptest.Bool().Draw(t) {
 		var breaks formatter.Break
 
 		for _, construct := range formatter.AllConstructs {
-			if fuzzgen.Bool().Draw(t) {
-				breaks.Set(construct, new(fuzzgen.Bool().Draw(t)))
+			if proptest.Bool().Draw(t) {
+				breaks.Set(construct, new(proptest.Bool().Draw(t)))
 			}
 		}
 
 		patch.Break = &breaks
 	}
 
-	if fuzzgen.Bool().Draw(t) {
-		patch.IncludePaths = fuzzgen.Ptr(fuzzgen.SliceOfN(
-			fuzzgen.SampledFrom([]string{"inc", "../shared", "gen", "/abs/inc"}), 0, 3,
+	if proptest.Bool().Draw(t) {
+		patch.IncludePaths = proptest.Ptr(proptest.SliceOfN(
+			proptest.SampledFrom([]string{"inc", "../shared", "gen", "/abs/inc"}), 0, 3,
 		), false).Draw(t)
 	}
 
-	patch.LogLevel = fuzzgen.Ptr(fuzzgen.IntRange(-4, 8), true).Draw(t)
+	patch.LogLevel = proptest.Ptr(proptest.IntRange(-4, 8), true).Draw(t)
 
-	if fuzzgen.Bool().Draw(t) {
+	if proptest.Bool().Draw(t) {
 		lint := options.LintConfig{}
-		lint.Disabled = fuzzgen.Ptr(fuzzgen.SliceOfN(
-			fuzzgen.SampledFrom([]string{"duplicate", "field-id", "unused-include"}), 0, 2,
+		lint.Disabled = proptest.Ptr(proptest.SliceOfN(
+			proptest.SampledFrom([]string{"duplicate", "field-id", "unused-include"}), 0, 2,
 		), true).Draw(t)
-		lint.Severity = fuzzgen.Ptr(fuzzgen.MapOfN(
-			fuzzgen.SampledFrom([]string{"duplicate", "field-id"}), fuzzgen.SampledFrom([]string{"error", "warning", "info", "hint"}), 0, 2,
+		lint.Severity = proptest.Ptr(proptest.MapOfN(
+			proptest.SampledFrom([]string{"duplicate", "field-id"}), proptest.SampledFrom([]string{"error", "warning", "info", "hint"}), 0, 2,
 		), true).Draw(t)
 		patch.Lint = &lint
 	}
@@ -266,9 +265,9 @@ func FuzzFileConfigSourceDiscovery(f *testing.F) {
 		[]byte("malformed config"),
 		[]byte("override"),
 	}, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
-		depth := fuzzgen.IntRange(0, 3).Draw(t)
+		depth := proptest.IntRange(0, 3).Draw(t)
 
 		path := "/cfg-root"
 		for i := 0; i < depth; i++ {
@@ -287,17 +286,17 @@ func FuzzFileConfigSourceDiscovery(f *testing.F) {
 
 		docDirs := map[string]int{}
 		for _, dir := range ancestors {
-			if !fuzzgen.Bool().Draw(t) {
+			if !proptest.Bool().Draw(t) {
 				continue
 			}
 
-			docDirs[dir] = fuzzgen.IntRange(20, 60).Draw(t)
+			docDirs[dir] = proptest.IntRange(20, 60).Draw(t)
 		}
 
 		seeded := map[uri.URI][]byte{}
 		malformed := map[string]int{}
 		for dir, width := range docDirs {
-			kind := fuzzgen.IntRange(0, 5).Draw(t)
+			kind := proptest.IntRange(0, 5).Draw(t)
 			malformed[dir] = kind
 
 			switch kind {
@@ -312,7 +311,7 @@ func FuzzFileConfigSourceDiscovery(f *testing.F) {
 
 		// THRIFT_LS_CONFIG, when set, replaces discovery: it may name a
 		// seeded document, a malformed one, or nothing at all.
-		override := fuzzgen.IntRange(0, 4).Draw(t)
+		override := proptest.IntRange(0, 4).Draw(t)
 		overridePath := "/env/explicit.json"
 
 		switch override {
@@ -410,9 +409,9 @@ func FuzzProjectViewConfigLayering(f *testing.F) {
 		[]byte("malformed document"),
 		[]byte("loader include paths"),
 	}, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
-		rootPath := fuzzgen.SampledFrom([]string{"/proj", "/proj/sub", "/proj/sub/deeper"}).Draw(t)
+		rootPath := proptest.SampledFrom([]string{"/proj", "/proj/sub", "/proj/sub/deeper"}).Draw(t)
 
 		frontend := drawPropertyPatch(t)
 		document := drawPropertyPatch(t)
@@ -420,14 +419,14 @@ func FuzzProjectViewConfigLayering(f *testing.F) {
 
 		// The document may sit at the root or one level up, and may be
 		// malformed: then it is skipped and an issue diagnostic appears.
-		docDepth := fuzzgen.IntRange(0, 2).Draw(t)
+		docDepth := proptest.IntRange(0, 2).Draw(t)
 		docPath := rootPath
 		for i := 0; i < docDepth; i++ {
 			docPath = filepath.Dir(docPath)
 		}
 
 		docURI := uri.File(filepath.Join(docPath, options.ConfigFileName))
-		broken := fuzzgen.IntRange(0, 5).Draw(t) == 0
+		broken := proptest.IntRange(0, 5).Draw(t) == 0
 
 		files := map[uri.URI][]byte{}
 		if broken {
@@ -478,7 +477,7 @@ func FuzzProjectViewConfigLayering(f *testing.F) {
 
 		// A loader's include paths are authoritative over the document and
 		// CLI, and empty ones fall back to them.
-		loaderIncludes := fuzzgen.SampledFrom([][]string{nil, {"/from-build-system"}, {"/one", "/two"}}).Draw(t)
+		loaderIncludes := proptest.SampledFrom([][]string{nil, {"/from-build-system"}, {"/one", "/two"}}).Draw(t)
 
 		project := Project{
 			ConfigURI:    uri.File(filepath.Join(rootPath, "build.json")),
@@ -538,12 +537,12 @@ func FuzzLSPSettingsContract(f *testing.F) {
 		[]byte("unknown key"),
 		[]byte("severity map"),
 	}, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		patch := drawPropertyPatch(t)
 
 		doc := patchDocument(patch)
-		doc["path"] = fuzzgen.SampledFrom([]string{"/usr/bin/thrift-ls", "", "/tmp/bin"}).Draw(t)
+		doc["path"] = proptest.SampledFrom([]string{"/usr/bin/thrift-ls", "", "/tmp/bin"}).Draw(t)
 
 		got, err := lspSettings(mustJSON(t, doc))
 		require.NoError(t, err)
@@ -551,10 +550,10 @@ func FuzzLSPSettingsContract(f *testing.F) {
 
 		// Unknown keys are rejected, never silently ignored: a typo must not
 		// format with stale options.
-		unknown := fuzzgen.SampledFrom([]string{"printWhidt", "includePath", "lintt", "algin", "tabwidht"}).Draw(t)
+		unknown := proptest.SampledFrom([]string{"printWhidt", "includePath", "lintt", "algin", "tabwidht"}).Draw(t)
 		bad := patchDocument(patch)
 		bad["path"] = "/bin/x"
-		bad[unknown] = fuzzgen.SampledFrom([]any{100, "field", true, []any{"x"}}).Draw(t)
+		bad[unknown] = proptest.SampledFrom([]any{100, "field", true, []any{"x"}}).Draw(t)
 
 		_, err = lspSettings(mustJSON(t, bad))
 		require.Error(t, err, "unknown key %q must be rejected", unknown)

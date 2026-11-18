@@ -17,7 +17,6 @@ import (
 
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/internal/fuzzgen"
 	"github.com/karitham/thrift-ls/internal/proptest"
 	"github.com/karitham/thrift-ls/syntax"
 )
@@ -66,18 +65,18 @@ type ppDoc struct {
 // ppDocGen generates a document. Include targets are drawn from names, which
 // ends with ppGhostName, so generated graphs contain chains, diamonds, cycles,
 // self-includes and includes of missing files.
-func ppDocGen(names int) fuzzgen.Gen[ppDoc] {
-	return fuzzgen.Custom(func(t *fuzzgen.T) ppDoc {
+func ppDocGen(names int) proptest.Gen[ppDoc] {
+	return proptest.Custom(func(t *proptest.T) ppDoc {
 		doc := ppDoc{
-			kind:   fuzzgen.SampledFrom([]ppDocKind{ppDocEmpty, ppDocValid, ppDocValid, ppDocBroken}).Draw(t),
-			def:    fuzzgen.SampledFrom(ppDefNames).Draw(t),
-			fields: fuzzgen.IntRange(0, 2).Draw(t),
+			kind:   proptest.SampledFrom([]ppDocKind{ppDocEmpty, ppDocValid, ppDocValid, ppDocBroken}).Draw(t),
+			def:    proptest.SampledFrom(ppDefNames).Draw(t),
+			fields: proptest.IntRange(0, 2).Draw(t),
 		}
-		for range fuzzgen.IntRange(0, 3).Draw(t) {
+		for range proptest.IntRange(0, 3).Draw(t) {
 			doc.includes = append(doc.includes, ppInclude{
-				target: fuzzgen.IntRange(0, names-1).Draw(t),
-				dotted: fuzzgen.Bool().Draw(t),
-				dup:    fuzzgen.Bool().Draw(t),
+				target: proptest.IntRange(0, names-1).Draw(t),
+				dotted: proptest.Bool().Draw(t),
+				dup:    proptest.Bool().Draw(t),
 			})
 		}
 
@@ -442,9 +441,9 @@ func (o ppOp) String() string {
 
 // ppOpGen generates one operation. File indices address the real files;
 // include targets may also name ppGhostName.
-func ppOpGen(files, names int) fuzzgen.Gen[ppOp] {
-	return fuzzgen.Custom(func(t *fuzzgen.T) ppOp {
-		kind := fuzzgen.SampledFrom([]ppOpKind{
+func ppOpGen(files, names int) proptest.Gen[ppOp] {
+	return proptest.Custom(func(t *proptest.T) ppOp {
+		kind := proptest.SampledFrom([]ppOpKind{
 			ppOpOpen, ppOpOpen,
 			ppOpChange, ppOpChange, ppOpChange,
 			ppOpClose,
@@ -456,11 +455,11 @@ func ppOpGen(files, names int) fuzzgen.Gen[ppOp] {
 			ppOpObserve, ppOpObserve,
 		}).Draw(t)
 
-		op := ppOp{kind: kind, files: []int{fuzzgen.IntRange(0, files-1).Draw(t)}}
+		op := ppOp{kind: kind, files: []int{proptest.IntRange(0, files-1).Draw(t)}}
 
 		if kind == ppOpUpdateBatch {
-			for range fuzzgen.IntRange(1, 3).Draw(t) {
-				op.files = append(op.files, fuzzgen.IntRange(0, files-1).Draw(t))
+			for range proptest.IntRange(1, 3).Draw(t) {
+				op.files = append(op.files, proptest.IntRange(0, files-1).Draw(t))
 			}
 		}
 
@@ -537,7 +536,7 @@ type ppViewHarness struct {
 // index to
 // the initial disk content; unseeded files exist only if an operation creates
 // them.
-func ppNewViewHarness(t *fuzzgen.T, folder uri.URI, names []string, seeds map[int]string) *ppViewHarness {
+func ppNewViewHarness(t *proptest.T, folder uri.URI, names []string, seeds map[int]string) *ppViewHarness {
 	t.Helper()
 
 	h := &ppViewHarness{names: names, model: newPPRefStore()}
@@ -566,11 +565,11 @@ func ppNewViewHarness(t *fuzzgen.T, folder uri.URI, names []string, seeds map[in
 // ppGeneratedHarness draws a universe of 2-6 files with a mix of seeded
 // content: valid documents with generated include graphs, empty files, broken
 // documents, and files with no disk copy at all.
-func ppGeneratedHarness(t *fuzzgen.T) *ppViewHarness {
+func ppGeneratedHarness(t *proptest.T) *ppViewHarness {
 	t.Helper()
 
 	folder := uri.File("/proptest/view")
-	count := fuzzgen.IntRange(2, 6).Draw(t)
+	count := proptest.IntRange(2, 6).Draw(t)
 
 	names := make([]string, 0, count+1)
 	for i := range count {
@@ -580,14 +579,14 @@ func ppGeneratedHarness(t *fuzzgen.T) *ppViewHarness {
 
 	seeds := make(map[int]string, count)
 	for i := range count {
-		switch fuzzgen.IntRange(0, 3).Draw(t) {
+		switch proptest.IntRange(0, 3).Draw(t) {
 		case 0: // no disk copy: only an overlay can make it readable
 		case 1:
 			seeds[i] = ppDocGen(len(names)).Draw(t).render(names)
 		case 2:
 			seeds[i] = ""
 		case 3:
-			seeds[i] = ppStubDoc(fuzzgen.SampledFrom(ppDefNames).Draw(t))
+			seeds[i] = ppStubDoc(proptest.SampledFrom(ppDefNames).Draw(t))
 		}
 	}
 
@@ -605,7 +604,7 @@ func (h *ppViewHarness) opText(op ppOp) string {
 
 // apply performs one operation on the live view and on the model, returning
 // the change result for Update operations.
-func (h *ppViewHarness) apply(ctx context.Context, t *fuzzgen.T, op ppOp) *ChangeResult {
+func (h *ppViewHarness) apply(ctx context.Context, t *proptest.T, op ppOp) *ChangeResult {
 	t.Helper()
 
 	switch op.kind {
@@ -628,7 +627,7 @@ func (h *ppViewHarness) apply(ctx context.Context, t *fuzzgen.T, op ppOp) *Chang
 	return nil
 }
 
-func (h *ppViewHarness) applyOverlayOp(ctx context.Context, t *fuzzgen.T, op ppOp) *ChangeResult {
+func (h *ppViewHarness) applyOverlayOp(ctx context.Context, t *proptest.T, op ppOp) *ChangeResult {
 	t.Helper()
 
 	u := h.uris[op.files[0]]
@@ -675,7 +674,7 @@ func (h *ppViewHarness) applyOverlayOp(ctx context.Context, t *fuzzgen.T, op ppO
 	return &res
 }
 
-func (h *ppViewHarness) applyDiskOp(ctx context.Context, t *fuzzgen.T, op ppOp) *ChangeResult {
+func (h *ppViewHarness) applyDiskOp(ctx context.Context, t *proptest.T, op ppOp) *ChangeResult {
 	t.Helper()
 
 	u := h.uris[op.files[0]]
@@ -750,7 +749,7 @@ func (h *ppViewHarness) applyBatch(ctx context.Context, op ppOp) *ChangeResult {
 }
 
 // ppEqual fails the fuzz case when want and got differ, naming the step.
-func ppEqual[T any](t *fuzzgen.T, step int, what string, want, got T) {
+func ppEqual[T any](t *proptest.T, step int, what string, want, got T) {
 	t.Helper()
 
 	if !reflect.DeepEqual(want, got) {
@@ -792,7 +791,7 @@ func ppExpectedAffected(model *ppRefStore, changed []uri.URI) []uri.URI {
 }
 
 // check compares the live view against the model after one operation.
-func (h *ppViewHarness) check(ctx context.Context, t *fuzzgen.T, op ppOp, genBefore uint64, res *ChangeResult) {
+func (h *ppViewHarness) check(ctx context.Context, t *proptest.T, op ppOp, genBefore uint64, res *ChangeResult) {
 	t.Helper()
 
 	h.step++
@@ -932,7 +931,7 @@ func ppClosure(includers map[uri.URI][]uri.URI, target uri.URI) []uri.URI {
 }
 
 // runViewTrace applies a whole operation history, checking after every step.
-func ppRunViewTrace(ctx context.Context, t *fuzzgen.T, h *ppViewHarness, trace []ppOp) string {
+func ppRunViewTrace(ctx context.Context, t *proptest.T, h *ppViewHarness, trace []ppOp) string {
 	t.Helper()
 
 	for _, op := range trace {
@@ -974,12 +973,12 @@ func FuzzPropertyViewOperationsMatchModel(f *testing.F) {
 		[]byte("mixed-ops"),
 		[]byte(""),
 	}, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		h := ppGeneratedHarness(t)
 		ctx := t.Context()
 
-		trace := fuzzgen.SliceOfN(ppOpGen(len(h.uris), len(h.names)), 1, 24).Draw(t)
+		trace := proptest.SliceOfN(ppOpGen(len(h.uris), len(h.names)), 1, 24).Draw(t)
 		ppRunViewTrace(ctx, t, h, trace)
 	})
 }
@@ -994,7 +993,7 @@ func FuzzPropertyViewChainPatterns(f *testing.F) {
 		[]byte("dotted"),
 		[]byte(""),
 	}, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		names := []string{"a.thrift", "b.thrift", "c.thrift", "d.thrift", ppGhostName}
 		folder := uri.File("/proptest/chain")
@@ -1008,15 +1007,15 @@ func FuzzPropertyViewChainPatterns(f *testing.F) {
 			3: ppStubDoc("Delta"),
 		}
 
-		if fuzzgen.Bool().Draw(t) {
+		if proptest.Bool().Draw(t) {
 			seeds[3] = "include \"d.thrift\"\n\n" + ppStubDoc("Delta")
 		}
 
-		if fuzzgen.Bool().Draw(t) {
+		if proptest.Bool().Draw(t) {
 			seeds[2] = "include \"d.thrift\"\ninclude \"" + ppGhostName + "\"\n\n" + ppStubDoc("Gamma")
 		}
 
-		if fuzzgen.Bool().Draw(t) {
+		if proptest.Bool().Draw(t) {
 			seeds[1] = "include \"c.thrift\"\ninclude \"./c.thrift\"\ninclude \"d.thrift\"\n\n" + ppStubDoc("Beta")
 		}
 
@@ -1039,14 +1038,14 @@ func FuzzPropertyViewChainPatterns(f *testing.F) {
 		dropIncludes := ppOp{
 			kind:  ppOpChange,
 			files: []int{1},
-			doc:   ppDoc{kind: ppDocValid, def: fuzzgen.SampledFrom(ppDefNames).Draw(t)},
+			doc:   ppDoc{kind: ppDocValid, def: proptest.SampledFrom(ppDefNames).Draw(t)},
 		}
 
 		// A size-preserving rewrite that only renames a definition.
 		rename := ppOp{
 			kind:  ppOpDiskChange,
 			files: []int{2},
-			doc:   ppDoc{kind: ppDocValid, def: fuzzgen.SampledFrom(ppDefNames).Draw(t)},
+			doc:   ppDoc{kind: ppDocValid, def: proptest.SampledFrom(ppDefNames).Draw(t)},
 		}
 
 		// Evict the middle, observe the leftovers, then re-open it.
@@ -1054,7 +1053,7 @@ func FuzzPropertyViewChainPatterns(f *testing.F) {
 		reopen := ppOp{
 			kind:  ppOpOpen,
 			files: []int{1},
-			doc:   ppDoc{kind: ppDocValid, def: fuzzgen.SampledFrom(ppDefNames).Draw(t)},
+			doc:   ppDoc{kind: ppDocValid, def: proptest.SampledFrom(ppDefNames).Draw(t)},
 		}
 
 		script := make([]ppOp, 0, len(cold)+8)
@@ -1065,7 +1064,7 @@ func FuzzPropertyViewChainPatterns(f *testing.F) {
 		script = append(script, ppOp{kind: ppOpClose, files: []int{1}}, reopen)
 		script = append(script, ppOp{kind: ppOpUpdateBatch, files: []int{0, 1, 2, 3}})
 
-		if fuzzgen.Bool().Draw(t) {
+		if proptest.Bool().Draw(t) {
 			script = append(script, ppOp{kind: ppOpEvict, files: []int{3}}, observe)
 		}
 
@@ -1082,11 +1081,11 @@ func FuzzPropertyViewReplayDeterminism(f *testing.F) {
 		[]byte("same-history"),
 		[]byte(""),
 	}, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		// Draw the universe and history once, then replay them twice.
 		folder := uri.File("/proptest/replay")
-		count := fuzzgen.IntRange(2, 5).Draw(t)
+		count := proptest.IntRange(2, 5).Draw(t)
 
 		names := make([]string, 0, count+1)
 		for i := range count {
@@ -1096,12 +1095,12 @@ func FuzzPropertyViewReplayDeterminism(f *testing.F) {
 
 		seeds := make(map[int]string, count)
 		for i := range count {
-			if fuzzgen.Bool().Draw(t) {
+			if proptest.Bool().Draw(t) {
 				seeds[i] = ppDocGen(len(names)).Draw(t).render(names)
 			}
 		}
 
-		trace := fuzzgen.SliceOfN(ppOpGen(count, len(names)), 1, 12).Draw(t)
+		trace := proptest.SliceOfN(ppOpGen(count, len(names)), 1, 12).Draw(t)
 
 		first := ppRunViewTrace(t.Context(), t, ppNewViewHarness(t, folder, names, seeds), trace)
 		second := ppRunViewTrace(t.Context(), t, ppNewViewHarness(t, folder, names, seeds), trace)
@@ -1133,7 +1132,7 @@ func FuzzPropertyViewConcurrentReaders(f *testing.F) {
 		[]byte("readers"),
 		[]byte(""),
 	}, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		h := ppGeneratedHarness(t)
 		ctx := t.Context()
@@ -1149,9 +1148,9 @@ func FuzzPropertyViewConcurrentReaders(f *testing.F) {
 			}
 		}
 
-		writes := fuzzgen.SliceOfN(ppOpGen(len(h.uris), len(h.names)), 4, 16).Draw(t)
-		readers := fuzzgen.IntRange(2, 4).Draw(t)
-		readerSeed := fuzzgen.Int64().Draw(t)
+		writes := proptest.SliceOfN(ppOpGen(len(h.uris), len(h.names)), 4, 16).Draw(t)
+		readers := proptest.IntRange(2, 4).Draw(t)
+		readerSeed := proptest.Int64().Draw(t)
 
 		stop := make(chan struct{})
 
@@ -1301,29 +1300,29 @@ func FuzzPropertyViewCorpusHistories(f *testing.F) {
 		[]byte("sds"),
 		[]byte(""),
 	}, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		folder := uri.File("/proptest/corpus")
 		allNames := append(slices.Clone(names), ppGhostName)
 
 		seeds := make(map[int]string, len(names))
 		for i := range names {
-			if fuzzgen.Bool().Draw(t) {
+			if proptest.Bool().Draw(t) {
 				seeds[i] = contents[i]
 			}
 		}
 
 		h := ppNewViewHarness(t, folder, allNames, seeds)
 
-		trace := fuzzgen.SliceOfN(ppOpGen(len(names), len(allNames)), 1, 12).Draw(t)
+		trace := proptest.SliceOfN(ppOpGen(len(names), len(allNames)), 1, 12).Draw(t)
 
 		// Half the content writes store another corpus document, which keeps
 		// the include targets real but changes which definitions a file has.
 		for i := range trace {
 			switch trace[i].kind {
 			case ppOpOpen, ppOpChange, ppOpDiskChange, ppOpDiskWriteNoUpdate:
-				if fuzzgen.Bool().Draw(t) {
-					text := contents[fuzzgen.IntRange(0, len(contents)-1).Draw(t)]
+				if proptest.Bool().Draw(t) {
+					text := contents[proptest.IntRange(0, len(contents)-1).Draw(t)]
 					trace[i].text = &text
 				}
 			}

@@ -10,7 +10,6 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/internal/fuzzgen"
 	"github.com/karitham/thrift-ls/internal/proptest"
 	"github.com/karitham/thrift-ls/mapper"
 )
@@ -19,16 +18,16 @@ var propertyFieldTypes = []string{"i32", "string", "bool", "double"}
 
 // drawUnformattedDocument draws a small IDL document the formatter always
 // rewrites: one field per line, which the default width collapses.
-func drawUnformattedDocument(t *fuzzgen.T) string {
-	name := fuzzgen.SampledFrom([]string{"Alpha", "Beta", "Gamma"}).Draw(t)
-	fields := fuzzgen.IntRange(1, 2).Draw(t)
+func drawUnformattedDocument(t *proptest.T) string {
+	name := proptest.SampledFrom([]string{"Alpha", "Beta", "Gamma"}).Draw(t)
+	fields := proptest.IntRange(1, 2).Draw(t)
 
 	var doc strings.Builder
 
 	fmt.Fprintf(&doc, "struct %s {\n", name)
 
 	for i := 1; i <= fields; i++ {
-		fmt.Fprintf(&doc, "%d: %s f%d\n", i, fuzzgen.SampledFrom(propertyFieldTypes).Draw(t), i)
+		fmt.Fprintf(&doc, "%d: %s f%d\n", i, proptest.SampledFrom(propertyFieldTypes).Draw(t), i)
 	}
 
 	doc.WriteString("}\n")
@@ -51,7 +50,7 @@ func FuzzFormattingEditsSameStartInsertion(f *testing.F) {
 		[]byte("two fields"),
 		[]byte("gamma"),
 	}, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		doc := drawUnformattedDocument(t)
 

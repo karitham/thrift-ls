@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/karitham/thrift-ls/formatter"
-	"github.com/karitham/thrift-ls/internal/fuzzgen"
 	"github.com/karitham/thrift-ls/internal/proptest"
 	"github.com/karitham/thrift-ls/options"
 )
@@ -100,14 +99,14 @@ var (
 
 // drawPatch draws one partial patch: every field independently set or unset,
 // with the per-construct maps partially filled.
-func drawPatch(t *fuzzgen.T) options.Patch {
+func drawPatch(t *proptest.T) options.Patch {
 	var patch options.Patch
 
-	patch.PrintWidth = fuzzgen.Ptr(fuzzgen.IntRange(1, 120), true).Draw(t)
-	patch.TabWidth = fuzzgen.Ptr(fuzzgen.IntRange(1, 8), true).Draw(t)
-	patch.Align = fuzzgen.Ptr(fuzzgen.SampledFrom(alignValues), true).Draw(t)
-	patch.LogLevel = fuzzgen.Ptr(fuzzgen.IntRange(-4, 8), true).Draw(t)
-	patch.Indent = fuzzgen.Ptr(fuzzgen.Map(fuzzgen.SampledFrom(indentValues), func(value string) formatter.Indent {
+	patch.PrintWidth = proptest.Ptr(proptest.IntRange(1, 120), true).Draw(t)
+	patch.TabWidth = proptest.Ptr(proptest.IntRange(1, 8), true).Draw(t)
+	patch.Align = proptest.Ptr(proptest.SampledFrom(alignValues), true).Draw(t)
+	patch.LogLevel = proptest.Ptr(proptest.IntRange(-4, 8), true).Draw(t)
+	patch.Indent = proptest.Ptr(proptest.Map(proptest.SampledFrom(indentValues), func(value string) formatter.Indent {
 		indent, err := formatter.ParseIndentValue(value)
 		if err != nil {
 			panic(err)
@@ -116,40 +115,40 @@ func drawPatch(t *fuzzgen.T) options.Patch {
 		return indent
 	}), true).Draw(t)
 
-	if fuzzgen.Bool().Draw(t) {
+	if proptest.Bool().Draw(t) {
 		var separators formatter.Separators
 
 		for _, construct := range formatter.AllConstructs {
-			if fuzzgen.Bool().Draw(t) {
-				separators.Set(construct, new(fuzzgen.SampledFrom(separatorValues).Draw(t)))
+			if proptest.Bool().Draw(t) {
+				separators.Set(construct, new(proptest.SampledFrom(separatorValues).Draw(t)))
 			}
 		}
 
 		patch.Separators = &separators
 	}
 
-	if fuzzgen.Bool().Draw(t) {
+	if proptest.Bool().Draw(t) {
 		var breaks formatter.Break
 
 		for _, construct := range formatter.AllConstructs {
-			if fuzzgen.Bool().Draw(t) {
-				breaks.Set(construct, new(fuzzgen.Bool().Draw(t)))
+			if proptest.Bool().Draw(t) {
+				breaks.Set(construct, new(proptest.Bool().Draw(t)))
 			}
 		}
 
 		patch.Break = &breaks
 	}
 
-	if fuzzgen.Bool().Draw(t) {
-		patch.IncludePaths = fuzzgen.Ptr(fuzzgen.SliceOfN(
-			fuzzgen.SampledFrom([]string{"inc", "../shared", "gen", "/abs/inc"}), 0, 3,
+	if proptest.Bool().Draw(t) {
+		patch.IncludePaths = proptest.Ptr(proptest.SliceOfN(
+			proptest.SampledFrom([]string{"inc", "../shared", "gen", "/abs/inc"}), 0, 3,
 		), false).Draw(t)
 	}
 
-	if fuzzgen.Bool().Draw(t) {
+	if proptest.Bool().Draw(t) {
 		lint := options.LintConfig{
-			Disabled: fuzzgen.Ptr(fuzzgen.SliceOfN(fuzzgen.SampledFrom(analyzerNames), 0, 2), true).Draw(t),
-			Severity: fuzzgen.Ptr(fuzzgen.MapOfN(fuzzgen.SampledFrom(analyzerNames), fuzzgen.SampledFrom(severityValues), 0, 2), true).Draw(t),
+			Disabled: proptest.Ptr(proptest.SliceOfN(proptest.SampledFrom(analyzerNames), 0, 2), true).Draw(t),
+			Severity: proptest.Ptr(proptest.MapOfN(proptest.SampledFrom(analyzerNames), proptest.SampledFrom(severityValues), 0, 2), true).Draw(t),
 		}
 		patch.Lint = &lint
 	}
@@ -181,11 +180,11 @@ func FuzzPatchApplyLayeringProperty(f *testing.F) {
 		[]byte("many layers"),
 		[]byte("separators"),
 	}, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		defaults := options.Default()
 
-		count := fuzzgen.IntRange(0, 4).Draw(t)
+		count := proptest.IntRange(0, 4).Draw(t)
 
 		layers := make([]options.Patch, count)
 		for i := range layers {
@@ -305,7 +304,7 @@ func FuzzParseRoundTripProperty(f *testing.F) {
 		[]byte("patch"),
 		[]byte("defaults"),
 	}, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		patch := drawPatch(t)
 
@@ -318,9 +317,9 @@ func FuzzParseRoundTripProperty(f *testing.F) {
 		require.Equal(t, patchFields(patch), patchFields(*parsed), "document round-trip")
 
 		// Unknown keys are rejected, and the error names the key.
-		unknown := fuzzgen.SampledFrom([]string{"printWidthExtra", "indentt", "lintt", "algin", "logLevle"}).Draw(t)
+		unknown := proptest.SampledFrom([]string{"printWidthExtra", "indentt", "lintt", "algin", "logLevle"}).Draw(t)
 		bad := document(patch)
-		bad[unknown] = fuzzgen.SampledFrom([]any{1, "x", true}).Draw(t)
+		bad[unknown] = proptest.SampledFrom([]any{1, "x", true}).Draw(t)
 
 		data, err = json.Marshal(bad)
 		require.NoError(t, err)
@@ -344,14 +343,14 @@ func FuzzValidateProperty(f *testing.F) {
 		[]byte("defaults"),
 		[]byte("separators"),
 	}, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		patch := drawPatch(t)
 		require.NoError(t, patch.Validate(), "a generated patch must be valid")
 
 		broken := patch
 
-		switch fuzzgen.IntRange(0, 4).Draw(t) {
+		switch proptest.IntRange(0, 4).Draw(t) {
 		case 0:
 			broken.PrintWidth = new(0)
 		case 1:
@@ -385,10 +384,10 @@ func FuzzAnchorIncludesProperty(f *testing.F) {
 		[]byte("overrides"),
 		[]byte("include paths"),
 	}, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
-		dir := fuzzgen.SampledFrom([]string{"/cfg", "/cfg/a/b", "/"}).Draw(t)
-		paths := fuzzgen.SliceOfN(fuzzgen.SampledFrom([]string{"inc", "../up", "./here", "/abs/inc", "a/b"}), 0, 3).Draw(t)
+		dir := proptest.SampledFrom([]string{"/cfg", "/cfg/a/b", "/"}).Draw(t)
+		paths := proptest.SliceOfN(proptest.SampledFrom([]string{"inc", "../up", "./here", "/abs/inc", "a/b"}), 0, 3).Draw(t)
 
 		patch := options.Patch{IncludePaths: &paths}
 		options.AnchorIncludes(&patch, dir)
@@ -428,14 +427,14 @@ func FuzzFindNearestConfigProperty(f *testing.F) {
 		[]byte("root only"),
 		[]byte("walk up"),
 	}, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		root := tb.TempDir()
 		segments := []string{"alpha", "beta", "gamma"}
 
 		dir := root
 
-		depth := fuzzgen.IntRange(0, 3).Draw(t)
+		depth := proptest.IntRange(0, 3).Draw(t)
 		for i := 0; i < depth; i++ {
 			dir = filepath.Join(dir, segments[i])
 		}
@@ -457,7 +456,7 @@ func FuzzFindNearestConfigProperty(f *testing.F) {
 		planted := map[int]bool{len(ancestors) - 1: true}
 
 		for i := range ancestors {
-			if fuzzgen.Bool().Draw(t) {
+			if proptest.Bool().Draw(t) {
 				planted[i] = true
 			}
 		}

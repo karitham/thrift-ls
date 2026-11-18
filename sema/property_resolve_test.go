@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/internal/fuzzgen"
 	"github.com/karitham/thrift-ls/internal/proptest"
 	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
@@ -776,8 +775,8 @@ func (w *mdlWorkspace) contents() map[uri.URI][]byte {
 
 // mdlDrawWorkspace draws a generated workspace: the file set, its model, and
 // the rendered content.
-func mdlDrawWorkspace(t *fuzzgen.T) *mdlWorkspace {
-	n := fuzzgen.IntRange(2, 5).Draw(t)
+func mdlDrawWorkspace(t *proptest.T) *mdlWorkspace {
+	n := proptest.IntRange(2, 5).Draw(t)
 
 	names := make([]string, n)
 	for i := range names {
@@ -790,16 +789,16 @@ func mdlDrawWorkspace(t *fuzzgen.T) *mdlWorkspace {
 	for i, name := range names {
 		doc := &mdlDoc{uri: uri.File(mdlRoot + "/" + name + ".thrift")}
 
-		for range fuzzgen.IntRange(0, 3).Draw(t) {
+		for range proptest.IntRange(0, 3).Draw(t) {
 			doc.includes = append(doc.includes, mdlDrawIncludePath(t, names))
 		}
 
 		// Names are distinct within one file, so a file's definition table is
 		// unambiguous; the three-name pool still collides constantly across
 		// files.
-		defCount := fuzzgen.IntRange(0, 3).Draw(t)
-		picked := fuzzgen.SliceOfNDistinct(
-			fuzzgen.SampledFrom(mdlNames), defCount, defCount, func(s string) string { return s },
+		defCount := proptest.IntRange(0, 3).Draw(t)
+		picked := proptest.SliceOfNDistinct(
+			proptest.SampledFrom(mdlNames), defCount, defCount, func(s string) string { return s },
 		).Draw(t)
 
 		for _, name := range picked {
@@ -807,7 +806,7 @@ func mdlDrawWorkspace(t *fuzzgen.T) *mdlWorkspace {
 		}
 
 		// Probe structs carry references without introducing pool names.
-		for j := range fuzzgen.IntRange(0, 2).Draw(t) {
+		for j := range proptest.IntRange(0, 2).Draw(t) {
 			doc.defs = append(doc.defs, mdlDrawProbe(t, fmt.Sprintf("P%d_%d", i, j), names))
 		}
 
@@ -851,7 +850,7 @@ func mdlDrawWorkspace(t *fuzzgen.T) *mdlWorkspace {
 // the name is shadowed by an earlier definition of the same name), through a
 // direct include, in the invalid dotted-filename spelling, and behind a
 // qualifier that names no include at all.
-func mdlAddEnumRefs(t *fuzzgen.T, docs []*mdlDoc, byURI map[uri.URI]*mdlDoc) {
+func mdlAddEnumRefs(t *proptest.T, docs []*mdlDoc, byURI map[uri.URI]*mdlDoc) {
 	extra := make(map[uri.URI][]*mdlDef, len(docs))
 
 	for _, doc := range docs {
@@ -884,17 +883,17 @@ func mdlAddEnumRefs(t *fuzzgen.T, docs []*mdlDoc, byURI map[uri.URI]*mdlDoc) {
 		// An enum-qualified reference from a file that reaches the enum: the
 		// most interesting case for reference search, so it is always present
 		// when the workspace has an enum in scope.
-		for j := range fuzzgen.IntRange(0, 2).Draw(t) {
+		for j := range proptest.IntRange(0, 2).Draw(t) {
 			if len(candidates) == 0 {
 				break
 			}
 
-			c := candidates[fuzzgen.IntRange(0, len(candidates)-1).Draw(t)]
-			member := c.def.values[fuzzgen.IntRange(0, len(c.def.values)-1).Draw(t)]
+			c := candidates[proptest.IntRange(0, len(candidates)-1).Draw(t)]
+			member := c.def.values[proptest.IntRange(0, len(c.def.values)-1).Draw(t)]
 
 			var text string
 
-			switch fuzzgen.IntRange(0, 5).Draw(t) {
+			switch proptest.IntRange(0, 5).Draw(t) {
 			case 0, 1, 2:
 				text = c.def.name + "." + member
 			case 3:
@@ -918,14 +917,14 @@ func mdlAddEnumRefs(t *fuzzgen.T, docs []*mdlDoc, byURI map[uri.URI]*mdlDoc) {
 	// to that enum directly.
 	for _, doc := range docs {
 		for _, def := range doc.defs {
-			if def.kind != mdlEnum || len(def.values) == 0 || !fuzzgen.Bool().Draw(t) {
+			if def.kind != mdlEnum || len(def.values) == 0 || !proptest.Bool().Draw(t) {
 				continue
 			}
 
-			member := def.values[fuzzgen.IntRange(0, len(def.values)-1).Draw(t)]
+			member := def.values[proptest.IntRange(0, len(def.values)-1).Draw(t)]
 
 			text := def.name + "." + member
-			if fuzzgen.Bool().Draw(t) {
+			if proptest.Bool().Draw(t) {
 				text = def.name + ".thrift." + member
 			}
 
@@ -956,9 +955,9 @@ func mdlQualify(includeName, name string) string {
 // mdlDrawIncludePath draws one include path text: an existing file (possibly
 // the same file, possibly spelled "./x.thrift"), or a file that does not
 // exist.
-func mdlDrawIncludePath(t *fuzzgen.T, names []string) string {
-	pick := fuzzgen.IntRange(0, 5).Draw(t)
-	target := names[fuzzgen.IntRange(0, len(names)-1).Draw(t)]
+func mdlDrawIncludePath(t *proptest.T, names []string) string {
+	pick := proptest.IntRange(0, 5).Draw(t)
+	target := names[proptest.IntRange(0, len(names)-1).Draw(t)]
 
 	switch pick {
 	case 0, 1:
@@ -966,7 +965,7 @@ func mdlDrawIncludePath(t *fuzzgen.T, names []string) string {
 	case 2, 3:
 		return "./" + target + ".thrift"
 	case 4:
-		return "ghost" + strconv.Itoa(fuzzgen.IntRange(0, 2).Draw(t)) + ".thrift"
+		return "ghost" + strconv.Itoa(proptest.IntRange(0, 2).Draw(t)) + ".thrift"
 	}
 
 	return target + ".thrift"
@@ -975,10 +974,10 @@ func mdlDrawIncludePath(t *fuzzgen.T, names []string) string {
 // mdlDrawType draws a type reference: a base type, a bare name, a qualified
 // reference, the invalid dotted-filename spelling, a missing name, or a
 // container of one of those.
-func mdlDrawType(t *fuzzgen.T, depth int, names []string) *mdlType {
-	pick := fuzzgen.IntRange(0, 10).Draw(t)
-	file := func() string { return names[fuzzgen.IntRange(0, len(names)-1).Draw(t)] }
-	name := func() string { return mdlNames[fuzzgen.IntRange(0, len(mdlNames)-1).Draw(t)] }
+func mdlDrawType(t *proptest.T, depth int, names []string) *mdlType {
+	pick := proptest.IntRange(0, 10).Draw(t)
+	file := func() string { return names[proptest.IntRange(0, len(names)-1).Draw(t)] }
+	name := func() string { return mdlNames[proptest.IntRange(0, len(mdlNames)-1).Draw(t)] }
 
 	switch pick {
 	case 0:
@@ -1017,12 +1016,12 @@ func mdlDrawType(t *fuzzgen.T, depth int, names []string) *mdlType {
 // mdlDrawValue draws a const value: an int literal, a boolean literal, or an
 // identifier reference (bare, qualified, enum-qualified, and the
 // dotted-filename spelling).
-func mdlDrawValue(t *fuzzgen.T, names []string) *mdlValue {
-	pick := fuzzgen.IntRange(0, 9).Draw(t)
-	file := func() string { return names[fuzzgen.IntRange(0, len(names)-1).Draw(t)] }
-	name := func() string { return mdlNames[fuzzgen.IntRange(0, len(mdlNames)-1).Draw(t)] }
+func mdlDrawValue(t *proptest.T, names []string) *mdlValue {
+	pick := proptest.IntRange(0, 9).Draw(t)
+	file := func() string { return names[proptest.IntRange(0, len(names)-1).Draw(t)] }
+	name := func() string { return mdlNames[proptest.IntRange(0, len(mdlNames)-1).Draw(t)] }
 	enumValue := func() string {
-		return mdlEnumValues[fuzzgen.IntRange(0, len(mdlEnumValues)-1).Draw(t)]
+		return mdlEnumValues[proptest.IntRange(0, len(mdlEnumValues)-1).Draw(t)]
 	}
 
 	switch pick {
@@ -1050,8 +1049,8 @@ func mdlDrawValue(t *fuzzgen.T, names []string) *mdlValue {
 }
 
 // mdlDrawDef draws one definition of a given name.
-func mdlDrawDef(t *fuzzgen.T, name string, names []string) *mdlDef {
-	pick := fuzzgen.IntRange(0, 6).Draw(t)
+func mdlDrawDef(t *proptest.T, name string, names []string) *mdlDef {
+	pick := proptest.IntRange(0, 6).Draw(t)
 
 	switch pick {
 	case 0:
@@ -1061,9 +1060,9 @@ func mdlDrawDef(t *fuzzgen.T, name string, names []string) *mdlDef {
 	case 2:
 		return &mdlDef{kind: mdlException, name: name, target: mdlDrawType(t, 0, names)}
 	case 3:
-		count := fuzzgen.IntRange(1, 2).Draw(t)
-		values := fuzzgen.SliceOfNDistinct(
-			fuzzgen.SampledFrom(mdlEnumValues), count, count, func(s string) string { return s },
+		count := proptest.IntRange(1, 2).Draw(t)
+		values := proptest.SliceOfNDistinct(
+			proptest.SampledFrom(mdlEnumValues), count, count, func(s string) string { return s },
 		).Draw(t)
 
 		return &mdlDef{kind: mdlEnum, name: name, values: values}
@@ -1075,23 +1074,23 @@ func mdlDrawDef(t *fuzzgen.T, name string, names []string) *mdlDef {
 
 	def := &mdlDef{kind: mdlService, name: name}
 
-	switch fuzzgen.IntRange(0, 3).Draw(t) {
+	switch proptest.IntRange(0, 3).Draw(t) {
 	case 0:
 	case 1:
-		def.extend = mdlNames[fuzzgen.IntRange(0, len(mdlNames)-1).Draw(t)]
+		def.extend = mdlNames[proptest.IntRange(0, len(mdlNames)-1).Draw(t)]
 	case 2:
-		def.extend = names[fuzzgen.IntRange(0, len(names)-1).Draw(t)] +
-			"." + mdlNames[fuzzgen.IntRange(0, len(mdlNames)-1).Draw(t)]
+		def.extend = names[proptest.IntRange(0, len(names)-1).Draw(t)] +
+			"." + mdlNames[proptest.IntRange(0, len(mdlNames)-1).Draw(t)]
 	case 3:
-		def.extend = names[fuzzgen.IntRange(0, len(names)-1).Draw(t)] +
-			".thrift." + mdlNames[fuzzgen.IntRange(0, len(mdlNames)-1).Draw(t)]
+		def.extend = names[proptest.IntRange(0, len(names)-1).Draw(t)] +
+			".thrift." + mdlNames[proptest.IntRange(0, len(mdlNames)-1).Draw(t)]
 	}
 
 	return def
 }
 
 // mdlDrawProbe draws a struct whose fields exist only to carry references.
-func mdlDrawProbe(t *fuzzgen.T, name string, names []string) *mdlDef {
+func mdlDrawProbe(t *proptest.T, name string, names []string) *mdlDef {
 	return &mdlDef{kind: mdlStruct, name: name, target: mdlDrawType(t, 0, names), value: mdlDrawOptionalValue(t, names)}
 }
 
@@ -1100,8 +1099,8 @@ func mdlDrawProbe(t *fuzzgen.T, name string, names []string) *mdlDef {
 // unresolvable name; the last link may close the chain into a cycle. Chain
 // names are drawn from their own pool, so a chain never collides with the
 // definition-name pool.
-func mdlDrawChain(t *fuzzgen.T, names []string) []*mdlDef {
-	length := fuzzgen.IntRange(1, 3).Draw(t)
+func mdlDrawChain(t *proptest.T, names []string) []*mdlDef {
+	length := proptest.IntRange(1, 3).Draw(t)
 
 	links := make([]string, length)
 	for i := range links {
@@ -1114,7 +1113,7 @@ func mdlDrawChain(t *fuzzgen.T, names []string) []*mdlDef {
 		def := &mdlDef{kind: mdlTypedef, name: links[i]}
 		last := i+1 == length
 
-		switch fuzzgen.IntRange(0, 5).Draw(t) {
+		switch proptest.IntRange(0, 5).Draw(t) {
 		case 0:
 			def.target = &mdlType{base: "i32"}
 		case 1:
@@ -1128,7 +1127,7 @@ func mdlDrawChain(t *fuzzgen.T, names []string) []*mdlDef {
 				def.target = &mdlType{ident: links[0]} // closes the chain into a cycle
 			}
 		case 4:
-			file := names[fuzzgen.IntRange(0, len(names)-1).Draw(t)]
+			file := names[proptest.IntRange(0, len(names)-1).Draw(t)]
 			if !last {
 				def.target = &mdlType{ident: file + "." + links[i+1]}
 			} else {
@@ -1145,8 +1144,8 @@ func mdlDrawChain(t *fuzzgen.T, names []string) []*mdlDef {
 }
 
 // mdlDrawOptionalValue draws a field default half the time.
-func mdlDrawOptionalValue(t *fuzzgen.T, names []string) *mdlValue {
-	if !fuzzgen.Bool().Draw(t) {
+func mdlDrawOptionalValue(t *proptest.T, names []string) *mdlValue {
+	if !proptest.Bool().Draw(t) {
 		return nil
 	}
 
@@ -1446,7 +1445,7 @@ func mdlModelDesc(t *mdlType) string {
 }
 
 // resolveSeeds is the corpus every resolution property in this file starts
-// from. fuzzgen.New derives its draw stream from the bytes' hash, so each entry
+// from. proptest.New derives its draw stream from the bytes' hash, so each entry
 // starts one independent stream per target, and the fuzzer varies the bytes
 // from there.
 var resolveSeeds = proptest.Corpus{
@@ -1462,7 +1461,7 @@ var resolveSeeds = proptest.Corpus{
 // its source references in order, at their written offsets.
 func FuzzReferenceIndexMatchesSource(f *testing.F) {
 	proptest.Fuzz(f, resolveSeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		ctx := t.Context()
 		ws := mdlDrawWorkspace(t)
@@ -1500,7 +1499,7 @@ type resolveCoverage struct {
 // derives from: every question the model can ask, answered by production and
 // by the model. The counts say which outcomes the run covered.
 func resolveDifferential(tb *testing.T, seed []byte) resolveCoverage {
-	t := fuzzgen.New(tb, seed)
+	t := proptest.New(tb, seed)
 
 	var cov resolveCoverage
 
@@ -1583,7 +1582,7 @@ type memoCoverage struct {
 // seed derives from. The counts say how much cross-kind material the run
 // covered.
 func indexMemoTransparency(tb *testing.T, seed []byte) memoCoverage {
-	t := fuzzgen.New(tb, seed)
+	t := proptest.New(tb, seed)
 
 	var cov memoCoverage
 
@@ -1597,7 +1596,7 @@ func indexMemoTransparency(tb *testing.T, seed []byte) memoCoverage {
 		qs = append(qs, ws.model.queries(ws.model.docs[u])...)
 	}
 
-	qs = fuzzgen.Permutation(qs).Draw(t)
+	qs = proptest.Permutation(qs).Draw(t)
 
 	// Count the (file, name) pairs whose three resolvers disagree: the
 	// property is only meaningful if the generator produces them.
@@ -1775,7 +1774,7 @@ type refsToCoverage struct {
 // seed derives from. The counts say how many hits and enum-segment hits the
 // run covered.
 func referencesToDifferential(tb *testing.T, seed []byte) refsToCoverage {
-	t := fuzzgen.New(tb, seed)
+	t := proptest.New(tb, seed)
 
 	var cov refsToCoverage
 
@@ -1791,7 +1790,7 @@ func referencesToDifferential(tb *testing.T, seed []byte) refsToCoverage {
 
 		var kinds []store.RefKind
 
-		switch fuzzgen.IntRange(0, 2).Draw(t) {
+		switch proptest.IntRange(0, 2).Draw(t) {
 		case 0:
 		case 1:
 			kinds = sema.RefKindsFor(target.kind.semaKind())
@@ -1800,7 +1799,7 @@ func referencesToDifferential(tb *testing.T, seed []byte) refsToCoverage {
 				store.RefFieldType, store.RefSignatureType, store.RefConstValue,
 				store.RefServiceExtends, store.RefAnnotationType,
 			}
-			kinds = []store.RefKind{all[fuzzgen.IntRange(0, len(all)-1).Draw(t)]}
+			kinds = []store.RefKind{all[proptest.IntRange(0, len(all)-1).Draw(t)]}
 		}
 
 		got, err := sema.NewIndex(view).ReferencesTo(ctx, def, kinds...)
@@ -1876,7 +1875,7 @@ func TestIndexReferencesToDifferentialCoversEnumSegments(t *testing.T) {
 // dependents, filtered by grammar slot.
 func FuzzIndexReferencesNameMatchedDifferential(f *testing.F) {
 	proptest.Fuzz(f, resolveSeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		ctx := t.Context()
 		ws := mdlDrawWorkspace(t)
@@ -1893,7 +1892,7 @@ func FuzzIndexReferencesNameMatchedDifferential(f *testing.F) {
 			for _, name := range names {
 				var kinds []store.RefKind
 
-				switch fuzzgen.IntRange(0, 3).Draw(t) {
+				switch proptest.IntRange(0, 3).Draw(t) {
 				case 0:
 				case 1:
 					kinds = []store.RefKind{store.RefFieldType}
@@ -1927,7 +1926,7 @@ type underlyingCoverage struct {
 // stream seed derives from. The counts say how the generated typedef chains
 // ended.
 func underlyingTypeDifferential(tb *testing.T, seed []byte) underlyingCoverage {
-	t := fuzzgen.New(tb, seed)
+	t := proptest.New(tb, seed)
 
 	var cov underlyingCoverage
 
@@ -2030,7 +2029,7 @@ func TestIndexUnderlyingTypeDifferentialCoversChainEnds(t *testing.T) {
 // fallback an unindexed workspace takes.
 func FuzzIndexFindInWorkspaceDifferential(f *testing.F) {
 	proptest.Fuzz(f, resolveSeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		ctx := t.Context()
 		ws := mdlDrawWorkspace(t)

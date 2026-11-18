@@ -13,7 +13,6 @@ import (
 
 	"github.com/karitham/thrift-ls/analyzers"
 	"github.com/karitham/thrift-ls/analyzertest"
-	"github.com/karitham/thrift-ls/internal/fuzzgen"
 	"github.com/karitham/thrift-ls/internal/proptest"
 	"github.com/karitham/thrift-ls/sema"
 	"github.com/karitham/thrift-ls/store"
@@ -38,26 +37,26 @@ var applyAlphabet = []string{"a", "b", "c", "é", "世", "\n", " "}
 var applyTextAlphabet = []string{"x", "Y", "é", "\n", " "}
 
 // drawContent generates a short document from the alphabet.
-func drawContent(t *fuzzgen.T) string {
-	n := fuzzgen.IntRange(0, 12).Draw(t)
+func drawContent(t *proptest.T) string {
+	n := proptest.IntRange(0, 12).Draw(t)
 
 	var b strings.Builder
 
 	for i := 0; i < n; i++ {
-		b.WriteString(fuzzgen.SampledFrom(applyAlphabet).Draw(t))
+		b.WriteString(proptest.SampledFrom(applyAlphabet).Draw(t))
 	}
 
 	return b.String()
 }
 
 // drawText generates a replacement text, sometimes empty.
-func drawText(t *fuzzgen.T) string {
-	n := fuzzgen.IntRange(0, 3).Draw(t)
+func drawText(t *proptest.T) string {
+	n := proptest.IntRange(0, 3).Draw(t)
 
 	var b strings.Builder
 
 	for i := 0; i < n; i++ {
-		b.WriteString(fuzzgen.SampledFrom(applyTextAlphabet).Draw(t))
+		b.WriteString(proptest.SampledFrom(applyTextAlphabet).Draw(t))
 	}
 
 	return b.String()
@@ -78,16 +77,16 @@ func boundsStrictlyInside(bounds []int, lo, hi int) []int {
 }
 
 // drawSpan draws a span from the rune boundaries of the content.
-func drawSpan(t *fuzzgen.T, bounds []int) (int, int) {
+func drawSpan(t *proptest.T, bounds []int) (int, int) {
 	// bounds is never empty: it always carries 0.
-	i := fuzzgen.IntRange(0, len(bounds)-1).Draw(t)
-	j := fuzzgen.IntRange(i, len(bounds)-1).Draw(t)
+	i := proptest.IntRange(0, len(bounds)-1).Draw(t)
+	j := proptest.IntRange(i, len(bounds)-1).Draw(t)
 
 	return bounds[i], bounds[j]
 }
 
 // drawRandomEdit draws one in-range edit on rune boundaries.
-func drawRandomEdit(t *fuzzgen.T, bounds []int) sema.Edit {
+func drawRandomEdit(t *proptest.T, bounds []int) sema.Edit {
 	start, end := drawSpan(t, bounds)
 
 	return sema.Edit{Span: offsetSpan(start, end), NewText: drawText(t)}
@@ -95,7 +94,7 @@ func drawRandomEdit(t *fuzzgen.T, bounds []int) sema.Edit {
 
 // pickPrevSpan returns a span used by an earlier fix, so a later fix can
 // repeat it exactly or nest inside it.
-func pickPrevSpan(t *fuzzgen.T, prev []sema.Fix) (sema.Span, bool) {
+func pickPrevSpan(t *proptest.T, prev []sema.Fix) (sema.Span, bool) {
 	var spans []sema.Span
 
 	for _, fx := range prev {
@@ -108,17 +107,17 @@ func pickPrevSpan(t *fuzzgen.T, prev []sema.Fix) (sema.Span, bool) {
 		return sema.Span{}, false
 	}
 
-	return spans[fuzzgen.IntRange(0, len(spans)-1).Draw(t)], true
+	return spans[proptest.IntRange(0, len(spans)-1).Draw(t)], true
 }
 
 // drawFix generates one fix: a plain 1-3 edit fix, a repeat of an earlier
 // fix's exact span, a span nested inside an earlier one, a same-start
 // insertion+replacement pair (either declaration order), a self-overlapping
 // fix, or an empty fix.
-func drawFix(t *fuzzgen.T, label string, bounds []int, prev []sema.Fix) sema.Fix {
+func drawFix(t *proptest.T, label string, bounds []int, prev []sema.Fix) sema.Fix {
 	fx := sema.Fix{Title: label}
 
-	shape := fuzzgen.SampledFrom([]string{
+	shape := proptest.SampledFrom([]string{
 		"plain", "plain", "repeat", "nested", "same-start", "self-overlap", "empty",
 	}).Draw(t)
 
@@ -130,7 +129,7 @@ func drawFix(t *fuzzgen.T, label string, bounds []int, prev []sema.Fix) sema.Fix
 		if span, ok := pickPrevSpan(t, prev); ok {
 			fx.Edits = append(fx.Edits, sema.Edit{Span: span, NewText: drawText(t)})
 
-			if fuzzgen.Bool().Draw(t) {
+			if proptest.Bool().Draw(t) {
 				fx.Edits = append(fx.Edits, drawRandomEdit(t, bounds))
 			}
 
@@ -140,8 +139,8 @@ func drawFix(t *fuzzgen.T, label string, bounds []int, prev []sema.Fix) sema.Fix
 	case "nested":
 		if outer, ok := pickPrevSpan(t, prev); ok {
 			if inner := boundsStrictlyInside(bounds, outer.Start.Offset, outer.End.Offset); len(inner) >= 1 {
-				a := fuzzgen.IntRange(0, len(inner)-1).Draw(t)
-				b := fuzzgen.IntRange(a, len(inner)-1).Draw(t)
+				a := proptest.IntRange(0, len(inner)-1).Draw(t)
+				b := proptest.IntRange(a, len(inner)-1).Draw(t)
 
 				fx.Edits = append(fx.Edits,
 					sema.Edit{Span: outer, NewText: drawText(t)},
@@ -154,8 +153,8 @@ func drawFix(t *fuzzgen.T, label string, bounds []int, prev []sema.Fix) sema.Fix
 
 	case "same-start":
 		if len(bounds) >= 2 {
-			i := fuzzgen.IntRange(0, len(bounds)-2).Draw(t)
-			j := fuzzgen.IntRange(i+1, len(bounds)-1).Draw(t)
+			i := proptest.IntRange(0, len(bounds)-2).Draw(t)
+			j := proptest.IntRange(i+1, len(bounds)-1).Draw(t)
 			start, end := bounds[i], bounds[j]
 
 			ins := sema.Edit{Span: offsetSpan(start, start), NewText: drawText(t)}
@@ -164,7 +163,7 @@ func drawFix(t *fuzzgen.T, label string, bounds []int, prev []sema.Fix) sema.Fix
 			// Both declaration orders: the splicer's self-overlap check
 			// sorts by start and keeps declaration order on ties, so the
 			// two orders are not equivalent.
-			if fuzzgen.Bool().Draw(t) {
+			if proptest.Bool().Draw(t) {
 				fx.Edits = []sema.Edit{ins, rep}
 			} else {
 				fx.Edits = []sema.Edit{rep, ins}
@@ -175,10 +174,10 @@ func drawFix(t *fuzzgen.T, label string, bounds []int, prev []sema.Fix) sema.Fix
 
 	case "self-overlap":
 		if len(bounds) >= 3 {
-			i := fuzzgen.IntRange(0, len(bounds)-3).Draw(t)
-			j := fuzzgen.IntRange(i+2, len(bounds)-1).Draw(t)
+			i := proptest.IntRange(0, len(bounds)-3).Draw(t)
+			j := proptest.IntRange(i+2, len(bounds)-1).Draw(t)
 			start, end := bounds[i], bounds[j]
-			mid := bounds[fuzzgen.IntRange(i+1, j-1).Draw(t)]
+			mid := bounds[proptest.IntRange(i+1, j-1).Draw(t)]
 
 			// An insertion inside a replacement overlaps it.
 			fx.Edits = []sema.Edit{
@@ -190,7 +189,7 @@ func drawFix(t *fuzzgen.T, label string, bounds []int, prev []sema.Fix) sema.Fix
 		}
 	}
 
-	n := fuzzgen.IntRange(1, 3).Draw(t)
+	n := proptest.IntRange(1, 3).Draw(t)
 
 	for k := 0; k < n; k++ {
 		fx.Edits = append(fx.Edits, drawRandomEdit(t, bounds))
@@ -224,13 +223,13 @@ func (c applyCase) String() string {
 
 // drawApplyCase generates content plus a fix list that always contains a
 // same-start insertion/replacement pair in one of the two argument orders.
-func drawApplyCase(t *fuzzgen.T) applyCase {
+func drawApplyCase(t *proptest.T) applyCase {
 	content := drawContent(t)
 	bounds := proptest.RuneBoundaries(content)
 
 	var fixes []sema.Fix
 
-	n := fuzzgen.IntRange(0, 4).Draw(t)
+	n := proptest.IntRange(0, 4).Draw(t)
 	for i := 0; i < n; i++ {
 		fixes = append(fixes, drawFix(t, fmt.Sprintf("f%d", i), bounds, fixes))
 	}
@@ -238,14 +237,14 @@ func drawApplyCase(t *fuzzgen.T) applyCase {
 	// The tie pair: an insertion at a replacement's start offset, in either
 	// argument order. The insertion's text must land before the replacement's.
 	if len(bounds) >= 2 {
-		i := fuzzgen.IntRange(0, len(bounds)-2).Draw(t)
-		j := fuzzgen.IntRange(i+1, len(bounds)-1).Draw(t)
+		i := proptest.IntRange(0, len(bounds)-2).Draw(t)
+		j := proptest.IntRange(i+1, len(bounds)-1).Draw(t)
 		start, end := bounds[i], bounds[j]
 
 		ins := sema.Fix{Title: "tie-insert", Edits: []sema.Edit{{Span: offsetSpan(start, start), NewText: drawText(t)}}}
 		rep := sema.Fix{Title: "tie-replace", Edits: []sema.Edit{{Span: offsetSpan(start, end), NewText: drawText(t)}}}
 
-		if fuzzgen.Bool().Draw(t) {
+		if proptest.Bool().Draw(t) {
 			fixes = append([]sema.Fix{ins, rep}, fixes...)
 		} else {
 			fixes = append([]sema.Fix{rep, ins}, fixes...)
@@ -436,7 +435,7 @@ func mixesSkipReasons(skipped []modelSkip) bool {
 }
 
 // applySeeds is the corpus every Apply and FixAll property in this file starts
-// from. fuzzgen.New derives its draw stream from the bytes' hash, so each entry
+// from. proptest.New derives its draw stream from the bytes' hash, so each entry
 // starts one independent stream per target, and the fuzzer varies the bytes
 // from there.
 var applySeeds = proptest.Corpus{
@@ -454,7 +453,7 @@ var applySeeds = proptest.Corpus{
 // generated fix batch.
 func FuzzApplyMatchesModel(f *testing.F) {
 	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		c := drawApplyCase(t)
 
@@ -504,7 +503,7 @@ func FuzzApplyMatchesModel(f *testing.F) {
 // translating each edit's original offsets by the deltas already applied.
 // It is well defined only for edits that do not touch: the generator
 // leaves at least one rune between neighbours.
-func applySequentially(t *fuzzgen.T, content string, edits []sema.Edit) string {
+func applySequentially(t *proptest.T, content string, edits []sema.Edit) string {
 	cur := content
 
 	var done []sema.Edit
@@ -532,14 +531,14 @@ func applySequentially(t *fuzzgen.T, content string, edits []sema.Edit) string {
 
 // drawDisjointFixes draws up to n edits that leave at least one rune
 // between neighbours, one fix per edit.
-func drawDisjointFixes(t *fuzzgen.T, bounds []int, n int) []sema.Fix {
+func drawDisjointFixes(t *proptest.T, bounds []int, n int) []sema.Fix {
 	if n <= 0 || len(bounds) < 3 {
 		return nil
 	}
 
 	maxIdx := len(bounds) - 1
 
-	idx := fuzzgen.SliceOfNDistinct(fuzzgen.IntRange(0, maxIdx), 2, min(2*n, maxIdx+1), func(i int) int { return i }).Draw(t)
+	idx := proptest.SliceOfNDistinct(proptest.IntRange(0, maxIdx), 2, min(2*n, maxIdx+1), func(i int) int { return i }).Draw(t)
 
 	slices.Sort(idx)
 	idx = slices.Compact(idx)
@@ -562,18 +561,18 @@ func drawDisjointFixes(t *fuzzgen.T, bounds []int, n int) []sema.Fix {
 // offset compensation.
 func FuzzApplyDisjointCommutation(f *testing.F) {
 	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		content := drawContent(t)
 		bounds := proptest.RuneBoundaries(content)
 
-		fixes := drawDisjointFixes(t, bounds, fuzzgen.IntRange(1, 4).Draw(t))
+		fixes := drawDisjointFixes(t, bounds, proptest.IntRange(1, 4).Draw(t))
 		if len(fixes) < 2 {
 			return
 		}
 
-		order1 := fuzzgen.Permutation(fixes).Draw(t)
-		order2 := fuzzgen.Permutation(fixes).Draw(t)
+		order1 := proptest.Permutation(fixes).Draw(t)
+		order2 := proptest.Permutation(fixes).Draw(t)
 
 		want, _, _, err := modelApply(content, order1)
 		require.NoError(t, err)
@@ -609,7 +608,7 @@ func FuzzApplyDisjointCommutation(f *testing.F) {
 // replacement starting there, in whatever order the fixes are passed.
 func FuzzApplySameOffsetTie(f *testing.F) {
 	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		content := drawContent(t)
 		bounds := proptest.RuneBoundaries(content)
@@ -618,13 +617,13 @@ func FuzzApplySameOffsetTie(f *testing.F) {
 			return
 		}
 
-		i := fuzzgen.IntRange(0, len(bounds)-2).Draw(t)
-		j := fuzzgen.IntRange(i+1, len(bounds)-1).Draw(t)
+		i := proptest.IntRange(0, len(bounds)-2).Draw(t)
+		j := proptest.IntRange(i+1, len(bounds)-1).Draw(t)
 		start, end := bounds[i], bounds[j]
 
 		rep := sema.Fix{Title: "replace", Edits: []sema.Edit{{Span: offsetSpan(start, end), NewText: drawText(t)}}}
 
-		n := fuzzgen.IntRange(1, 3).Draw(t)
+		n := proptest.IntRange(1, 3).Draw(t)
 
 		var inserts []sema.Fix
 
@@ -636,7 +635,7 @@ func FuzzApplySameOffsetTie(f *testing.F) {
 		}
 
 		fixes := append([]sema.Fix{rep}, inserts...)
-		fixes = fuzzgen.Permutation(fixes).Draw(t)
+		fixes = proptest.Permutation(fixes).Draw(t)
 
 		out, applied, skipped, err := sema.Apply([]byte(content), fixes)
 		require.NoError(t, err)
@@ -668,17 +667,17 @@ func FuzzApplySameOffsetTie(f *testing.F) {
 // offsets all apply, in argument order per offset.
 func FuzzApplyInsertionsNeverConflict(f *testing.F) {
 	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		content := drawContent(t)
 		bounds := proptest.RuneBoundaries(content)
 
-		n := fuzzgen.IntRange(1, 5).Draw(t)
+		n := proptest.IntRange(1, 5).Draw(t)
 
 		var fixes []sema.Fix
 
 		for k := 0; k < n; k++ {
-			at := bounds[fuzzgen.IntRange(0, len(bounds)-1).Draw(t)]
+			at := bounds[proptest.IntRange(0, len(bounds)-1).Draw(t)]
 			fixes = append(fixes, sema.Fix{
 				Title: fmt.Sprintf("i%d", k),
 				Edits: []sema.Edit{{Span: offsetSpan(at, at), NewText: drawText(t)}},
@@ -701,7 +700,7 @@ func FuzzApplyInsertionsNeverConflict(f *testing.F) {
 // skipped whole, leaving the content untouched.
 func FuzzApplySelfOverlapSkipsWholeFix(f *testing.F) {
 	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		content := drawContent(t)
 		bounds := proptest.RuneBoundaries(content)
@@ -710,10 +709,10 @@ func FuzzApplySelfOverlapSkipsWholeFix(f *testing.F) {
 			return
 		}
 
-		i := fuzzgen.IntRange(0, len(bounds)-3).Draw(t)
-		j := fuzzgen.IntRange(i+2, len(bounds)-1).Draw(t)
+		i := proptest.IntRange(0, len(bounds)-3).Draw(t)
+		j := proptest.IntRange(i+2, len(bounds)-1).Draw(t)
 		start, end := bounds[i], bounds[j]
-		mid := bounds[fuzzgen.IntRange(i+1, j-1).Draw(t)]
+		mid := bounds[proptest.IntRange(i+1, j-1).Draw(t)]
 
 		bad := sema.Fix{Title: "bad", Edits: []sema.Edit{
 			{Span: offsetSpan(start, end), NewText: "Z"},
@@ -733,27 +732,27 @@ func FuzzApplySelfOverlapSkipsWholeFix(f *testing.F) {
 // returned.
 func FuzzApplyRangeErrors(f *testing.F) {
 	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		c := drawApplyCase(t)
 
 		// Corrupt one fix in the batch: the error must veto the rest.
-		mode := fuzzgen.SampledFrom([]string{"past-end", "negative", "reversed"}).Draw(t)
+		mode := proptest.SampledFrom([]string{"past-end", "negative", "reversed"}).Draw(t)
 
 		var bad sema.Fix
 
 		switch mode {
 		case "past-end":
-			bad = sema.Fix{Title: "bad", Edits: []sema.Edit{{Span: offsetSpan(len(c.content), len(c.content)+1+fuzzgen.IntRange(0, 3).Draw(t)), NewText: "X"}}}
+			bad = sema.Fix{Title: "bad", Edits: []sema.Edit{{Span: offsetSpan(len(c.content), len(c.content)+1+proptest.IntRange(0, 3).Draw(t)), NewText: "X"}}}
 		case "negative":
-			bad = sema.Fix{Title: "bad", Edits: []sema.Edit{{Span: offsetSpan(-1-fuzzgen.IntRange(0, 3).Draw(t), 0), NewText: "X"}}}
+			bad = sema.Fix{Title: "bad", Edits: []sema.Edit{{Span: offsetSpan(-1-proptest.IntRange(0, 3).Draw(t), 0), NewText: "X"}}}
 		case "reversed":
 			bad = sema.Fix{Title: "bad", Edits: []sema.Edit{{Span: offsetSpan(1, 0), NewText: "X"}}}
 		}
 
 		// Anywhere in the batch: validation covers the whole call, so the
 		// valid fixes before it must not run either.
-		pos := fuzzgen.IntRange(0, len(c.fixes)).Draw(t)
+		pos := proptest.IntRange(0, len(c.fixes)).Draw(t)
 		fixes := append(append(slices.Clone(c.fixes[:pos]), bad), c.fixes[pos:]...)
 
 		out, applied, skipped, err := sema.Apply([]byte(c.content), fixes)
@@ -955,19 +954,19 @@ type fixCase struct {
 // drawFixCase generates a workspace whose target main.thrift always
 // carries at least one fixable diagnostic: an unused include, an undefined
 // type with a workspace definition, or an implicit enum value.
-func drawFixCase(t *fuzzgen.T) fixCase {
+func drawFixCase(t *proptest.T) fixCase {
 	files := map[string]string{}
 
 	// dep.thrift: the include target. The enum shape adds implicit enum
 	// values, which are fixable when dep is a target.
 	var depType string
 
-	switch fuzzgen.IntRange(0, 1).Draw(t) {
+	switch proptest.IntRange(0, 1).Draw(t) {
 	case 0:
 		files["dep.thrift"] = "struct User {\n  1: i32 id,\n}\n"
 		depType = "User"
 	case 1:
-		members := []string{"RED", "GREEN", "BLUE"}[:fuzzgen.IntRange(1, 3).Draw(t)]
+		members := []string{"RED", "GREEN", "BLUE"}[:proptest.IntRange(1, 3).Draw(t)]
 
 		var b strings.Builder
 
@@ -985,13 +984,13 @@ func drawFixCase(t *fuzzgen.T) fixCase {
 
 	// other.thrift: a second definition site, so the include fixer has to
 	// choose among files.
-	if fuzzgen.Bool().Draw(t) {
+	if proptest.Bool().Draw(t) {
 		files["other.thrift"] = "struct Ghost {\n  1: i32 g,\n}\n"
 	}
 
-	include := fuzzgen.Bool().Draw(t)
-	use := fuzzgen.Bool().Draw(t)
-	useGhost := fuzzgen.Bool().Draw(t)
+	include := proptest.Bool().Draw(t)
+	use := proptest.Bool().Draw(t)
+	useGhost := proptest.Bool().Draw(t)
 
 	var main strings.Builder
 
@@ -1013,13 +1012,13 @@ func drawFixCase(t *fuzzgen.T) fixCase {
 	// An included-but-unused file and a used-but-unincluded file are both
 	// fixable. When neither applies the file is clean, so force the third
 	// fixable source, an implicit enum value.
-	if include == use || fuzzgen.Bool().Draw(t) {
+	if include == use || proptest.Bool().Draw(t) {
 		main.WriteString("\nenum E {\n  A,\n  B,\n}\n")
 	}
 
 	files["main.thrift"] = main.String()
 
-	if fuzzgen.Bool().Draw(t) {
+	if proptest.Bool().Draw(t) {
 		files["broken.thrift"] = "include \"dep.thrift\"\n\nstruct Broken {\n  1: i32 a\n  @@@\n}\n"
 	}
 
@@ -1035,7 +1034,7 @@ func drawFixCase(t *fuzzgen.T) fixCase {
 	targets := []string{"main.thrift"}
 
 	for _, name := range []string{"dep.thrift", "other.thrift", "broken.thrift"} {
-		if _, ok := files[name]; ok && fuzzgen.Bool().Draw(t) {
+		if _, ok := files[name]; ok && proptest.Bool().Draw(t) {
 			targets = append(targets, name)
 		}
 	}
@@ -1047,7 +1046,7 @@ func drawFixCase(t *fuzzgen.T) fixCase {
 
 // newFixWorkspace builds a memFS-backed view over the case, parsed like
 // analyzertest.RunFixAll does.
-func newFixWorkspace(t *fuzzgen.T, c fixCase) (*store.View, map[uri.URI][]byte) {
+func newFixWorkspace(t *proptest.T, c fixCase) (*store.View, map[uri.URI][]byte) {
 	t.Helper()
 
 	contents := make(map[uri.URI][]byte, len(c.files))
@@ -1084,7 +1083,7 @@ func hasParseError(pf *store.ParsedFile) bool {
 }
 
 // parseContent parses content as a lone file in a throwaway view.
-func parseContent(t *fuzzgen.T, u uri.URI, content []byte) *store.ParsedFile {
+func parseContent(t *proptest.T, u uri.URI, content []byte) *store.ParsedFile {
 	t.Helper()
 
 	view := store.NewView(uri.File("/tmp/"), store.NewMemFS(map[uri.URI][]byte{u: content}), nil)
@@ -1130,7 +1129,7 @@ func normalizeURIs(uris []uri.URI) []uri.URI {
 // same report.
 func FuzzFixAllConverges(f *testing.F) {
 	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		c := drawFixCase(t)
 		pipeline := analyzers.DefaultPipeline(sema.Config{})
@@ -1221,7 +1220,7 @@ func FuzzFixAllConverges(f *testing.F) {
 // iteration order.
 func FuzzFixAllDeterministic(f *testing.F) {
 	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		c := drawFixCase(t)
 		pipeline := analyzers.DefaultPipeline(sema.Config{})
@@ -1254,7 +1253,7 @@ func FuzzFixAllDeterministic(f *testing.F) {
 // report.
 func FuzzFixAllFirstPassMatchesApply(f *testing.F) {
 	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		c := drawFixCase(t)
 		pipeline := analyzers.DefaultPipeline(sema.Config{})
@@ -1322,7 +1321,7 @@ func FuzzFixAllFirstPassMatchesApply(f *testing.F) {
 // failing file and everything after it untouched.
 func FuzzFixAllPersistFailurePartialSummary(f *testing.F) {
 	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		c := drawFixCase(t)
 		pipeline := analyzers.DefaultPipeline(sema.Config{})
@@ -1338,7 +1337,7 @@ func FuzzFixAllPersistFailurePartialSummary(f *testing.F) {
 		require.NotEmpty(t, refRec.calls, "the generated case must be fixable: %v", c.files)
 
 		// k in [1, n]: fail that call. k == n+1: no fault at all.
-		k := fuzzgen.IntRange(1, len(refRec.calls)+1).Draw(t)
+		k := proptest.IntRange(1, len(refRec.calls)+1).Draw(t)
 
 		view, source := newFixWorkspace(t, c)
 		before := cloneContents(source)
@@ -1464,7 +1463,7 @@ func TestFixAllPersistFailureAccounting(t *testing.T) {
 // it runs to the pass cap and stops, writing nothing.
 func FuzzFixAllNilPersistStalls(f *testing.F) {
 	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		c := drawFixCase(t)
 		pipeline := analyzers.DefaultPipeline(sema.Config{})
@@ -1496,7 +1495,7 @@ func FuzzFixAllNilPersistStalls(f *testing.F) {
 // every applied fix.
 func FuzzFixAllInvisiblePersistStopsAtCap(f *testing.F) {
 	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		c := drawFixCase(t)
 		pipeline := analyzers.DefaultPipeline(sema.Config{})
@@ -1597,13 +1596,13 @@ func (toggleFixer) Fix(_ context.Context, f sema.File, d sema.Diagnostic) []sema
 // must account for every applied fix.
 func FuzzFixAllOscillatingFixerStopsAtCap(f *testing.F) {
 	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		var doc strings.Builder
 
 		doc.WriteString("struct S {\n  1: i32 a,\n}\n")
 
-		for i := 0; i < fuzzgen.IntRange(0, 2).Draw(t); i++ {
+		for i := 0; i < proptest.IntRange(0, 2).Draw(t); i++ {
 			fmt.Fprintf(&doc, "\nstruct N%d {\n  1: i32 n,\n}\n", i)
 		}
 
@@ -1643,7 +1642,7 @@ func FuzzFixAllOscillatingFixerStopsAtCap(f *testing.F) {
 
 // drawBrokenCase generates a workspace with a fixable file and one or two
 // files that do not parse but carry fixable inline fixes.
-func drawBrokenCase(t *fuzzgen.T) fixCase {
+func drawBrokenCase(t *proptest.T) fixCase {
 	files := map[string]string{
 		"dep.thrift":  "struct User {\n  1: i32 id,\n}\n",
 		"main.thrift": "include \"dep.thrift\"\n\nstruct S {\n  1: i32 a,\n}\n",
@@ -1653,7 +1652,7 @@ func drawBrokenCase(t *fuzzgen.T) fixCase {
 	// file carries a fixable inline fix the guard must refuse.
 	files["broken.thrift"] = "include \"dep.thrift\"\n\nstruct Broken {\n  1: i32 a\n  @@@\n}\n"
 
-	if fuzzgen.Bool().Draw(t) {
+	if proptest.Bool().Draw(t) {
 		files["broken2.thrift"] = "include \"dep.thrift\"\n\nstruct Broken2 {\n  @@@\n}\n"
 	}
 
@@ -1673,7 +1672,7 @@ func drawBrokenCase(t *fuzzgen.T) fixCase {
 // skip list is the final pass's only.
 func FuzzFixAllParseErrorFileUntouched(f *testing.F) {
 	proptest.Fuzz(f, applySeeds, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		c := drawBrokenCase(t)
 		pipeline := analyzers.DefaultPipeline(sema.Config{})

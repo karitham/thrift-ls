@@ -12,7 +12,6 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/internal/fuzzgen"
 	"github.com/karitham/thrift-ls/internal/proptest"
 	"github.com/karitham/thrift-ls/options"
 	"github.com/karitham/thrift-ls/store"
@@ -412,17 +411,17 @@ type workspacePropertyOp struct {
 	revision int
 }
 
-func drawWorkspacePropertyProject(t *fuzzgen.T, name string) Project {
+func drawWorkspacePropertyProject(t *proptest.T, name string) Project {
 	project := Project{
 		ConfigURI: uri.File("/cfg/" + name + ".json"),
-		RootURI:   fuzzgen.SampledFrom(workspacePropertyRoots).Draw(t),
-		TargetFiles: fuzzgen.SliceOfNDistinct(
-			fuzzgen.SampledFrom(workspacePropertyFiles), 0, 3, func(u uri.URI) uri.URI { return u },
+		RootURI:   proptest.SampledFrom(workspacePropertyRoots).Draw(t),
+		TargetFiles: proptest.SliceOfNDistinct(
+			proptest.SampledFrom(workspacePropertyFiles), 0, 3, func(u uri.URI) uri.URI { return u },
 		).Draw(t),
 	}
 
-	if fuzzgen.Bool().Draw(t) {
-		project.IncludePaths = fuzzgen.SampledFrom([][]string{
+	if proptest.Bool().Draw(t) {
+		project.IncludePaths = proptest.SampledFrom([][]string{
 			{"/inc"},
 			{"/inc", "/inc2"},
 		}).Draw(t)
@@ -430,7 +429,7 @@ func drawWorkspacePropertyProject(t *fuzzgen.T, name string) Project {
 
 	// One in six projects is deliberately invalid: validation must reject it
 	// into an issue while every valid project in the same snapshot survives.
-	switch fuzzgen.IntRange(0, 5).Draw(t) {
+	switch proptest.IntRange(0, 5).Draw(t) {
 	case 0:
 		project.RootURI = uri.URI("not a uri")
 	case 1:
@@ -446,15 +445,15 @@ func drawWorkspacePropertyProject(t *fuzzgen.T, name string) Project {
 	return project
 }
 
-func drawWorkspacePropertySnapshot(t *fuzzgen.T, name string) WorkspaceSnapshot {
+func drawWorkspacePropertySnapshot(t *proptest.T, name string) WorkspaceSnapshot {
 	var snapshot WorkspaceSnapshot
 
-	count := fuzzgen.IntRange(0, 3).Draw(t)
+	count := proptest.IntRange(0, 3).Draw(t)
 	for i := 0; i < count; i++ {
 		snapshot.Projects = append(snapshot.Projects, drawWorkspacePropertyProject(t, fmt.Sprintf("%s.p%d", name, i)))
 	}
 
-	if fuzzgen.Bool().Draw(t) {
+	if proptest.Bool().Draw(t) {
 		snapshot.Issues = []WorkspaceIssue{{
 			URI:     uri.File("/issue/" + name + ".json"),
 			Message: "discovery failed",
@@ -464,46 +463,46 @@ func drawWorkspacePropertySnapshot(t *fuzzgen.T, name string) WorkspaceSnapshot 
 	return snapshot
 }
 
-func drawWorkspacePropertyOp(t *fuzzgen.T, name string) workspacePropertyOp {
-	switch fuzzgen.IntRange(0, 9).Draw(t) {
+func drawWorkspacePropertyOp(t *proptest.T, name string) workspacePropertyOp {
+	switch proptest.IntRange(0, 9).Draw(t) {
 	case 0, 1, 2, 3:
 		op := workspacePropertyOp{
 			kind:     opInstallSnapshot,
-			folder:   fuzzgen.IntRange(0, len(workspacePropertyFolders)-1).Draw(t),
+			folder:   proptest.IntRange(0, len(workspacePropertyFolders)-1).Draw(t),
 			snapshot: drawWorkspacePropertySnapshot(t, name+".snapshot"),
-			loadFail: fuzzgen.IntRange(0, 5).Draw(t) == 0,
+			loadFail: proptest.IntRange(0, 5).Draw(t) == 0,
 		}
 
 		return op
 	case 4, 5:
 		op := workspacePropertyOp{
 			kind:    opChangeFolders,
-			added:   fuzzgen.SliceOfNDistinct(fuzzgen.IntRange(0, len(workspacePropertyFolders)-1), 0, 2, func(i int) int { return i }).Draw(t),
-			removed: fuzzgen.SliceOfNDistinct(fuzzgen.IntRange(0, len(workspacePropertyFolders)-1), 0, 2, func(i int) int { return i }).Draw(t),
+			added:   proptest.SliceOfNDistinct(proptest.IntRange(0, len(workspacePropertyFolders)-1), 0, 2, func(i int) int { return i }).Draw(t),
+			removed: proptest.SliceOfNDistinct(proptest.IntRange(0, len(workspacePropertyFolders)-1), 0, 2, func(i int) int { return i }).Draw(t),
 		}
 
 		return op
 	case 6, 7:
 		return workspacePropertyOp{
 			kind:     opOpenDocument,
-			file:     fuzzgen.IntRange(0, len(workspacePropertyFiles)-1).Draw(t),
-			revision: fuzzgen.IntRange(0, 3).Draw(t),
+			file:     proptest.IntRange(0, len(workspacePropertyFiles)-1).Draw(t),
+			revision: proptest.IntRange(0, 3).Draw(t),
 		}
 	case 8:
-		switch fuzzgen.IntRange(0, 2).Draw(t) {
+		switch proptest.IntRange(0, 2).Draw(t) {
 		case 0:
-			return workspacePropertyOp{kind: opLifecycle, file: fuzzgen.IntRange(0, len(workspacePropertyFiles)-1).Draw(t)}
+			return workspacePropertyOp{kind: opLifecycle, file: proptest.IntRange(0, len(workspacePropertyFiles)-1).Draw(t)}
 		default:
 			return workspacePropertyOp{
 				kind:     opChangeDocument,
-				file:     fuzzgen.IntRange(0, len(workspacePropertyFiles)-1).Draw(t),
-				revision: fuzzgen.IntRange(0, 3).Draw(t),
+				file:     proptest.IntRange(0, len(workspacePropertyFiles)-1).Draw(t),
+				revision: proptest.IntRange(0, 3).Draw(t),
 			}
 		}
 	default:
 		return workspacePropertyOp{
 			kind: opCloseDocument,
-			file: fuzzgen.IntRange(0, len(workspacePropertyFiles)-1).Draw(t),
+			file: proptest.IntRange(0, len(workspacePropertyFiles)-1).Draw(t),
 		}
 	}
 }
@@ -984,10 +983,10 @@ func runWorkspacePropertyTrace(tb require.TestingT, folders []uri.URI, initial m
 // workspaceRoutingCase runs one generated routing history: it checks the
 // server against the model after every event and replays the sequence on a
 // fresh server, accumulating the classes the corpus reached in coverage.
-func workspaceRoutingCase(t *fuzzgen.T, coverage *workspacePropertyCoverage) {
+func workspaceRoutingCase(t *proptest.T, coverage *workspacePropertyCoverage) {
 	coverage.cases++
 
-	folderCount := fuzzgen.IntRange(1, len(workspacePropertyFolders)).Draw(t)
+	folderCount := proptest.IntRange(1, len(workspacePropertyFolders)).Draw(t)
 	folders := workspacePropertyFolders[:folderCount]
 
 	initial := make(map[uri.URI]WorkspaceSnapshot, len(folders))
@@ -995,7 +994,7 @@ func workspaceRoutingCase(t *fuzzgen.T, coverage *workspacePropertyCoverage) {
 		initial[folder] = drawWorkspacePropertySnapshot(t, fmt.Sprintf("initial%d", i))
 	}
 
-	opCount := fuzzgen.IntRange(1, 8).Draw(t)
+	opCount := proptest.IntRange(1, 8).Draw(t)
 	ops := make([]workspacePropertyOp, 0, opCount+1)
 	for i := 0; i < opCount; i++ {
 		ops = append(ops, drawWorkspacePropertyOp(t, fmt.Sprintf("op%d", i)))
@@ -1035,7 +1034,7 @@ var workspaceRoutingSeeds = proptest.Corpus{
 // deterministic (same routing, same publish log).
 func FuzzWorkspaceRoutingModelProperty(f *testing.F) {
 	proptest.Fuzz(f, workspaceRoutingSeeds, func(tb *testing.T, seed []byte) {
-		workspaceRoutingCase(fuzzgen.New(tb, seed), &workspacePropertyCoverage{})
+		workspaceRoutingCase(proptest.New(tb, seed), &workspacePropertyCoverage{})
 	})
 }
 
@@ -1045,7 +1044,7 @@ const workspaceCoverageCases = 60
 
 // runSeedCorpus runs one case per derived seed, so a coverage assertion holds
 // on the seed run of `go test` without depending on how far fuzzing got.
-func runSeedCorpus(t *testing.T, count int, run func(*fuzzgen.T)) {
+func runSeedCorpus(t *testing.T, count int, run func(*proptest.T)) {
 	t.Helper()
 
 	proptest.Range(count, func(i int) string {
@@ -1059,7 +1058,7 @@ func runSeedCorpus(t *testing.T, count int, run func(*fuzzgen.T)) {
 func TestWorkspaceRoutingCoverage(t *testing.T) {
 	coverage := &workspacePropertyCoverage{}
 
-	runSeedCorpus(t, workspaceCoverageCases, func(t *fuzzgen.T) {
+	runSeedCorpus(t, workspaceCoverageCases, func(t *proptest.T) {
 		workspaceRoutingCase(t, coverage)
 	})
 
@@ -1102,31 +1101,31 @@ func implicitFolderDiskContents() (map[uri.URI]string, map[uri.URI]bool) {
 	return seeded, diagnostics
 }
 
-func drawImplicitFolderOp(t *fuzzgen.T) workspacePropertyOp {
-	if fuzzgen.Bool().Draw(t) {
+func drawImplicitFolderOp(t *proptest.T) workspacePropertyOp {
+	if proptest.Bool().Draw(t) {
 		return workspacePropertyOp{
 			kind: opCloseDocument,
-			file: fuzzgen.IntRange(0, len(implicitFolderUniverse)-1).Draw(t),
+			file: proptest.IntRange(0, len(implicitFolderUniverse)-1).Draw(t),
 		}
 	}
 
 	return workspacePropertyOp{
 		kind:     opOpenDocument,
-		file:     fuzzgen.IntRange(0, len(implicitFolderUniverse)-1).Draw(t),
-		revision: fuzzgen.IntRange(0, 2).Draw(t),
+		file:     proptest.IntRange(0, len(implicitFolderUniverse)-1).Draw(t),
+		revision: proptest.IntRange(0, 2).Draw(t),
 	}
 }
 
 // implicitFolderRoutingCase opens and closes one generated history against
 // the server's real loader.
-func implicitFolderRoutingCase(t *fuzzgen.T, coverage *workspacePropertyCoverage, seeded map[uri.URI]string, diagnostics map[uri.URI]bool) {
+func implicitFolderRoutingCase(t *proptest.T, coverage *workspacePropertyCoverage, seeded map[uri.URI]string, diagnostics map[uri.URI]bool) {
 	coverage.cases++
 
 	driver := newWorkspacePropertyDriverWith(t, nil, implicitFolderUniverse, seeded, diagnostics, false)
 	driver.coverage = coverage
 	driver.observe(false)
 
-	opCount := fuzzgen.IntRange(1, 6).Draw(t)
+	opCount := proptest.IntRange(1, 6).Draw(t)
 	for i := 0; i < opCount; i++ {
 		op := drawImplicitFolderOp(t)
 
@@ -1162,7 +1161,7 @@ func FuzzImplicitFolderRouting(f *testing.F) {
 	proptest.Fuzz(f, implicitFolderSeeds, func(tb *testing.T, seed []byte) {
 		seeded, diagnostics := implicitFolderDiskContents()
 
-		implicitFolderRoutingCase(fuzzgen.New(tb, seed), &workspacePropertyCoverage{}, seeded, diagnostics)
+		implicitFolderRoutingCase(proptest.New(tb, seed), &workspacePropertyCoverage{}, seeded, diagnostics)
 	})
 }
 
@@ -1172,7 +1171,7 @@ func TestImplicitFolderCoverage(t *testing.T) {
 	coverage := &workspacePropertyCoverage{}
 	seeded, diagnostics := implicitFolderDiskContents()
 
-	runSeedCorpus(t, workspaceCoverageCases, func(t *fuzzgen.T) {
+	runSeedCorpus(t, workspaceCoverageCases, func(t *proptest.T) {
 		implicitFolderRoutingCase(t, coverage, seeded, diagnostics)
 	})
 

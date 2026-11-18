@@ -13,7 +13,6 @@ import (
 
 	"go.lsp.dev/uri"
 
-	"github.com/karitham/thrift-ls/internal/fuzzgen"
 	"github.com/karitham/thrift-ls/internal/proptest"
 )
 
@@ -182,15 +181,15 @@ type ppSessionHarness struct {
 // which may be spelled with a trailing slash, covering the same files), and
 // files placed inside folders, in deeper directories under them, and outside
 // every folder.
-func ppNewSessionHarness(t *fuzzgen.T) *ppSessionHarness {
+func ppNewSessionHarness(t *proptest.T) *ppSessionHarness {
 	t.Helper()
 
 	root := "/proptest/ws"
 	folders := []uri.URI{uri.File(root)}
 
-	for range fuzzgen.IntRange(0, 3).Draw(t) {
-		parent := folders[fuzzgen.IntRange(0, len(folders)-1).Draw(t)]
-		segment := fuzzgen.SampledFrom([]string{"a", "b", "c"}).Draw(t)
+	for range proptest.IntRange(0, 3).Draw(t) {
+		parent := folders[proptest.IntRange(0, len(folders)-1).Draw(t)]
+		segment := proptest.SampledFrom([]string{"a", "b", "c"}).Draw(t)
 		candidate := uri.File(parent.Path() + "/" + segment)
 
 		if slices.Contains(folders, candidate) {
@@ -200,8 +199,8 @@ func ppNewSessionHarness(t *fuzzgen.T) *ppSessionHarness {
 		folders = append(folders, candidate)
 	}
 
-	if fuzzgen.Bool().Draw(t) {
-		variant := uri.URI(string(folders[fuzzgen.IntRange(0, len(folders)-1).Draw(t)]) + "/")
+	if proptest.Bool().Draw(t) {
+		variant := uri.URI(string(folders[proptest.IntRange(0, len(folders)-1).Draw(t)]) + "/")
 		if !slices.Contains(folders, variant) {
 			folders = append(folders, variant)
 		}
@@ -211,13 +210,13 @@ func ppNewSessionHarness(t *fuzzgen.T) *ppSessionHarness {
 
 	var files []uri.URI
 
-	for i := range fuzzgen.IntRange(1, 5).Draw(t) {
+	for i := range proptest.IntRange(1, 5).Draw(t) {
 		name := fmt.Sprintf("f%d.thrift", i)
-		folder := folders[fuzzgen.IntRange(0, len(folders)-1).Draw(t)]
+		folder := folders[proptest.IntRange(0, len(folders)-1).Draw(t)]
 
 		var path string
 
-		switch fuzzgen.IntRange(0, 2).Draw(t) {
+		switch proptest.IntRange(0, 2).Draw(t) {
 		case 0: // directly inside the folder
 			path = folder.Path() + "/" + name
 		case 1: // in a directory under the folder: still inside it
@@ -244,10 +243,10 @@ func ppNewSessionHarness(t *fuzzgen.T) *ppSessionHarness {
 	}
 }
 
-func ppSessionOpGen(folders, files int) fuzzgen.Gen[ppSessionOp] {
-	return fuzzgen.Custom(func(t *fuzzgen.T) ppSessionOp {
+func ppSessionOpGen(folders, files int) proptest.Gen[ppSessionOp] {
+	return proptest.Custom(func(t *proptest.T) ppSessionOp {
 		op := ppSessionOp{
-			kind: fuzzgen.SampledFrom([]ppSessionOpKind{
+			kind: proptest.SampledFrom([]ppSessionOpKind{
 				ppSessionAddView, ppSessionAddView, ppSessionAddView,
 				ppSessionRemoveView, ppSessionRemoveView,
 				ppSessionPlace, ppSessionPlace, ppSessionPlace,
@@ -255,16 +254,16 @@ func ppSessionOpGen(folders, files int) fuzzgen.Gen[ppSessionOp] {
 				ppSessionWalk,
 				ppSessionObserve,
 			}).Draw(t),
-			folder: fuzzgen.IntRange(0, folders-1).Draw(t),
-			file:   fuzzgen.IntRange(0, files-1).Draw(t),
-			view:   fuzzgen.IntRange(0, folders-1).Draw(t),
+			folder: proptest.IntRange(0, folders-1).Draw(t),
+			file:   proptest.IntRange(0, files-1).Draw(t),
+			view:   proptest.IntRange(0, folders-1).Draw(t),
 		}
 
 		return op
 	})
 }
 
-func (h *ppSessionHarness) apply(ctx context.Context, t *fuzzgen.T, op ppSessionOp) {
+func (h *ppSessionHarness) apply(ctx context.Context, t *proptest.T, op ppSessionOp) {
 	t.Helper()
 
 	switch op.kind {
@@ -349,7 +348,7 @@ func (h *ppSessionHarness) apply(ctx context.Context, t *fuzzgen.T, op ppSession
 
 // check compares the session's routing model and view registration against the
 // model after one operation.
-func (h *ppSessionHarness) check(ctx context.Context, t *fuzzgen.T) {
+func (h *ppSessionHarness) check(ctx context.Context, t *proptest.T) {
 	t.Helper()
 
 	h.step++
@@ -440,12 +439,12 @@ func FuzzPropertySessionRouting(f *testing.F) {
 		[]byte("sessions"),
 		[]byte(""),
 	}, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		h := ppNewSessionHarness(t)
 		ctx := t.Context()
 
-		trace := fuzzgen.SliceOfN(
+		trace := proptest.SliceOfN(
 			ppSessionOpGen(len(h.folders), len(h.files)), 1, 24,
 		).Draw(t)
 
@@ -469,10 +468,10 @@ func FuzzPropertySessionNestedPrecedence(f *testing.F) {
 		[]byte("slash"),
 		[]byte(""),
 	}, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		root := "/proptest/nested"
-		depth := fuzzgen.IntRange(1, 3).Draw(t)
+		depth := proptest.IntRange(1, 3).Draw(t)
 
 		folders := make([]uri.URI, 0, depth+1)
 		folders = append(folders, uri.File(root))
@@ -484,7 +483,7 @@ func FuzzPropertySessionNestedPrecedence(f *testing.F) {
 		}
 
 		// A trailing-slash twin of one folder covers the same files.
-		slashFolder := folders[fuzzgen.IntRange(0, len(folders)-1).Draw(t)]
+		slashFolder := folders[proptest.IntRange(0, len(folders)-1).Draw(t)]
 		folders = append(folders, uri.URI(string(slashFolder)+"/"))
 
 		disk := map[uri.URI][]byte{}
@@ -505,7 +504,7 @@ func FuzzPropertySessionNestedPrecedence(f *testing.F) {
 
 		// Register in a shuffled order: registration order must only matter
 		// for ties.
-		perm := fuzzgen.Permutation(slices.Clone(folders)).Draw(t)
+		perm := proptest.Permutation(slices.Clone(folders)).Draw(t)
 
 		model := newPPSessionModel()
 		for _, folder := range perm {

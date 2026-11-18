@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/karitham/thrift-ls/internal/fuzzgen"
 	"github.com/karitham/thrift-ls/internal/proptest"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
@@ -50,12 +49,12 @@ func modelApply(content string, specs []editSpec) string {
 	return out
 }
 
-func drawSpecs(t *fuzzgen.T, boundaries []int) []editSpec {
-	anchor := fuzzgen.SampledFrom(boundaries).Draw(t)
+func drawSpecs(t *proptest.T, boundaries []int) []editSpec {
+	anchor := proptest.SampledFrom(boundaries).Draw(t)
 
 	// The anchor is either an insertion or a replacement starting at anchor.
 	anchorEnd := anchor
-	if fuzzgen.Bool().Draw(t) {
+	if proptest.Bool().Draw(t) {
 		var ends []int
 		for _, boundary := range boundaries {
 			if boundary > anchor {
@@ -64,21 +63,21 @@ func drawSpecs(t *fuzzgen.T, boundaries []int) []editSpec {
 		}
 
 		if len(ends) > 0 {
-			anchorEnd = fuzzgen.SampledFrom(ends).Draw(t)
+			anchorEnd = proptest.SampledFrom(ends).Draw(t)
 		}
 	}
 
-	specs := []editSpec{{start: anchor, end: anchorEnd, text: fuzzgen.SampledFrom([]string{"R", "", "replacement"}).Draw(t)}}
+	specs := []editSpec{{start: anchor, end: anchorEnd, text: proptest.SampledFrom([]string{"R", "", "replacement"}).Draw(t)}}
 
 	// Insertions at the same offset as the anchor: the tie class under test.
-	insertions := fuzzgen.IntRange(0, 3).Draw(t)
+	insertions := proptest.IntRange(0, 3).Draw(t)
 	for i := 0; i < insertions; i++ {
-		specs = append(specs, editSpec{start: anchor, end: anchor, text: fuzzgen.SampledFrom([]string{"1", "2", "", "×"}).Draw(t)})
+		specs = append(specs, editSpec{start: anchor, end: anchor, text: proptest.SampledFrom([]string{"1", "2", "", "×"}).Draw(t)})
 	}
 
 	// Optionally one insertion elsewhere, outside the anchor's range: it
 	// must not disturb the tie group.
-	if fuzzgen.Bool().Draw(t) {
+	if proptest.Bool().Draw(t) {
 		var outside []int
 		for _, boundary := range boundaries {
 			if boundary < anchor || boundary > anchorEnd {
@@ -87,11 +86,11 @@ func drawSpecs(t *fuzzgen.T, boundaries []int) []editSpec {
 		}
 
 		if len(outside) > 0 {
-			outsideAt := fuzzgen.SampledFrom(outside).Draw(t)
+			outsideAt := proptest.SampledFrom(outside).Draw(t)
 			specs = append(specs, editSpec{
 				start: outsideAt,
 				end:   outsideAt,
-				text:  fuzzgen.SampledFrom([]string{"x", "yy"}).Draw(t),
+				text:  proptest.SampledFrom([]string{"x", "yy"}).Draw(t),
 			})
 		}
 	}
@@ -125,17 +124,17 @@ func FuzzApplyEditsSameStartTie(f *testing.F) {
 		[]byte("aé😀 b\n"),
 		[]byte("insertion and replacement"),
 	}, func(tb *testing.T, seed []byte) {
-		t := fuzzgen.New(tb, seed)
+		t := proptest.New(tb, seed)
 
 		alphabet := []string{"a", "b", "c", "é", "😀", "日", "\n", " "}
 
-		content := strings.Join(fuzzgen.SliceOfN(fuzzgen.SampledFrom(alphabet), 0, 12).Draw(t), "")
+		content := strings.Join(proptest.SliceOfN(proptest.SampledFrom(alphabet), 0, 12).Draw(t), "")
 		boundaries := proptest.RuneBoundaries(content)
 		specs := drawSpecs(t, boundaries)
 
 		orders := [][]editSpec{
 			specs,
-			fuzzgen.Permutation(specs).Draw(t),
+			proptest.Permutation(specs).Draw(t),
 		}
 
 		var bySecondOrder string
