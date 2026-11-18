@@ -100,11 +100,16 @@ func (p Patch) Validate() error {
 }
 
 // Parse parses a config document. Unknown keys are rejected so that typos
-// and stale settings (e.g. the removed overrides feature) fail loudly.
+// and stale settings (e.g. the removed overrides feature) fail loudly: keys
+// match case-sensitively, so a case-only typo is an unknown key.
 // Include paths in the document are left as written; Load resolves them
 // against the config file's directory.
 func Parse(data []byte) (*Patch, error) {
 	var p Patch
+
+	if err := checkExactKeys(data, p); err != nil {
+		return nil, err
+	}
 
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()

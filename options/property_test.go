@@ -522,19 +522,21 @@ func mustNearest(t require.TestingT, dir string) string {
 	return path
 }
 
-// TestParseRejectsCaseOnlyKeyTypos checks that Parse rejects case-only key
-// typos. encoding/json otherwise matches them to fields case-insensitively
-// before DisallowUnknownFields runs. Skipped until the fix lands.
+// TestParseRejectsCaseOnlyKeyTypos checks that Parse rejects keys that differ
+// from struct fields only by case.
 func TestParseRejectsCaseOnlyKeyTypos(t *testing.T) {
-	t.Skip("retained failure: case-only key typos are silently accepted")
-
-	for _, doc := range []string{
-		`{"printwidth": 100}`,
-		`{"PRINTWIDTH": 100}`,
-		`{"IncludePaths": ["inc"]}`,
+	for _, tt := range []struct {
+		name string
+		doc  string
+	}{
+		{"lowercase", `{"printwidth": 100}`},
+		{"uppercase", `{"PRINTWIDTH": 100}`},
+		{"field name", `{"IncludePaths": ["inc"]}`},
 	} {
-		patch, err := options.Parse([]byte(doc))
-		require.Error(t, err, "%s must be rejected as an unknown key, not bound case-insensitively", doc)
-		require.Nil(t, patch)
+		t.Run(tt.name, func(t *testing.T) {
+			patch, err := options.Parse([]byte(tt.doc))
+			require.Error(t, err)
+			require.Nil(t, patch)
+		})
 	}
 }
