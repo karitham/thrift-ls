@@ -1,8 +1,9 @@
 package mapper
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 
 	"go.lsp.dev/protocol"
 )
@@ -10,7 +11,7 @@ import (
 // ApplyEdits returns the mapped content with the edits applied. Edits must
 // not overlap; they may arrive in any order. Positions are resolved from
 // LSP (UTF-16) coordinates via the mapper, and later edits apply first so
-// earlier offsets stay valid.
+// earlier offsets stay valid. Same-start edits follow sema.Apply's tie order.
 func (m *Mapper) ApplyEdits(edits []protocol.TextEdit) ([]byte, error) {
 	type pending struct {
 		start, end int
@@ -33,19 +34,38 @@ func (m *Mapper) ApplyEdits(edits []protocol.TextEdit) ([]byte, error) {
 		all = append(all, pending{start, end, e.NewText})
 	}
 
-	sort.Slice(all, func(i, j int) bool { return all[i].start > all[j].start })
-
-	buf := m.content
-
-	for _, e := range all {
-		if e.start < 0 || e.end > len(buf) || e.start > e.end {
-			return nil, fmt.Errorf("invalid edit range [%d:%d], total content: %d", e.start, e.end, len(buf))
+	// Splicing back to front keeps earlier offsets valid; on equal starts,
+	// insertions go first so their text lands before a replacement's.
+	slices.SortStableFunc(all, func(a, b pending) int {
+		if c := cmp.Compare(a.start, b.start); c != 0 {
+			return c
 		}
 
-		buf = append(append(buf[:e.start:e.start], e.text...), buf[e.end:]...)
+		aZero, bZero := a.start == a.end, b.start == b.end
+
+		switch {
+		case aZero && !bZero:
+			return -1
+		case bZero && !aZero:
+			return 1
+		}
+
+		return 0
+	})
+
+	out := m.content
+
+	for i := len(all) - 1; i >= 0; i-- {
+		e := all[i]
+
+		if e.start < 0 || e.start > e.end || e.end > len(m.content) || e.end > len(out) {
+			return nil, fmt.Errorf("invalid edit range [%d:%d], total content: %d", e.start, e.end, len(m.content))
+		}
+
+		out = slices.Concat(out[:e.start], []byte(e.text), out[e.end:])
 	}
 
-	return buf, nil
+	return out, nil
 }
 
 // offsetAt resolves an LSP (UTF-16) position to a byte offset in the mapped
