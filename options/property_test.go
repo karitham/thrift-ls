@@ -5,6 +5,7 @@ package options_test
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"testing"
@@ -76,9 +77,7 @@ func patchFields(p options.Patch) map[string]any {
 
 		if p.Lint.Severity != nil {
 			severity := map[string]string{}
-			for code, level := range *p.Lint.Severity {
-				severity[code] = level
-			}
+			maps.Copy(severity, *p.Lint.Severity)
 
 			lint["severity"] = severity
 		}
@@ -425,7 +424,7 @@ func FuzzFindNearestConfigProperty(f *testing.F) {
 		dir := root
 
 		depth := proptest.Int(t, 0, 3)
-		for i := 0; i < depth; i++ {
+		for i := range depth {
 			dir = filepath.Join(dir, segments[i])
 		}
 

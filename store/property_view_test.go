@@ -1153,11 +1153,7 @@ func FuzzPropertyViewConcurrentReaders(f *testing.F) {
 		)
 
 		for r := range readers {
-			wg.Add(1)
-
-			go func() {
-				defer wg.Done()
-
+			wg.Go(func() {
 				rng := rand.New(rand.NewSource(readerSeed + int64(r)))
 				files := h.uris
 
@@ -1194,7 +1190,7 @@ func FuzzPropertyViewConcurrentReaders(f *testing.F) {
 						}
 					}
 				}
-			}()
+			})
 		}
 
 		for _, op := range writes {

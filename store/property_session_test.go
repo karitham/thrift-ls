@@ -470,10 +470,11 @@ func FuzzPropertySessionNestedPrecedence(f *testing.F) {
 		folders := make([]uri.URI, 0, depth+1)
 		folders = append(folders, uri.File(root))
 
-		path := root
+		var path strings.Builder
+		path.WriteString(root)
 		for i := range depth {
-			path += fmt.Sprintf("/l%d", i)
-			folders = append(folders, uri.File(path))
+			fmt.Fprintf(&path, "/l%d", i)
+			folders = append(folders, uri.File(path.String()))
 		}
 
 		// A trailing-slash twin of one folder covers the same files.
@@ -490,7 +491,7 @@ func FuzzPropertySessionNestedPrecedence(f *testing.F) {
 			disk[file] = []byte(ppStubDoc(fmt.Sprintf("S%d", i)))
 		}
 
-		deepest := uri.File(path + "/deepest.thrift")
+		deepest := uri.File(path.String() + "/deepest.thrift")
 		files = append(files, deepest)
 		disk[deepest] = []byte(ppStubDoc("Deepest"))
 

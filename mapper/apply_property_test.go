@@ -71,7 +71,7 @@ func drawSpecs(t *proptest.T, boundaries []int) []editSpec {
 
 	// Insertions at the same offset as the anchor: the tie class under test.
 	insertions := proptest.Int(t, 0, 3)
-	for i := 0; i < insertions; i++ {
+	for range insertions {
 		specs = append(specs, editSpec{start: anchor, end: anchor, text: proptest.Pick(t, []string{"1", "2", "", "×"})})
 	}
 

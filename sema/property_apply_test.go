@@ -42,7 +42,7 @@ func drawContent(t *proptest.T) string {
 
 	var b strings.Builder
 
-	for i := 0; i < n; i++ {
+	for range n {
 		b.WriteString(proptest.Pick(t, applyAlphabet))
 	}
 
@@ -55,7 +55,7 @@ func drawText(t *proptest.T) string {
 
 	var b strings.Builder
 
-	for i := 0; i < n; i++ {
+	for range n {
 		b.WriteString(proptest.Pick(t, applyTextAlphabet))
 	}
 
@@ -191,7 +191,7 @@ func drawFix(t *proptest.T, label string, bounds []int, prev []sema.Fix) sema.Fi
 
 	n := proptest.Int(t, 1, 3)
 
-	for k := 0; k < n; k++ {
+	for range n {
 		fx.Edits = append(fx.Edits, drawRandomEdit(t, bounds))
 	}
 
@@ -230,7 +230,7 @@ func drawApplyCase(t *proptest.T) applyCase {
 	var fixes []sema.Fix
 
 	n := proptest.Int(t, 0, 4)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		fixes = append(fixes, drawFix(t, fmt.Sprintf("f%d", i), bounds, fixes))
 	}
 
@@ -621,7 +621,7 @@ func FuzzApplySameOffsetTie(f *testing.F) {
 
 		var inserts []sema.Fix
 
-		for k := 0; k < n; k++ {
+		for k := range n {
 			inserts = append(inserts, sema.Fix{
 				Title: fmt.Sprintf("insert%d", k),
 				Edits: []sema.Edit{{Span: offsetSpan(start, start), NewText: drawText(t)}},
@@ -668,7 +668,7 @@ func FuzzApplyInsertionsNeverConflict(f *testing.F) {
 
 		var fixes []sema.Fix
 
-		for k := 0; k < n; k++ {
+		for k := range n {
 			at := bounds[proptest.Int(t, 0, len(bounds)-1)]
 			fixes = append(fixes, sema.Fix{
 				Title: fmt.Sprintf("i%d", k),

@@ -577,7 +577,7 @@ func mdlKindAllowed(k store.RefKind, kinds []store.RefKind) bool {
 func mdlEnumSegment(text, enumName string) (seg string, off int, ok bool) {
 	off = 0
 
-	for _, item := range strings.Split(text, ".") {
+	for item := range strings.SplitSeq(text, ".") {
 		if item == enumName {
 			return item, off, true
 		}

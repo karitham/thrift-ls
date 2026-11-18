@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"path/filepath"
 	"testing"
 
@@ -81,9 +82,7 @@ func patchFields(p options.Patch) map[string]any {
 
 		if p.Lint.Severity != nil {
 			severity := map[string]string{}
-			for code, level := range *p.Lint.Severity {
-				severity[code] = level
-			}
+			maps.Copy(severity, *p.Lint.Severity)
 
 			lint["severity"] = severity
 		}
@@ -268,7 +267,7 @@ func FuzzFileConfigSourceDiscovery(f *testing.F) {
 		depth := proptest.Int(t, 0, 3)
 
 		path := "/cfg-root"
-		for i := 0; i < depth; i++ {
+		for i := range depth {
 			path = filepath.Join(path, segments[i])
 		}
 
@@ -299,7 +298,7 @@ func FuzzFileConfigSourceDiscovery(f *testing.F) {
 
 			switch kind {
 			case 0:
-				seeded[uri.File(filepath.Join(dir, options.ConfigFileName))] = []byte(fmt.Sprintf(`{"printWidth": %d, "includePaths": ["inc", "../shared"]}`, width))
+				seeded[uri.File(filepath.Join(dir, options.ConfigFileName))] = fmt.Appendf(nil, `{"printWidth": %d, "includePaths": ["inc", "../shared"]}`, width)
 			case 1:
 				seeded[uri.File(filepath.Join(dir, options.ConfigFileName))] = []byte(`{"printWidth": }`)
 			default:
@@ -417,7 +416,7 @@ func FuzzProjectViewConfigLayering(f *testing.F) {
 		// malformed: then it is skipped and an issue diagnostic appears.
 		docDepth := proptest.Int(t, 0, 2)
 		docPath := rootPath
-		for i := 0; i < docDepth; i++ {
+		for range docDepth {
 			docPath = filepath.Dir(docPath)
 		}
 

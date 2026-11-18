@@ -3,6 +3,7 @@ package lsp
 import (
 	"context"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -447,7 +448,7 @@ func drawWorkspacePropertySnapshot(t *proptest.T, name string) WorkspaceSnapshot
 	var snapshot WorkspaceSnapshot
 
 	count := proptest.Int(t, 0, 3)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		snapshot.Projects = append(snapshot.Projects, drawWorkspacePropertyProject(t, fmt.Sprintf("%s.p%d", name, i)))
 	}
 
@@ -787,14 +788,10 @@ func (d *workspacePropertyDriver) observe(reconciled bool) {
 
 	w.mu.Lock()
 	gotRoots := make(map[uri.URI]Project, len(w.model.roots))
-	for root, project := range w.model.roots {
-		gotRoots[root] = project
-	}
+	maps.Copy(gotRoots, w.model.roots)
 
 	gotTargets := make(map[uri.URI]uri.URI, len(w.model.targets))
-	for target, owner := range w.model.targets {
-		gotTargets[target] = owner
-	}
+	maps.Copy(gotTargets, w.model.targets)
 
 	gotIssues := make(map[uri.URI]int, len(w.model.issues))
 	for issueURI, issues := range w.model.issues {
@@ -802,9 +799,7 @@ func (d *workspacePropertyDriver) observe(reconciled bool) {
 	}
 
 	gotViews := make(map[uri.URI]*store.View, len(w.views))
-	for root, view := range w.views {
-		gotViews[root] = view
-	}
+	maps.Copy(gotViews, w.views)
 
 	gotDocuments := make(map[uri.URI]struct{}, len(w.documents))
 	for document := range w.documents {
@@ -946,9 +941,7 @@ func runWorkspacePropertyTrace(tb require.TestingT, folders []uri.URI, initial m
 	driver.coverage = coverage
 
 	snaps := make(map[uri.URI]WorkspaceSnapshot, len(initial))
-	for folder, snapshot := range initial {
-		snaps[folder] = snapshot
-	}
+	maps.Copy(snaps, initial)
 
 	for _, folder := range folders {
 		driver.model.folders[folder] = snaps[folder]
@@ -994,7 +987,7 @@ func workspaceRoutingCase(t *proptest.T, coverage *workspacePropertyCoverage) {
 
 	opCount := proptest.Int(t, 1, 8)
 	ops := make([]workspacePropertyOp, 0, opCount+1)
-	for i := 0; i < opCount; i++ {
+	for i := range opCount {
 		ops = append(ops, drawWorkspacePropertyOp(t, fmt.Sprintf("op%d", i)))
 	}
 
@@ -1124,7 +1117,7 @@ func implicitFolderRoutingCase(t *proptest.T, coverage *workspacePropertyCoverag
 	driver.observe(false)
 
 	opCount := proptest.Int(t, 1, 6)
-	for i := 0; i < opCount; i++ {
+	for range opCount {
 		op := drawImplicitFolderOp(t)
 
 		switch op.kind {

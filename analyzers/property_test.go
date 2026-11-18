@@ -1336,7 +1336,7 @@ func Test_ValidNearMissesProduceNoFindings(t *testing.T) {
 			main := "main.thrift"
 			p.file(main)
 
-			for _, line := range strings.Split(strings.TrimSuffix(tc.source, "\n"), "\n") {
+			for line := range strings.SplitSeq(strings.TrimSuffix(tc.source, "\n"), "\n") {
 				p.add(main, line)
 			}
 

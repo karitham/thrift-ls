@@ -51,8 +51,8 @@ func walkExactKeys(doc []byte, t reflect.Type, path string) error {
 // exactField finds the field json decodes key into: tags, promoted embedded
 // fields, and Go names all count; json:"-" fields do not.
 func exactField(t reflect.Type, key string) (reflect.StructField, bool) {
-	for i := range t.NumField() {
-		f := t.Field(i)
+	for f := range t.Fields() {
+		f := f
 		if !f.IsExported() {
 			continue
 		}
